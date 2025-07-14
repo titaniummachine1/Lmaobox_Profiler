@@ -236,62 +236,56 @@ if callbacks.Unregister then
 	end
 end
 
+-- Safe callback registration (avoids errors when callback id is unknown)
+local function SafeRegister(event, id, func)
+	if not callbacks or not callbacks.Register then
+		return
+	end
+	local ok, err = pcall(callbacks.Register, event, id, func)
+	if not ok then
+		print(
+			string.format("[Profiler Example] Warning: Failed to register '%s' – %s", tostring(event), tostring(err))
+		)
+	end
+end
+
 -- CreateMove callback - This is where the magic happens!
-callbacks.Register("CreateMove", "profiled_createmove", function(cmd)
-	Profiler.StartSystem("oncreatemove") -- Explicit system for organized components
-
-	-- Profile expensive aimbot calculations
+SafeRegister("CreateMove", "profiled_createmove", function(cmd)
+	Profiler.StartSystem("oncreatemove")
 	ProfiledAimbot(cmd)
-
-	-- Profile movement assistance
 	ProfiledMovement(cmd)
-
 	Profiler.EndSystem("oncreatemove")
 end)
 
 -- Draw callback - Profile visual elements
-callbacks.Register("Draw", "profiled_draw", function()
+SafeRegister("Draw", "profiled_draw", function()
 	Profiler.StartSystem("ondraw")
-
-	-- Profile FPS counter rendering
 	ProfiledFPSCounter()
-
-	-- Profile ESP rendering (very expensive!)
 	ProfiledPlayerESP()
-
-	-- Always call this to display the profiler itself
+	-- Profiler overlay draws itself automatically now, but keep for safety
 	Profiler.Draw()
-
 	Profiler.EndSystem("ondraw")
 end)
 
 -- FireGameEvent callback - Profile event handling
-callbacks.Register("FireGameEvent", "profiled_events", function(event)
+SafeRegister("FireGameEvent", "profiled_events", function(event)
 	Profiler.StartSystem("onevent")
-
-	-- Profile damage logging
 	ProfiledDamageLogger(event)
-
 	Profiler.EndSystem("onevent")
 end)
 
 -- Think callback - Profile background tasks
-callbacks.Register("Think", "profiled_think", function()
+SafeRegister("Think", "profiled_think", function()
 	Profiler.StartSystem("onthink")
-
 	Profiler.StartComponent("misc_features")
-	-- Simulate misc features like auto-heal, auto-reload, etc.
 	local result = 0
 	for i = 1, 20 do
 		result = result + math.random() * 100
 	end
 	Profiler.EndComponent("misc_features")
-
 	Profiler.StartComponent("config_check")
-	-- Simulate config file checking
 	local configValue = math.random() * 50
 	Profiler.EndComponent("config_check")
-
 	Profiler.EndSystem("onthink")
 end)
 

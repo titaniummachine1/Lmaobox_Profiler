@@ -11,9 +11,11 @@
 
 ## 🚀 Download
 
-[![Download Profiler.lua](https://img.shields.io/badge/Download-Latest-blue?style=for-the-badge&logo=download)](https://github.com/titaniummachine1/Lmaobox_Profiler/releases/latest)
+[![Download Latest](https://img.shields.io/github/downloads/titaniummachine1/Lmaobox_Profiler/total.svg?style=for-the-badge&logo=download&label=Download%20Latest)](https://github.com/titaniummachine1/Lmaobox_Profiler/releases/latest/download/Profiler.lua)
 
-Copy `Profiler.lua` and (optionally) `example.lua` to your `%localappdata%` folder.
+Click the badge above to instantly download the latest `Profiler.lua` release.
+
+Copy `Profiler.lua` and (optionally) files from `examples/` to your `%localappdata%` folder.
 
 ---
 

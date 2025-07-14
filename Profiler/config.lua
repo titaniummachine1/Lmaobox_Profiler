@@ -5,7 +5,7 @@
 
 return {
 	-- Display settings
-	visible = false, -- Start with profiler visible or hidden
+	visible = true, -- Start with profiler visible or hidden
 	windowSize = 60, -- Number of frames to average over (1-300)
 	sortMode = "size", -- "size" (biggest first), "static" (measurement order), "reverse" (smallest first)
 	systemHeight = 48, -- Height of each system bar in pixels

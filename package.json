@@ -1,0 +1,25 @@
+{
+  "name": "profiler-library",
+  "version": "1.0.0",
+  "description": "Lua profiler library for performance monitoring and analysis",
+  "main": "bundle.js",
+  "type": "module",
+  "scripts": {
+    "build": "node bundle.js",
+    "bundle": "node bundle.js",
+    "deploy": "node bundle.js && move /Y \"Profiler.lua\" \"%localappdata%\""
+  },
+  "keywords": [
+    "lua",
+    "profiler",
+    "performance",
+    "monitoring",
+    "library"
+  ],
+  "author": "TerminatorMachine",
+  "license": "MIT",
+  "dependencies": {
+    "lua-format": "^1.5.2",
+    "luabundle": "^1.6.0"
+  }
+}

@@ -13,7 +13,7 @@ A lightweight, real-time performance profiler that shows you exactly what's eati
 
 ```lua
 local Profiler = require("Profiler")
-Profiler.SetVisible(true)
+--Profiler.SetVisible(true)
 
 -- Measure your code
 Profiler.StartSystem("aimbot")

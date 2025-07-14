@@ -62,14 +62,49 @@ Profiler.Reset()                             -- Clear all data
 
 ## 📊 Settings Reference
 
-| Setting              | Default  | Range                       | Description                       |
-| -------------------- | -------- | --------------------------- | --------------------------------- |
-| `smoothingSpeed`     | 5.0      | 0.1-20.0                    | How fast bars grow on spikes      |
-| `smoothingDecay`     | 1.0      | 0.1-20.0                    | How fast bars shrink after spikes |
-| `textUpdateInterval` | 15       | 1-120                       | Text update rate (frames)         |
-| `windowSize`         | 60       | 1-300                       | Averaging window (frames)         |
-| `sortMode`           | "size"   | "size", "static", "reverse" | Bar sorting                       |
-| `systemMemoryMode`   | "system" | "system", "components"      | Memory calculation                |
+### Animation Speed
+
+```
+smoothingSpeed:  1.0 ←────────────→ 10.0
+                slow    balanced    fast
+                 🐌        🎯        ⚡
+```
+
+### Peak Decay
+
+```
+smoothingDecay:  0.5 ←────────────→ 2.0
+                slow    balanced    fast
+                 📈        🎯        📉
+              (peaks stay) (balanced) (peaks fade)
+```
+
+### Text Updates
+
+```
+textUpdateInterval: 6 ←──────────→ 30 frames
+                   10/sec  4/sec  2/sec
+                    📱      🎯      📺
+                  (jittery) (smooth) (stable)
+```
+
+### Memory Modes
+
+```
+"system":     [████████████████] 25.3KB  ← actual system memory
+"components": [██████████]       18.7KB  ← sum of components
+```
+
+### Complete Settings Table
+
+| Setting              | Default  | Range                       | Visual Guide                |
+| -------------------- | -------- | --------------------------- | --------------------------- |
+| `smoothingSpeed`     | 5.0      | 0.1-20.0                    | 🐌 ←→ ⚡ (spike response)   |
+| `smoothingDecay`     | 1.0      | 0.1-20.0                    | 📈 ←→ 📉 (peak persistence) |
+| `textUpdateInterval` | 15       | 1-120                       | 📱 ←→ 📺 (update frequency) |
+| `windowSize`         | 60       | 1-300                       | ⚡ ←→ 🧘 (averaging window) |
+| `sortMode`           | "size"   | "size", "static", "reverse" | 📊 📋 🔄                    |
+| `systemMemoryMode`   | "system" | "system", "components"      | 🎯 ➕                       |
 
 ## 💡 Tips
 

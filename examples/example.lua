@@ -206,47 +206,30 @@ local function ProfiledMovement(cmd)
 	Profiler.EndComponent("movement")
 end
 
--- Unregister any existing callbacks before registering new ones (safe unregister)
-if callbacks.Unregister then
-	local function SafeUnregister(event, id)
-		local success, err = pcall(callbacks.Unregister, event, id)
-		if not success then
-			-- Callback didn't exist - this is fine on first load
-			return false
-		end
-		return true
+-- Helper: safely register callbacks only if ID is valid in current environment
+local function TryRegister(event, id, func)
+	if not callbacks or not callbacks.Register then
+		return
 	end
-
-	local unregistered = 0
-	if SafeUnregister("CreateMove", "profiled_createmove") then
-		unregistered = unregistered + 1
-	end
-	if SafeUnregister("Draw", "profiled_draw") then
-		unregistered = unregistered + 1
-	end
-	if SafeUnregister("FireGameEvent", "profiled_events") then
-		unregistered = unregistered + 1
-	end
-	if SafeUnregister("Think", "profiled_think") then
-		unregistered = unregistered + 1
-	end
-
-	if unregistered > 0 then
-		print("🔄 Unregistered " .. unregistered .. " existing Profiler callbacks")
-	end
+	pcall(function()
+		callbacks.Register(event, id, func)
+	end)
 end
 
--- Remove SafeRegister helper and revert to direct registrations
--- CreateMove callback
-callbacks.Register("CreateMove", "profiled_createmove", function(cmd)
+-- Re-register callbacks using helper
+callbacks.Unregister("CreateMove", "profiled_createmove")
+callbacks.Unregister("Draw", "profiled_draw")
+callbacks.Unregister("FireGameEvent", "profiled_events")
+callbacks.Unregister("Think", "profiled_think")
+
+TryRegister("CreateMove", "profiled_createmove", function(cmd)
 	Profiler.StartSystem("oncreatemove")
 	ProfiledAimbot(cmd)
 	ProfiledMovement(cmd)
 	Profiler.EndSystem("oncreatemove")
 end)
 
--- Draw callback
-callbacks.Register("Draw", "profiled_draw", function()
+TryRegister("Draw", "profiled_draw", function()
 	Profiler.StartSystem("ondraw")
 	ProfiledFPSCounter()
 	ProfiledPlayerESP()
@@ -254,20 +237,18 @@ callbacks.Register("Draw", "profiled_draw", function()
 	Profiler.EndSystem("ondraw")
 end)
 
--- FireGameEvent callback
-callbacks.Register("FireGameEvent", "profiled_events", function(event)
+TryRegister("FireGameEvent", "profiled_events", function(event)
 	Profiler.StartSystem("onevent")
 	ProfiledDamageLogger(event)
 	Profiler.EndSystem("onevent")
 end)
 
--- Think callback
-callbacks.Register("Think", "profiled_think", function()
+TryRegister("Think", "profiled_think", function()
 	Profiler.StartSystem("onthink")
 	Profiler.StartComponent("misc_features")
-	local result = 0
+	local r = 0
 	for i = 1, 20 do
-		result = result + math.random() * 100
+		r = r + math.random() * 100
 	end
 	Profiler.EndComponent("misc_features")
 	Profiler.StartComponent("config_check")

@@ -1,8 +1,22 @@
 # 🎯 Profiler - Performance Monitoring for Lmaobox
 
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.txt)
+[![Version](https://img.shields.io/badge/version-1.0.0-green.svg)](https://github.com/titaniummachine1/Profiler/releases)
+[![Lmaobox](https://img.shields.io/badge/lmaobox-compatible-orange.svg)](http://lmaobox.net)
+
 A lightweight, real-time performance profiler that shows you exactly what's eating your CPU and memory.
 
-## 📦 Quick Start
+## 📥 Download
+
+**Latest Release:** [Download v1.0.0](https://github.com/titaniummachine1/Profiler/releases/latest)
+
+Or clone the repository:
+
+```bash
+git clone https://github.com/titaniummachine1/Profiler.git
+```
+
+## 🚀 Quick Start
 
 ```lua
 local Profiler = require("Profiler")
@@ -24,34 +38,62 @@ Profiler.EndSystem("aimbot")
 -- The profiler automatically draws itself on screen
 ```
 
-## 🎮 Basic Controls
+## ⚙️ Basic Configuration
 
-### Turn Profiler On/Off
+```lua
+-- Quick setup with common options
+Profiler.Setup({
+    visible = true,
+    smoothingSpeed = 5.0,    -- How fast bars react to spikes
+    smoothingDecay = 1.0,    -- How fast bars shrink after spikes
+    systemMemoryMode = "system"  -- Show actual system memory usage
+})
+```
+
+## 🎮 Common Controls
 
 ```lua
 Profiler.SetVisible(true)   -- Show profiler
 Profiler.SetVisible(false)  -- Hide profiler
 
--- Or use shortcuts
-Profiler.Enable()   -- Show profiler
-Profiler.Disable()  -- Hide profiler
+-- Animation speed (1.0 = slow, 10.0 = fast)
+Profiler.SetSmoothingSpeed(5.0)
+
+-- Memory measurement mode
+Profiler.SetSystemMemoryMode("system")     -- Actual system memory (default)
+Profiler.SetSystemMemoryMode("components") -- Sum of component memory
+
+Profiler.Reset()  -- Clear all measurements
 ```
 
-### Quick Setup
+## 🎨 What You'll See
+
+- **System bars** (grey, full width): Show entire systems like "aimbot", "movement"
+- **Component bars** (colored, nested): Show individual parts within systems
+- **Memory values**: Actual KB usage for each component
+- **Timing info**: Millisecond timing with red background for significant values
+
+## 🔧 Installation
+
+1. Download the profiler files
+2. Place in your Lmaobox Lua folder
+3. Add to your script:
 
 ```lua
--- Configure everything at once
-Profiler.Setup({
-    visible = true,
-    smoothingSpeed = 5.0,
-    smoothingDecay = 1.0,
-    systemMemoryMode = "system"
-})
+local Profiler = require("Profiler")
+Profiler.SetVisible(true)
 ```
 
-## 📊 Visual Settings
+---
 
-### Animation Speed
+## 📚 Complete API Documentation
+
+<details>
+<summary>Click to expand full API reference</summary>
+
+### Visual Settings
+
+#### Animation Speed
 
 Controls how fast the bars react to performance changes:
 
@@ -69,7 +111,7 @@ Profiler.SetSmoothingDecay(1.0)  -- Default: 1.0
 -- 2.0 = Fast decay (peaks disappear quickly)
 ```
 
-### Text Update Rate
+#### Text Update Rate
 
 Controls how often the numbers change:
 
@@ -80,7 +122,7 @@ Profiler.SetTextUpdateInterval(15)  -- Default: 15 frames
 -- 30 = Update 2 times per second (very stable)
 ```
 
-### Display Options
+#### Display Options
 
 ```lua
 -- How many systems to show at once
@@ -95,7 +137,7 @@ Profiler.SetSortMode("static")   -- Order you measured them
 Profiler.SetSortMode("reverse")  -- Smallest problems first
 ```
 
-## 🔧 Memory Measurement Modes
+### Memory Measurement Modes
 
 Choose how system memory is calculated:
 
@@ -116,9 +158,9 @@ Profiler.SetSystemMemoryMode("components")
 - `"system"` mode: `aimbot 25.3KB` (actual system memory footprint)
 - `"components"` mode: `aimbot 18.7KB` (sum of all aimbot components)
 
-## 🛠️ Advanced Usage
+### Advanced Usage
 
-### Nested Systems
+#### Nested Systems
 
 ```lua
 Profiler.StartSystem("main_loop")
@@ -134,7 +176,7 @@ Profiler.StartSystem("main_loop")
 Profiler.EndSystem("main_loop")
 ```
 
-### Quick Function Timing
+#### Quick Function Timing
 
 ```lua
 -- Time a single function
@@ -148,15 +190,9 @@ local result = Profiler.Time("database_query", function()
 end)
 ```
 
-### Reset Everything
+### Complete Configuration Reference
 
-```lua
-Profiler.Reset()  -- Clear all measurements and start fresh
-```
-
-## 📋 Complete Configuration Reference
-
-### All Settings with Defaults
+#### All Settings with Defaults
 
 ```lua
 Profiler.Setup({
@@ -181,7 +217,7 @@ Profiler.Setup({
 })
 ```
 
-### Individual Setting Functions
+#### Individual Setting Functions
 
 ```lua
 -- Visual
@@ -197,39 +233,16 @@ Profiler.SetSortMode("size")           -- Sort order
 Profiler.SetSystemMemoryMode("system") -- Memory calculation mode
 ```
 
-## 🎨 What You'll See
+### Performance Tips
 
-### System Bars (Grey Background)
-
-- **Full width bars** spanning the entire screen
-- **System name** on the left (e.g., "aimbot", "movement")
-- **Total memory usage** below the name
-- **Contains all components** for that system
-
-### Component Bars (Colored)
-
-- **Nested inside system bars** to show hierarchy
-- **Proportional width** based on memory usage
-- **Component name** at the top
-- **Memory amount** in the middle (e.g., "15.2KB")
-- **Timing info** at the bottom with red background (if >0.01ms)
-
-### Colors
-
-- **System bars**: Dark grey background
-- **Component bars**: Auto-generated colors based on component name
-- **Text**: White for names, light grey for memory, white on red for timing
-
-## 🚀 Performance Tips
-
-### For Best Results:
+#### For Best Results:
 
 1. **Use descriptive names**: `"target_selection"` not `"func1"`
 2. **Measure at the right level**: Don't measure every tiny function
 3. **Use system grouping**: Group related components under systems
 4. **Check both memory modes**: Compare `"system"` vs `"components"` modes
 
-### Recommended Settings:
+#### Recommended Settings:
 
 ```lua
 -- For performance hunting (catch all spikes)
@@ -249,9 +262,9 @@ Profiler.Setup({
 })
 ```
 
-## 📝 Examples
+### Examples
 
-### Basic Aimbot Profiling
+#### Basic Aimbot Profiling
 
 ```lua
 local Profiler = require("Profiler")
@@ -273,7 +286,7 @@ Profiler.StartSystem("aimbot")
 Profiler.EndSystem("aimbot")
 ```
 
-### Multiple Systems
+#### Multiple Systems
 
 ```lua
 -- Movement system
@@ -290,6 +303,8 @@ Profiler.StartSystem("esp")
     Profiler.EndComponent("player_esp")
 Profiler.EndSystem("esp")
 ```
+
+</details>
 
 ---
 

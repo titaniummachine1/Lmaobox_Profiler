@@ -34,6 +34,7 @@ local Config = {
 	fontSize = 12,
 	maxSystems = 20, -- max systems before we stop drawing more
 	textPadding = 6, -- padding around text in components
+	smoothingAlpha = 0.3, -- Exponential smoothing factor (0-1)
 }
 
 -- Active measurements
@@ -254,40 +255,25 @@ function Profiler.EndSystem(systemName)
 				end
 			end
 
-			-- Store current frame data
-			History[systemName][componentName][HistoryIndex] = {
-				time = component.frameTime,
-				memory = component.frameMemory,
-			}
-
-			-- Calculate rolling average
-			local totalTime = 0
-			local totalMemory = 0
-			local frames = math.min(HistoryCount, Config.windowSize)
-
-			for i = 1, frames do
-				local historyData = History[systemName][componentName][i]
-				totalTime = totalTime + ValidateNumber(historyData.time, 0)
-				totalMemory = totalMemory + ValidateNumber(historyData.memory, 0)
+			-- Exponential smoothing for more responsive yet stable output
+			local alpha = Config.smoothingAlpha or 0.3
+			if component.avgTime == 0 then
+				component.avgTime = component.frameTime
+			else
+				component.avgTime = component.avgTime * (1 - alpha) + component.frameTime * alpha
 			end
 
-			component.avgTime = ValidateNumber(frames > 0 and totalTime / frames or 0, 0)
-			component.avgMemory = ValidateNumber(frames > 0 and totalMemory / frames or 0, 0)
+			if component.avgMemory == 0 then
+				component.avgMemory = component.frameMemory
+			else
+				component.avgMemory = component.avgMemory * (1 - alpha) + component.frameMemory * alpha
+			end
 		end
 	end
 
 	CurrentSystem = #SystemStack > 0 and SystemStack[#SystemStack].name or nil
 
-	-- Update history indices (once per frame)
-	if CurrentSystem == nil then
-		HistoryIndex = HistoryIndex + 1
-		if HistoryIndex > Config.windowSize then
-			HistoryIndex = 1
-		end
-		if HistoryCount < Config.windowSize then
-			HistoryCount = HistoryCount + 1
-		end
-	end
+	-- (History maintenance removed in favour of exponential smoothing)
 end
 
 -- Get sorted components based on sort mode

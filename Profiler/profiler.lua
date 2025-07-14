@@ -34,7 +34,6 @@ local Config = {
 	fontSize = 12,
 	maxSystems = 20, -- max systems before we stop drawing more
 	textPadding = 6, -- padding around text in components
-	smoothingAlpha = 0.3, -- Exponential smoothing factor (0-1)
 }
 
 -- Active measurements
@@ -255,25 +254,37 @@ function Profiler.EndSystem(systemName)
 				end
 			end
 
-			-- Exponential smoothing for more responsive yet stable output
-			local alpha = Config.smoothingAlpha or 0.3
-			if component.avgTime == 0 then
-				component.avgTime = component.frameTime
-			else
-				component.avgTime = component.avgTime * (1 - alpha) + component.frameTime * alpha
-			end
+			-- Store current frame data into circular history buffer
+			History[systemName][componentName][HistoryIndex] = {
+				time = component.frameTime,
+				memory = component.frameMemory,
+			}
 
-			if component.avgMemory == 0 then
-				component.avgMemory = component.frameMemory
-			else
-				component.avgMemory = component.avgMemory * (1 - alpha) + component.frameMemory * alpha
+			-- Compute rolling average over the last windowSize frames (~1 second)
+			local totalTime, totalMemory = 0, 0
+			local frames = math.min(HistoryCount, Config.windowSize)
+			for i = 1, frames do
+				local h = History[systemName][componentName][i]
+				totalTime = totalTime + ValidateNumber(h.time, 0)
+				totalMemory = totalMemory + ValidateNumber(h.memory, 0)
 			end
+			component.avgTime = ValidateNumber(frames > 0 and totalTime / frames or 0, 0)
+			component.avgMemory = ValidateNumber(frames > 0 and totalMemory / frames or 0, 0)
 		end
 	end
 
 	CurrentSystem = #SystemStack > 0 and SystemStack[#SystemStack].name or nil
 
-	-- (History maintenance removed in favour of exponential smoothing)
+	-- Advance circular history index once per frame when we end the outermost system
+	if CurrentSystem == nil then
+		HistoryIndex = HistoryIndex + 1
+		if HistoryIndex > Config.windowSize then
+			HistoryIndex = 1
+		end
+		if HistoryCount < Config.windowSize then
+			HistoryCount = HistoryCount + 1
+		end
+	end
 end
 
 -- Get sorted components based on sort mode

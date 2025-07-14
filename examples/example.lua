@@ -236,46 +236,33 @@ if callbacks.Unregister then
 	end
 end
 
--- Safe callback registration (avoids errors when callback id is unknown)
-local function SafeRegister(event, id, func)
-	if not callbacks or not callbacks.Register then
-		return
-	end
-	local ok, err = pcall(callbacks.Register, event, id, func)
-	if not ok then
-		print(
-			string.format("[Profiler Example] Warning: Failed to register '%s' – %s", tostring(event), tostring(err))
-		)
-	end
-end
-
--- CreateMove callback - This is where the magic happens!
-SafeRegister("CreateMove", "profiled_createmove", function(cmd)
+-- Remove SafeRegister helper and revert to direct registrations
+-- CreateMove callback
+callbacks.Register("CreateMove", "profiled_createmove", function(cmd)
 	Profiler.StartSystem("oncreatemove")
 	ProfiledAimbot(cmd)
 	ProfiledMovement(cmd)
 	Profiler.EndSystem("oncreatemove")
 end)
 
--- Draw callback - Profile visual elements
-SafeRegister("Draw", "profiled_draw", function()
+-- Draw callback
+callbacks.Register("Draw", "profiled_draw", function()
 	Profiler.StartSystem("ondraw")
 	ProfiledFPSCounter()
 	ProfiledPlayerESP()
-	-- Profiler overlay draws itself automatically now, but keep for safety
 	Profiler.Draw()
 	Profiler.EndSystem("ondraw")
 end)
 
--- FireGameEvent callback - Profile event handling
-SafeRegister("FireGameEvent", "profiled_events", function(event)
+-- FireGameEvent callback
+callbacks.Register("FireGameEvent", "profiled_events", function(event)
 	Profiler.StartSystem("onevent")
 	ProfiledDamageLogger(event)
 	Profiler.EndSystem("onevent")
 end)
 
--- Think callback - Profile background tasks
-SafeRegister("Think", "profiled_think", function()
+-- Think callback
+callbacks.Register("Think", "profiled_think", function()
 	Profiler.StartSystem("onthink")
 	Profiler.StartComponent("misc_features")
 	local result = 0
@@ -284,7 +271,7 @@ SafeRegister("Think", "profiled_think", function()
 	end
 	Profiler.EndComponent("misc_features")
 	Profiler.StartComponent("config_check")
-	local configValue = math.random() * 50
+	local cfg = math.random() * 50
 	Profiler.EndComponent("config_check")
 	Profiler.EndSystem("onthink")
 end)

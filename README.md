@@ -8,7 +8,9 @@ A lightweight, real-time performance profiler that shows you exactly what's eati
 
 ## 📥 Download
 
-**Latest Release:** [Download v1.0.0](https://github.com/titaniummachine1/Profiler/releases/latest)
+[![Download Latest](https://img.shields.io/github/downloads/titaniummachine1/Lmaobox_Profiler/total.svg?
+style=for-the-badge&logo=download&label=Download%20Latest)](https://github.com/titaniummachine1/
+Lmaobox_Profiler/releases/latest/download/Profiler.lua)
 
 Or clone the repository:
 

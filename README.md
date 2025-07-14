@@ -1,11 +1,11 @@
 # 🎯 Profiler - Performance Monitoring for Lmaobox
 
-[![Downloads](https://img.shields.io/github/downloads/titaniummachine1/Profiler/total?style=flat-square&color=green)](https://github.com/titaniummachine1/Profiler/releases/latest)
-[![Visitors](https://visitor-badge.laobi.icu/badge?page_id=titaniummachine1.Profiler&style=flat-square)](https://github.com/titaniummachine1/Profiler)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE.txt)
-[![GitHub issues](https://img.shields.io/github/issues/titaniummachine1/Profiler?style=flat-square)](https://github.com/titaniummachine1/Profiler/issues)
-[![GitHub stars](https://img.shields.io/github/stars/titaniummachine1/Profiler?style=flat-square)](https://github.com/titaniummachine1/Profiler/stargazers)
-[![Lmaobox](https://img.shields.io/badge/lmaobox-compatible-orange.svg?style=flat-square)](http://lmaobox.net)
+![Visitors](https://api.visitorbadge.io/api/visitors?path=https%3A%2F%2Fgithub.com%2Ftitaniummachine1%2FLmaobox_Profiler&label=Visitors&countColor=%23263759&style=plastic)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![GitHub issues](https://img.shields.io/github/issues/titaniummachine1/Lmaobox_Profiler.svg)](https://github.com/titaniummachine1/Lmaobox_Profiler/issues)
+[![GitHub stars](https://img.shields.io/github/stars/titaniummachine1/Lmaobox_Profiler.svg)](https://github.com/titaniummachine1/Lmaobox_Profiler/stargazers)
+
+[![Download Latest](https://img.shields.io/github/downloads/titaniummachine1/Lmaobox_Profiler/total.svg?style=for-the-badge&logo=download&label=Download%20Latest)](https://github.com/titaniummachine1/Lmaobox_Profiler/releases/latest/download/Profiler.lua)
 
 **[📥 Download Latest Release](https://github.com/titaniummachine1/Profiler/releases/latest/download/Profiler.zip)**
 

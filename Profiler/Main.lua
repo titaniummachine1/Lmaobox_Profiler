@@ -21,15 +21,27 @@
         Profiler.Draw()
 ]]
 
+-- Check if an older version of the profiler is already loaded and unload it
+local previouslyLoaded = package.loaded["Profiler"]
+if previouslyLoaded and previouslyLoaded.Unload then
+	previouslyLoaded.Unload()
+end
+
+-- Global shared table (from globals.lua) – *not* _G
 local G = require("Profiler.globals")
 
--- Import core profiler module
+-- Flags stored in G to track profiler state
+G.ProfilerLoaded = false
+G.ProfilerCallbacksRegistered = false
+G.ProfilerEnabled = false
+
+-- Import core module (does **not** register callbacks on its own)
 local ProfilerCore = require("Profiler.profiler")
 
--- Create the main Profiler API
+-- Public API table
 local Profiler = {}
 
--- Core profiler functions
+-- Re-export core functions
 Profiler.SetVisible = ProfilerCore.SetVisible
 Profiler.StartSystem = ProfilerCore.StartSystem
 Profiler.StartComponent = ProfilerCore.StartComponent
@@ -37,88 +49,97 @@ Profiler.EndComponent = ProfilerCore.EndComponent
 Profiler.EndSystem = ProfilerCore.EndSystem
 Profiler.Draw = ProfilerCore.Draw
 
--- Configuration functions
+-- Config helpers
 Profiler.SetSortMode = ProfilerCore.SetSortMode
 Profiler.SetWindowSize = ProfilerCore.SetWindowSize
 Profiler.Reset = ProfilerCore.Reset
 
--- Library information
 Profiler.VERSION = "1.0.0"
 Profiler.AUTHOR = "titaniummachine1"
 
--- Convenience function to enable profiler with default settings
+-- Convenience helpers --------------------------------------------------------
 function Profiler.Enable()
 	Profiler.SetVisible(true)
 	return Profiler
 end
 
--- Convenience function to disable profiler
 function Profiler.Disable()
 	Profiler.SetVisible(false)
 	return Profiler
 end
 
--- Quick setup function for common use cases
-function Profiler.Setup(config)
-	config = config or {}
-
-	if config.visible ~= nil then
-		Profiler.SetVisible(config.visible)
+function Profiler.Setup(cfg)
+	cfg = cfg or {}
+	if cfg.visible ~= nil then
+		Profiler.SetVisible(cfg.visible)
 	end
-
-	if config.sortMode then
-		Profiler.SetSortMode(config.sortMode)
+	if cfg.sortMode then
+		Profiler.SetSortMode(cfg.sortMode)
 	end
-
-	if config.windowSize then
-		Profiler.SetWindowSize(config.windowSize)
+	if cfg.windowSize then
+		Profiler.SetWindowSize(cfg.windowSize)
 	end
-
 	return Profiler
 end
 
--- Helper function for timing code blocks
+-- Time helper for quick instrumentation
 function Profiler.Time(systemName, componentName, func)
 	if not func then
-		-- If only 2 parameters, treat as (componentName, func)
+		-- Called as (componentName, func)
 		func = componentName
 		componentName = systemName
 		systemName = "default"
 	end
-
 	Profiler.StartSystem(systemName)
 	Profiler.StartComponent(componentName)
 	local result = func()
 	Profiler.EndComponent(componentName)
 	Profiler.EndSystem(systemName)
-
 	return result
 end
 
--- Cleanup function for proper reloading
+-------------------------------------------------------------------------------
+-- Automatic Draw callback (retained-mode) ------------------------------------
+-------------------------------------------------------------------------------
+
+local DRAW_CB_ID = "profiler_auto_draw"
+if not G.ProfilerCallbacksRegistered and callbacks and callbacks.Register then
+	-- Remove stale callback id just in case
+	if callbacks.Unregister then
+		callbacks.Unregister("Draw", DRAW_CB_ID)
+	end
+
+	callbacks.Register("Draw", DRAW_CB_ID, function()
+		-- Draw only when visible to avoid wasting time
+		Profiler.Draw()
+	end)
+
+	G.ProfilerCallbacksRegistered = true
+end
+
+-- Cleanup helper -------------------------------------------------------------
 function Profiler.Unload()
-	-- Clear package cache for clean reload
+	-- Unregister draw callback
+	if callbacks and callbacks.Unregister then
+		callbacks.Unregister("Draw", DRAW_CB_ID)
+	end
+	G.ProfilerCallbacksRegistered = false
+
+	-- Reset internal state so a fresh load starts clean
+	Profiler.Reset()
+
+	-- Remove from package cache
 	package.loaded["Profiler"] = nil
 	package.loaded["Profiler.profiler"] = nil
 	package.loaded["Profiler.globals"] = nil
 	package.loaded["Profiler.config"] = nil
 	package.loaded["Profiler.Main"] = nil
 
-	-- Reset profiler state
-	Profiler.Reset()
-
-	print("✅ Profiler unloaded. Safe to reload with updated version.")
+	print("✅ Profiler unloaded. Ready for reload.")
 end
 
--- Auto-cleanup any existing callbacks when reloading
-if G.ProfilerCallbacksRegistered then
-	print("🔄 Cleaning up existing Profiler callbacks...")
-	-- Note: Specific callback cleanup would happen in user scripts
-	G.ProfilerCallbacksRegistered = false
-end
-
--- Mark that profiler is loaded
+-- Mark library as loaded
 G.ProfilerLoaded = true
 
--- Export the profiler API
+-- Return shared instance -----------------------------------------------------
 return Profiler

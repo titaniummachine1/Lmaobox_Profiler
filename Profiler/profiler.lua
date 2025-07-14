@@ -36,6 +36,8 @@ local Config = {
 	textPadding = 6, -- padding around text in components
 	smoothingSpeed = 8.0, -- How fast bars scale up to peaks (higher = faster response to spikes)
 	smoothingDecay = 2.0, -- How fast bars scale down from peaks (lower = slower decay)
+	textUpdateInterval = 15, -- Update text every N frames (15 frames = 250ms at 60fps, 4 times per second max)
+	systemMemoryMode = "system", -- "system" (actual system memory usage) or "components" (sum of component memory)
 }
 
 -- Active measurements
@@ -138,6 +140,9 @@ local function InitializeComponentDisplay(systemName, componentName)
 		DisplayState[systemName][componentName] = {
 			width = 0,
 			targetWidth = 0,
+			lastTextUpdate = 0,
+			displayMemory = 0,
+			displayTime = 0,
 		}
 	end
 end
@@ -284,7 +289,24 @@ function Profiler.EndSystem(systemName)
 	local system = Systems[systemName]
 	if system then
 		system.totalTime = ValidateNumber(globals.RealTime() - systemData.startTime, 0)
-		system.totalMemory = ValidateNumber(math.abs(collectgarbage("count") - systemData.startMemory), 0)
+
+		-- Store both system-level and component-sum memory measurements
+		local systemLevelMemory = ValidateNumber(math.abs(collectgarbage("count") - systemData.startMemory), 0)
+		local componentSumMemory = 0
+		for componentName, component in pairs(system.components) do
+			componentSumMemory = componentSumMemory + component.frameMemory
+		end
+
+		-- Choose which measurement to use based on config
+		if Config.systemMemoryMode == "components" then
+			system.totalMemory = ValidateNumber(componentSumMemory, 0)
+		else
+			system.totalMemory = ValidateNumber(systemLevelMemory, 0)
+		end
+
+		-- Store both values for potential future use
+		system.systemLevelMemory = systemLevelMemory
+		system.componentSumMemory = componentSumMemory
 
 		-- Update rolling averages for all components
 		for componentName, component in pairs(system.components) do
@@ -461,6 +483,13 @@ function Profiler.Draw()
 			displayState.width =
 				SmoothLerp(displayState.width, displayState.targetWidth, Config.smoothingSpeed, Config.smoothingDecay)
 
+			-- Update text values only every textUpdateInterval frames (4 times per second max)
+			if currentFrame - displayState.lastTextUpdate >= Config.textUpdateInterval then
+				displayState.displayMemory = memKB
+				displayState.displayTime = timeMs
+				displayState.lastTextUpdate = currentFrame
+			end
+
 			-- Use the smoothed width for rendering
 			local componentWidth = displayState.width
 
@@ -515,15 +544,17 @@ function Profiler.Draw()
 					draw.Text(math.floor(textX), math.floor(textY), nameText)
 				end
 
-				-- Memory amount (always visible, fixed position)
+				-- Memory amount (always visible, fixed position) - use throttled display value
 				local infoY = textY + nameHeight + 3
+				local displayMemText = string.format("%.1fKB", displayState.displayMemory)
 				draw.Color(220, 220, 220, 255)
-				draw.Text(math.floor(textX), math.floor(infoY), memText)
+				draw.Text(math.floor(textX), math.floor(infoY), displayMemText)
 
-				-- Time display with red background if measurable
-				if hasTime then
-					local timeText = string.format("%.2fms", timeMs)
-					local timeWidth, timeHeight = draw.GetTextSize(timeText)
+				-- Time display with red background if measurable - use throttled display value
+				local displayHasTime = displayState.displayTime >= 0.01
+				if displayHasTime then
+					local displayTimeText = string.format("%.2fms", displayState.displayTime)
+					local timeWidth, timeHeight = draw.GetTextSize(displayTimeText)
 					local timeY = infoY + 14 -- Fixed position below memory
 
 					-- Check if there's space for time display
@@ -539,7 +570,7 @@ function Profiler.Draw()
 
 						-- Draw time text
 						draw.Color(255, 255, 255, 255)
-						draw.Text(math.floor(textX), math.floor(timeY), timeText)
+						draw.Text(math.floor(textX), math.floor(timeY), displayTimeText)
 					end
 				end
 
@@ -567,6 +598,16 @@ end
 
 function Profiler.SetSmoothingDecay(decay)
 	Config.smoothingDecay = math.max(0.1, math.min(decay, 20.0))
+end
+
+function Profiler.SetTextUpdateInterval(interval)
+	Config.textUpdateInterval = math.max(1, math.min(interval, 120)) -- 1-120 frames (1-2 seconds max)
+end
+
+function Profiler.SetSystemMemoryMode(mode)
+	if mode == "system" or mode == "components" then
+		Config.systemMemoryMode = mode
+	end
 end
 
 function Profiler.Reset()

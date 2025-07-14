@@ -54,6 +54,8 @@ Profiler.SetSortMode = ProfilerCore.SetSortMode
 Profiler.SetWindowSize = ProfilerCore.SetWindowSize
 Profiler.SetSmoothingSpeed = ProfilerCore.SetSmoothingSpeed
 Profiler.SetSmoothingDecay = ProfilerCore.SetSmoothingDecay
+Profiler.SetTextUpdateInterval = ProfilerCore.SetTextUpdateInterval
+Profiler.SetSystemMemoryMode = ProfilerCore.SetSystemMemoryMode
 Profiler.Reset = ProfilerCore.Reset
 
 Profiler.VERSION = "1.0.0"
@@ -86,6 +88,12 @@ function Profiler.Setup(cfg)
 	end
 	if cfg.smoothingDecay then
 		Profiler.SetSmoothingDecay(cfg.smoothingDecay)
+	end
+	if cfg.textUpdateInterval then
+		Profiler.SetTextUpdateInterval(cfg.textUpdateInterval)
+	end
+	if cfg.systemMemoryMode then
+		Profiler.SetSystemMemoryMode(cfg.systemMemoryMode)
 	end
 	return Profiler
 end

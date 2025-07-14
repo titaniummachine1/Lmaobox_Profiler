@@ -52,6 +52,8 @@ Profiler.Draw = ProfilerCore.Draw
 -- Config helpers
 Profiler.SetSortMode = ProfilerCore.SetSortMode
 Profiler.SetWindowSize = ProfilerCore.SetWindowSize
+Profiler.SetSmoothingSpeed = ProfilerCore.SetSmoothingSpeed
+Profiler.SetSmoothingDecay = ProfilerCore.SetSmoothingDecay
 Profiler.Reset = ProfilerCore.Reset
 
 Profiler.VERSION = "1.0.0"
@@ -78,6 +80,12 @@ function Profiler.Setup(cfg)
 	end
 	if cfg.windowSize then
 		Profiler.SetWindowSize(cfg.windowSize)
+	end
+	if cfg.smoothingSpeed then
+		Profiler.SetSmoothingSpeed(cfg.smoothingSpeed)
+	end
+	if cfg.smoothingDecay then
+		Profiler.SetSmoothingDecay(cfg.smoothingDecay)
 	end
 	return Profiler
 end

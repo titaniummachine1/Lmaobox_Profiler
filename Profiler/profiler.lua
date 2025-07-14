@@ -34,6 +34,8 @@ local Config = {
 	fontSize = 12,
 	maxSystems = 20, -- max systems before we stop drawing more
 	textPadding = 6, -- padding around text in components
+	smoothingSpeed = 8.0, -- How fast bars scale up to peaks (higher = faster response to spikes)
+	smoothingDecay = 2.0, -- How fast bars scale down from peaks (lower = slower decay)
 }
 
 -- Active measurements
@@ -46,6 +48,9 @@ local ComponentStack = {} -- Stack for nested component calls within current sys
 local History = {} -- [systemName][componentName] = circular buffer
 local HistoryIndex = 1
 local HistoryCount = 0
+
+-- Display state for smooth transitions
+local DisplayState = {} -- [systemName][componentName] = { width = current_width, targetWidth = target_width }
 
 -- Current frame tracking
 local CurrentSystem = nil
@@ -60,6 +65,17 @@ local function ValidateNumber(value, fallback)
 		return fallback or 0
 	end
 	return value
+end
+
+-- Smooth interpolation using frame time with peak-aware behavior
+local function SmoothLerp(current, target, speed, decaySpeed)
+	local frameTime = globals.FrameTime()
+
+	-- Use faster speed for increases (catching spikes), slower for decreases (showing peaks longer)
+	local actualSpeed = target > current and speed or (decaySpeed or speed * 0.5)
+	local lerpFactor = math.min(1.0, actualSpeed * frameTime)
+
+	return current + (target - current) * lerpFactor
 end
 
 -- Initialize profiler font
@@ -81,10 +97,15 @@ local function LoadConfig()
 	end
 end
 
--- Get current frame number (fallback if globals.FrameCount() doesn't exist)
+-- Get current frame number using globals API
 local function GetFrameNumber()
-	CurrentFrame = CurrentFrame + 1
-	return CurrentFrame
+	if globals and globals.FrameCount then
+		return globals.FrameCount()
+	else
+		-- Fallback if globals.FrameCount() doesn't exist
+		CurrentFrame = CurrentFrame + 1
+		return CurrentFrame
+	end
 end
 
 -- Initialize system if it doesn't exist
@@ -101,6 +122,23 @@ local function InitializeSystem(systemName)
 
 		-- Initialize history
 		History[systemName] = {}
+
+		-- Initialize display state
+		DisplayState[systemName] = {}
+	end
+end
+
+-- Initialize component display state
+local function InitializeComponentDisplay(systemName, componentName)
+	if not DisplayState[systemName] then
+		DisplayState[systemName] = {}
+	end
+
+	if not DisplayState[systemName][componentName] then
+		DisplayState[systemName][componentName] = {
+			width = 0,
+			targetWidth = 0,
+		}
 	end
 end
 
@@ -221,6 +259,9 @@ function Profiler.EndComponent(componentName)
 		for i = 1, Config.windowSize do
 			History[CurrentSystem][componentName][i] = { time = 0, memory = 0 }
 		end
+
+		-- Initialize display state
+		InitializeComponentDisplay(CurrentSystem, componentName)
 	end
 
 	system.components[componentName].frameTime = system.components[componentName].frameTime + duration
@@ -350,13 +391,13 @@ function Profiler.Draw()
 		-- Calculate total memory for scaling (focus on memory, not time)
 		local totalSystemMemory = math.max(system.totalMemory, 0.001) -- Prevent division by zero
 
-		-- Draw system background (wider to show containment)
+		-- Draw system background (spans full width)
 		draw.Color(20, 20, 20, 180)
-		draw.FilledRect(0, math.floor(systemY), math.floor(screenW), math.floor(systemY + Config.systemHeight))
+		draw.FilledRect(0, math.floor(systemY), screenW, math.floor(systemY + Config.systemHeight))
 
 		-- Draw system border
 		draw.Color(80, 80, 80, 255)
-		draw.OutlinedRect(0, math.floor(systemY), math.floor(screenW), math.floor(systemY + Config.systemHeight))
+		draw.OutlinedRect(0, math.floor(systemY), screenW, math.floor(systemY + Config.systemHeight))
 
 		-- Draw system totals at the beginning (left side)
 		local systemLabelWidth = 200 -- Reserve space for system label
@@ -364,10 +405,10 @@ function Profiler.Draw()
 		local systemText = systemName
 		local memoryText = string.format("%.1fKB", system.totalMemory)
 
-		-- Draw system name
+		-- Draw system name (fixed position for stable text)
 		draw.Text(5, math.floor(systemY + 2), systemText)
 
-		-- Draw system memory total below name
+		-- Draw system memory total below name (fixed position for stable text)
 		draw.Color(200, 200, 200, 255)
 		draw.Text(5, math.floor(systemY + 16), memoryText)
 
@@ -380,12 +421,16 @@ function Profiler.Draw()
 			local componentName = comp.name
 			local componentData = comp.data
 
+			-- Initialize display state if needed
+			InitializeComponentDisplay(systemName, componentName)
+			local displayState = DisplayState[systemName][componentName]
+
 			-- Calculate dynamic minimum width based on text content
 			local timeMs = componentData.avgTime * 1000
 			local memKB = componentData.avgMemory
 			local hasTime = timeMs >= 0.01
 
-			-- Measure text widths
+			-- Measure text widths for stable minimum sizing
 			local nameWidth = draw.GetTextSize(componentName)
 			local memText = string.format("%.1fKB", memKB)
 			local memWidth = draw.GetTextSize(memText)
@@ -399,17 +444,25 @@ function Profiler.Draw()
 			-- Use the widest text as minimum width (plus padding)
 			local minComponentWidth = math.max(nameWidth, memWidth, timeWidth) + Config.textPadding
 
-			-- Calculate component width proportional to memory usage, but respect minimum
-			local componentWidth = minComponentWidth
+			-- Calculate target component width proportional to memory usage
+			local targetWidth = minComponentWidth
 			if totalSystemMemory > 0 and componentData.avgMemory > 0 then
 				local memoryProportion = componentData.avgMemory / totalSystemMemory
 				local proportionalWidth = componentAreaWidth * memoryProportion
-				componentWidth = math.max(minComponentWidth, proportionalWidth)
+				targetWidth = math.max(minComponentWidth, proportionalWidth)
 			end
 
 			-- Ensure we don't exceed available component area
 			local remainingWidth = screenW - currentX
-			componentWidth = math.min(componentWidth, remainingWidth)
+			targetWidth = math.min(targetWidth, remainingWidth)
+
+			-- Update display state with smooth interpolation
+			displayState.targetWidth = targetWidth
+			displayState.width =
+				SmoothLerp(displayState.width, displayState.targetWidth, Config.smoothingSpeed, Config.smoothingDecay)
+
+			-- Use the smoothed width for rendering
+			local componentWidth = displayState.width
 
 			if componentWidth > 10 and currentX < screenW - 10 then -- Only draw if meaningful size
 				-- Generate color based on component name hash
@@ -421,7 +474,7 @@ function Profiler.Draw()
 				local g = (hash * 151) % 255
 				local b = (hash * 211) % 255
 
-				-- Draw component background (slightly inset to show containment)
+				-- Draw component background (inset within system bar to show hierarchy)
 				local insetY = systemY + 2
 				local insetHeight = Config.systemHeight - 4
 
@@ -442,17 +495,17 @@ function Profiler.Draw()
 					math.floor(insetY + insetHeight)
 				)
 
-				-- Draw component text if there's enough space
+				-- Draw component text with stable positioning
 				local textX = currentX + 3
 				local textY = insetY + 2
 
 				draw.Color(255, 255, 255, 255)
 
-				-- Component name (shortened if needed)
+				-- Component name (shortened if needed, but stable)
 				local nameText = componentName
 				local nameWidth, nameHeight = draw.GetTextSize(nameText)
 
-				-- Shorten name if too long
+				-- Shorten name if too long for current width
 				if nameWidth + 6 > componentWidth and #nameText > 3 then
 					nameText = string.sub(nameText, 1, math.max(1, math.floor(componentWidth / 8))) .. "..."
 					nameWidth, nameHeight = draw.GetTextSize(nameText)
@@ -462,25 +515,21 @@ function Profiler.Draw()
 					draw.Text(math.floor(textX), math.floor(textY), nameText)
 				end
 
-				-- Show individual component memory and time values for debugging (already calculated above)
-				local timeText = hasTime and string.format("%.2fms", timeMs) or ""
-
-				-- Calculate text positioning with better spacing for 48px height
+				-- Memory amount (always visible, fixed position)
 				local infoY = textY + nameHeight + 3
-
-				-- Show memory value (always visible for debugging)
 				draw.Color(220, 220, 220, 255)
 				draw.Text(math.floor(textX), math.floor(infoY), memText)
 
-				-- Show time with red background if measurable (>= 0.01ms)
+				-- Time display with red background if measurable
 				if hasTime then
+					local timeText = string.format("%.2fms", timeMs)
 					local timeWidth, timeHeight = draw.GetTextSize(timeText)
-					local timeY = infoY + 14 -- Position below memory text with better spacing
+					local timeY = infoY + 14 -- Fixed position below memory
 
 					-- Check if there's space for time display
 					if timeY + timeHeight <= insetY + insetHeight - 2 and timeWidth + 6 <= componentWidth then
-						-- Draw red background for time to highlight it
-						draw.Color(150, 50, 50, 180) -- Red background
+						-- Draw red background for time highlighting
+						draw.Color(150, 50, 50, 180)
 						draw.FilledRect(
 							math.floor(textX - 1),
 							math.floor(timeY - 1),
@@ -488,12 +537,13 @@ function Profiler.Draw()
 							math.floor(timeY + timeHeight + 1)
 						)
 
-						-- Draw time text in bold white
+						-- Draw time text
 						draw.Color(255, 255, 255, 255)
 						draw.Text(math.floor(textX), math.floor(timeY), timeText)
 					end
 				end
 
+				-- Use the smoothed width for positioning next component
 				currentX = currentX + componentWidth
 			end
 		end
@@ -511,12 +561,19 @@ function Profiler.SetWindowSize(frames)
 	Config.windowSize = math.max(1, math.min(frames, 300))
 end
 
--- Removed SetMinComponentWidth - now using dynamic sizing based on text content
+function Profiler.SetSmoothingSpeed(speed)
+	Config.smoothingSpeed = math.max(0.1, math.min(speed, 20.0))
+end
+
+function Profiler.SetSmoothingDecay(decay)
+	Config.smoothingDecay = math.max(0.1, math.min(decay, 20.0))
+end
 
 function Profiler.Reset()
 	Systems = {}
 	SystemOrder = {}
 	History = {}
+	DisplayState = {}
 	SystemStack = {}
 	ComponentStack = {}
 	CurrentSystem = nil

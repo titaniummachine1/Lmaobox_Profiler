@@ -98,18 +98,31 @@ function Profiler.Time(systemName, componentName, func)
 	return result
 end
 
--------------------------------------------------------------------------------
+local function safeRegisterCallback(event, id, func)
+	if not callbacks or not callbacks.Register then
+		return false
+	end
+	local ok, err = pcall(callbacks.Register, event, id, func)
+	if not ok then
+		print(
+			string.format("[Profiler] Warning: Failed to register callback '%s' – %s", tostring(event), tostring(err))
+		)
+		return false
+	end
+	return true
+end
+
 -- Automatic Draw callback (retained-mode) ------------------------------------
 -------------------------------------------------------------------------------
 
 local DRAW_CB_ID = "profiler_auto_draw"
-if not G.ProfilerCallbacksRegistered and callbacks and callbacks.Register then
+if not G.ProfilerCallbacksRegistered then
 	-- Remove stale callback id just in case
-	if callbacks.Unregister then
+	if callbacks and callbacks.Unregister then
 		callbacks.Unregister("Draw", DRAW_CB_ID)
 	end
 
-	callbacks.Register("Draw", DRAW_CB_ID, function()
+	safeRegisterCallback("Draw", DRAW_CB_ID, function()
 		-- Draw only when visible to avoid wasting time
 		Profiler.Draw()
 	end)

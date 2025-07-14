@@ -206,22 +206,28 @@ local function ProfiledMovement(cmd)
 	Profiler.EndComponent("movement")
 end
 
--- Helper: safely register callbacks only if ID is valid in current environment
-local function TryRegister(event, id, func)
-	if not callbacks or not callbacks.Register then
-		return
+-- Helper functions -----------------------------------------------------------
+local function TryUnregister(event, id)
+	if callbacks and callbacks.Unregister then
+		pcall(callbacks.Unregister, event, id)
 	end
-	pcall(function()
-		callbacks.Register(event, id, func)
-	end)
 end
 
--- Re-register callbacks using helper
-callbacks.Unregister("CreateMove", "profiled_createmove")
-callbacks.Unregister("Draw", "profiled_draw")
-callbacks.Unregister("FireGameEvent", "profiled_events")
-callbacks.Unregister("Think", "profiled_think")
+local function TryRegister(event, id, func)
+	if callbacks and callbacks.Register then
+		pcall(function()
+			callbacks.Register(event, id, func)
+		end)
+	end
+end
 
+-- Clear any existing profiler callbacks -------------------------------------
+TryUnregister("CreateMove", "profiled_createmove")
+TryUnregister("Draw", "profiled_draw")
+TryUnregister("FireGameEvent", "profiled_events")
+TryUnregister("Think", "profiled_think")
+
+-- Register fresh callbacks --------------------------------------------------
 TryRegister("CreateMove", "profiled_createmove", function(cmd)
 	Profiler.StartSystem("oncreatemove")
 	ProfiledAimbot(cmd)

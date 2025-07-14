@@ -1,11 +1,49 @@
-![Visitors](https://api.visitorbadge.io/api/visitors?path=https%3A%2F%2Fgithub.com%2Ftitaniummachine1%2FProfiler&label=Visitors&countColor=%23263759&style=plastic)
+![Visitors](https://api.visitorbadge.io/api/visitors?path=https%3A%2F%2Fgithub.com%2Ftitaniummachine1%2FLmaobox_Profiler&label=Visitors&countColor=%23263759&style=plastic)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![GitHub issues](https://img.shields.io/github/issues/titaniummachine1/Lmaobox_Profiler.svg)](https://github.com/titaniummachine1/Lmaobox_Profiler/issues)
+[![GitHub stars](https://img.shields.io/github/stars/titaniummachine1/Lmaobox_Profiler.svg)](https://github.com/titaniummachine1/Lmaobox_Profiler/stargazers)
 
-# Profiler Library
+# Lmaobox Profiler
 
 ![Profiler](https://img.shields.io/badge/Lua-Profiler-blue?style=for-the-badge&logo=lua)
 
-## Description
+---
+
+## 🚀 Download
+
+[![Download Profiler.lua](https://img.shields.io/badge/Download-Latest-blue?style=for-the-badge&logo=download)](https://github.com/titaniummachine1/Lmaobox_Profiler/releases/latest)
+
+Copy `Profiler.lua` and (optionally) `example.lua` to your `%localappdata%` folder.
+
+---
+
+## ⚡ Quick API Usage
+
+```lua
+local Profiler = require("Profiler")
+
+-- Show the profiler overlay
+Profiler.SetVisible(true)
+
+-- Profile a system and its components
+Profiler.StartSystem("my_system")
+    Profiler.StartComponent("my_function")
+    -- ... your code ...
+    Profiler.EndComponent("my_function")
+Profiler.EndSystem("my_system")
+
+-- Or profile a standalone component (auto-grouped as 'misc')
+Profiler.StartComponent("standalone_task")
+-- ... your code ...
+Profiler.EndComponent("standalone_task")
+
+-- Draw the profiler overlay (in your Draw callback)
+Profiler.Draw()
+```
+
+---
+
+# Profiler Library
 
 A high-performance Lua profiler library for monitoring, analyzing, and optimizing code performance. Built with automatic bundling and deployment for seamless development workflow.
 
@@ -35,11 +73,6 @@ npm run build
 # Build and deploy to %localappdata%
 npm run deploy
 ```
-
-## Requirements
-
-- Node.js (for bundling)
-- Lua environment
 
 ## Contact
 

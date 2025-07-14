@@ -39,6 +39,8 @@ Profiler.EndComponent("standalone_task")
 Profiler.Draw()
 ```
 
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/bd667a87-9b29-47e1-85a1-2c6c25a437ec" />
+
 ---
 
 # Profiler Library

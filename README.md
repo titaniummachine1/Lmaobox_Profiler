@@ -11,7 +11,7 @@ A lightweight, real-time performance profiler that shows you exactly what's eati
 
 ## 🚀 Quick Start
 
-### New Simplified API (Recommended)
+### New Simplified API
 
 ```lua
 local Profiler = require("Profiler")
@@ -23,20 +23,6 @@ Profiler.BeginSystem("aimbot")
     -- ... your code ...
     Profiler.End() -- Ends component
 Profiler.EndSystem() -- Ends system
-```
-
-### Original API (Still Supported)
-
-```lua
-local Profiler = require("Profiler")
---Profiler.SetVisible(true)
-
--- Measure your code
-Profiler.StartSystem("aimbot")
-    Profiler.StartComponent("targeting")
-    -- ... your code ...
-    Profiler.EndComponent("targeting")
-Profiler.EndSystem("aimbot")
 ```
 
 ## ⚙️ Configuration

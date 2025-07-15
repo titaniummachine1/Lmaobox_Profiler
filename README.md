@@ -60,15 +60,6 @@ Profiler.Reset()                             -- Clear all data
 | `Profiler.Begin("name")`          | Start measuring component  |
 | `Profiler.End()`                  | End last started component |
 
-### Original API (Still Supported)
-
-| Function                          | Description               |
-| --------------------------------- | ------------------------- |
-| `Profiler.StartSystem("name")`    | Start measuring system    |
-| `Profiler.StartComponent("name")` | Start measuring component |
-| `Profiler.EndComponent("name")`   | End measuring component   |
-| `Profiler.EndSystem("name")`      | End measuring system      |
-
 ## 🎨 What You See
 
 - **System bars** (grey, full width): Complete systems like "aimbot", "movement"

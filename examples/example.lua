@@ -50,9 +50,39 @@ local function ProfiledFPSCounter()
 
 	-- Random memory allocation to show variety
 	local temp_data = {}
+	local fps_cache = {}
+	local frame_history = {}
+
 	for i = 1, math.random(5, 25) do
-		temp_data[i] = "frame_" .. globals.FrameCount() .. "_" .. i
+		local frame_id = "frame_" .. globals.FrameCount() .. "_" .. i
+		temp_data[i] = frame_id
+
+		fps_cache[frame_id] = {
+			frame_number = globals.FrameCount(),
+			iteration = i,
+			fps_at_time = current_fps,
+			timestamp = globals.RealTime(),
+			debug_info = string.format("fps_debug_%d_%.2f", i, globals.RealTime()),
+		}
+
+		frame_history[i] = {
+			previous_fps = current_fps - math.random(0, 5),
+			current_fps = current_fps,
+			predicted_fps = current_fps + math.random(-2, 2),
+			frame_delta = globals.FrameTime(),
+			history_string = "fps_history_" .. tostring(i) .. "_" .. tostring(current_fps),
+		}
 	end
+
+	-- Create FPS statistics
+	local fps_stats = {
+		min_fps = current_fps - math.random(5, 15),
+		max_fps = current_fps + math.random(5, 15),
+		avg_fps = current_fps + math.random(-3, 3),
+		frame_count = globals.FrameCount(),
+		uptime = globals.RealTime(),
+		performance_level = current_fps > 60 and "high" or current_fps > 30 and "medium" or "low",
+	}
 
 	draw.Text(5, 5, "[lmaobox | fps: " .. tostring(current_fps) .. " | profiler: ON]")
 
@@ -225,18 +255,52 @@ local function ProfiledAimbot(cmd)
 	-- Simulate aim adjustment (expensive math with random load)
 	if bestTarget then
 		local iterations = math.random(50, 100)
-		local result = 0
+		local calculation_cache = {}
+		local result_strings = {}
+
 		for i = 1, iterations do
-			result = result + math.sin(i * complexity) * math.cos(i / complexity)
+			local calc_result = math.sin(i * complexity) * math.cos(i / complexity)
+			calculation_cache[i] = {
+				iteration = i,
+				result = calc_result,
+				formatted = string.format("calc_%d_%.4f", i, calc_result),
+				timestamp = globals.RealTime(),
+			}
+
+			-- Create string entries that use memory
+			result_strings[i] = "aim_calculation_" .. i .. "_" .. tostring(calc_result)
 		end
 
-		-- Random smoothing calculations
+		-- Random smoothing calculations with memory allocation
 		local smoothing_data = {}
+		local smoothing_history = {}
 		for i = 1, math.random(5, 15) do
+			local angle = math.random() * 360
+			local smooth_factor = math.random()
+
 			smoothing_data[i] = {
-				angle = math.random() * 360,
-				smooth_factor = math.random(),
+				angle = angle,
+				smooth_factor = smooth_factor,
 				timestamp = globals.RealTime(),
+				debug_info = string.format("smooth_%.2f_%.4f", angle, smooth_factor),
+			}
+
+			-- Create history entries
+			smoothing_history[i] = {
+				previous_angle = angle - math.random(10, 30),
+				current_angle = angle,
+				delta = math.random(-5, 5),
+				smoothed_delta = smooth_factor * math.random(-5, 5),
+			}
+		end
+
+		-- Create lookup tables
+		local angle_lookup = {}
+		for angle = 0, 360, 5 do
+			angle_lookup[angle] = {
+				sin = math.sin(math.rad(angle)),
+				cos = math.cos(math.rad(angle)),
+				tan = math.tan(math.rad(angle)),
 			}
 		end
 	end
@@ -299,14 +363,55 @@ local function ProfiledMovement(cmd)
 		end
 	end
 
-	-- Random additional physics calculations
+	-- Random additional physics calculations with memory allocation
 	local physics_load = math.random(1, 3)
+	local physics_cache = {}
+	local physics_history = {}
+
 	for i = 1, physics_load * 5 do
 		local physics_calc = math.sqrt(i) * math.log(i + 1)
+		local physics_id = string.format("physics_%d_%d", i, globals.FrameCount())
+
+		physics_cache[physics_id] = {
+			calculation = physics_calc,
+			iteration = i,
+			load_factor = physics_load,
+			timestamp = globals.RealTime(),
+			debug_string = string.format("phys_calc_%.4f_at_%d", physics_calc, i),
+		}
+
+		physics_history[i] = {
+			previous_calc = physics_calc - math.random(),
+			current_calc = physics_calc,
+			delta = math.random(-0.5, 0.5),
+			interpolated = physics_calc + math.random(-0.1, 0.1),
+		}
+
 		movement_data[#movement_data + 1] = {
 			physics = physics_calc,
 			frame = globals.FrameCount(),
 			type = "physics",
+			cache_id = physics_id,
+			memory_debug = "physics_calculation_" .. tostring(i) .. "_" .. tostring(physics_calc),
+		}
+	end
+
+	-- Create velocity prediction tables
+	local velocity_predictions = {}
+	for frame = 1, math.random(10, 25) do
+		velocity_predictions[frame] = {
+			predicted_x = math.random(-500, 500),
+			predicted_y = math.random(-500, 500),
+			predicted_z = math.random(-100, 100),
+			confidence = math.random(),
+			frame_offset = frame,
+			prediction_string = string.format(
+				"vel_pred_%d_%.2f_%.2f_%.2f",
+				frame,
+				math.random(-500, 500),
+				math.random(-500, 500),
+				math.random(-100, 100)
+			),
 		}
 	end
 

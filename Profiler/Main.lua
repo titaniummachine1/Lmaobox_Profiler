@@ -62,6 +62,7 @@ Profiler.SetSmoothingSpeed = ProfilerCore.SetSmoothingSpeed
 Profiler.SetSmoothingDecay = ProfilerCore.SetSmoothingDecay
 Profiler.SetTextUpdateInterval = ProfilerCore.SetTextUpdateInterval
 Profiler.SetSystemMemoryMode = ProfilerCore.SetSystemMemoryMode
+Profiler.SetOverheadCompensation = ProfilerCore.SetOverheadCompensation
 Profiler.Reset = ProfilerCore.Reset
 
 Profiler.VERSION = "1.0.0"
@@ -100,6 +101,9 @@ function Profiler.Setup(cfg)
 	end
 	if cfg.systemMemoryMode then
 		Profiler.SetSystemMemoryMode(cfg.systemMemoryMode)
+	end
+	if cfg.compensateOverhead ~= nil then
+		Profiler.SetOverheadCompensation(cfg.compensateOverhead)
 	end
 	return Profiler
 end

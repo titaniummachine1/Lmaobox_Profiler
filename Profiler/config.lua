@@ -12,8 +12,8 @@ return {
 	fontSize = 12, -- Font size for text
 	maxSystems = 20, -- Maximum number of systems to display
 	textPadding = 6, -- Padding around text in components
-	smoothingSpeed = 5.0, -- How fast bars scale up to peaks (higher = faster response to spikes, 0.1-20.0)
-	smoothingDecay = 1.0, -- How fast bars scale down from peaks (lower = slower decay, shows peaks longer, 0.1-20.0)
+	smoothingSpeed = 5.0, -- Percentage of width to move per frame towards target (1-50%, higher = less smooth but more responsive)
+	smoothingDecay = 1.0, -- Percentage of width to move per frame when decaying (1-50%, lower = slower decay, peaks stay longer)
 	textUpdateInterval = 15, -- Update text every N frames (15 frames = 250ms at 60fps, 4 times per second max)
 	systemMemoryMode = "system", -- "system" (actual system memory usage) or "components" (sum of component memory)
 }

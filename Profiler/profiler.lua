@@ -34,10 +34,11 @@ local Config = {
 	fontSize = 12,
 	maxSystems = 20, -- max systems before we stop drawing more
 	textPadding = 6, -- padding around text in components
-	smoothingSpeed = 8.0, -- How fast bars scale up to peaks (higher = faster response to spikes)
-	smoothingDecay = 2.0, -- How fast bars scale down from peaks (lower = slower decay)
+	smoothingSpeed = 15.0, -- Percentage of width to move per frame towards target (higher = less smooth, more responsive)
+	smoothingDecay = 8.0, -- Percentage of width to move per frame when decaying (lower = slower decay, peaks stay longer)
 	textUpdateInterval = 15, -- Update text every N frames (15 frames = 250ms at 60fps, 4 times per second max)
 	systemMemoryMode = "system", -- "system" (actual system memory usage) or "components" (sum of component memory)
+	compensateOverhead = true, -- Subtract profiler's own memory usage from measurements
 }
 
 -- Active measurements
@@ -45,6 +46,15 @@ local Systems = {} -- [systemName] = { components = {}, totalTime = 0, totalMemo
 local SystemOrder = {} -- Track order systems were first measured
 local SystemStack = {} -- Stack for nested system calls
 local ComponentStack = {} -- Stack for nested component calls within current system
+
+-- Profiler overhead compensation
+local ProfilerOverhead = {
+	isTracking = false, -- Prevent recursive profiling
+	baselineMemory = 0, -- Memory usage when profiler started
+	lastMeasurement = 0, -- Last overhead measurement
+	averageOverhead = 0, -- Rolling average of profiler overhead
+	measurementCount = 0, -- Number of overhead measurements taken
+}
 
 -- Rolling history for smooth averaging
 local History = {} -- [systemName][componentName] = circular buffer
@@ -69,15 +79,27 @@ local function ValidateNumber(value, fallback)
 	return value
 end
 
--- Smooth interpolation using frame time with peak-aware behavior
+-- Smooth interpolation using fixed percentage-based movement per frame
 local function SmoothLerp(current, target, speed, decaySpeed)
-	local frameTime = globals.FrameTime()
+	if math.abs(target - current) < 0.1 then
+		return target -- Snap to target if very close
+	end
+
+	-- Convert speed to percentage per frame (speed is now percentage of total width to move per frame)
+	-- Higher speed = more movement per frame = less smooth but more responsive
+	local speedPercentage = speed / 100.0 -- Convert to 0-1 range
 
 	-- Use faster speed for increases (catching spikes), slower for decreases (showing peaks longer)
-	local actualSpeed = target > current and speed or (decaySpeed or speed * 0.5)
-	local lerpFactor = math.min(1.0, actualSpeed * frameTime)
+	local actualSpeed = target > current and speedPercentage
+		or (decaySpeed and decaySpeed / 100.0 or speedPercentage * 0.6)
 
-	return current + (target - current) * lerpFactor
+	-- Calculate the movement amount as a percentage of the difference
+	local movement = (target - current) * actualSpeed
+
+	-- Apply exponential smoothing filter to reduce jitter
+	local smoothedMovement = movement * 0.8 + (target - current) * 0.2 * actualSpeed
+
+	return current + smoothedMovement
 end
 
 -- Initialize profiler font
@@ -127,6 +149,12 @@ local function InitializeSystem(systemName)
 
 		-- Initialize display state
 		DisplayState[systemName] = {}
+
+		-- Initialize system-level display state for rate limiting
+		DisplayState[systemName]["__system__"] = {
+			lastTextUpdate = 0,
+			displayMemory = 0,
+		}
 	end
 end
 
@@ -143,8 +171,79 @@ local function InitializeComponentDisplay(systemName, componentName)
 			lastTextUpdate = 0,
 			displayMemory = 0,
 			displayTime = 0,
+			smoothingHistory = {}, -- For additional smoothing filter
 		}
 	end
+end
+
+-- Measure profiler's own memory overhead
+local function MeasureProfilerOverhead()
+	if not Config.compensateOverhead or ProfilerOverhead.isTracking then
+		return 0
+	end
+
+	ProfilerOverhead.isTracking = true
+	local beforeMeasurement = collectgarbage("count")
+
+	-- Simulate typical profiler operations to measure overhead
+	local testSystem = "overhead_test"
+	local testComponent = "test_component"
+
+	-- Measure memory used by profiler data structures
+	local tempHistory = {}
+	for i = 1, Config.windowSize do
+		tempHistory[i] = { time = 0, memory = 0 }
+	end
+
+	local tempDisplayState = {
+		width = 0,
+		targetWidth = 0,
+		lastTextUpdate = 0,
+		displayMemory = 0,
+		displayTime = 0,
+	}
+
+	local tempComponentData = {
+		avgTime = 0,
+		avgMemory = 0,
+		frameTime = 0,
+		frameMemory = 0,
+		order = 0,
+	}
+
+	-- Clean up test data
+	tempHistory = nil
+	tempDisplayState = nil
+	tempComponentData = nil
+
+	local afterMeasurement = collectgarbage("count")
+	local overhead = math.max(0, afterMeasurement - beforeMeasurement)
+
+	-- Update rolling average
+	ProfilerOverhead.measurementCount = ProfilerOverhead.measurementCount + 1
+	local alpha = math.min(0.1, 1.0 / ProfilerOverhead.measurementCount)
+	ProfilerOverhead.averageOverhead = ProfilerOverhead.averageOverhead * (1 - alpha) + overhead * alpha
+	ProfilerOverhead.lastMeasurement = overhead
+
+	ProfilerOverhead.isTracking = false
+	return ProfilerOverhead.averageOverhead
+end
+
+-- Compensate for profiler overhead in memory measurements
+local function CompensateMemoryOverhead(rawMemoryDelta)
+	if not Config.compensateOverhead or ProfilerOverhead.isTracking then
+		return rawMemoryDelta
+	end
+
+	-- Subtract estimated profiler overhead
+	local compensatedDelta = rawMemoryDelta - ProfilerOverhead.averageOverhead
+
+	-- Don't return negative values unless there's significant overhead
+	if compensatedDelta < 0 and ProfilerOverhead.averageOverhead < 0.1 then
+		return 0
+	end
+
+	return math.max(0, compensatedDelta)
 end
 
 -- Public API
@@ -161,6 +260,11 @@ function Profiler.StartSystem(systemName)
 	end
 
 	InitializeSystem(systemName)
+
+	-- Measure profiler overhead periodically (every 30 frames to avoid performance impact)
+	if (GetFrameNumber() % 30) == 0 then
+		MeasureProfilerOverhead()
+	end
 
 	-- Use high-precision timing for real-time profiling
 	local currentTime = globals.RealTime()
@@ -238,7 +342,7 @@ function Profiler.EndComponent(componentName)
 		-- Negative values usually mean GC ran, which isn't our function's fault
 		local rawDelta = endMemory - component.startMemory
 		if rawDelta > 0.01 then -- Only count meaningful memory increases (>0.01KB)
-			memoryDelta = ValidateNumber(rawDelta, 0)
+			memoryDelta = ValidateNumber(CompensateMemoryOverhead(rawDelta), 0)
 		end
 	end
 
@@ -291,7 +395,8 @@ function Profiler.EndSystem(systemName)
 		system.totalTime = ValidateNumber(globals.RealTime() - systemData.startTime, 0)
 
 		-- Store both system-level and component-sum memory measurements
-		local systemLevelMemory = ValidateNumber(math.abs(collectgarbage("count") - systemData.startMemory), 0)
+		local rawSystemMemory = math.abs(collectgarbage("count") - systemData.startMemory)
+		local systemLevelMemory = ValidateNumber(CompensateMemoryOverhead(rawSystemMemory), 0)
 		local componentSumMemory = 0
 		for componentName, component in pairs(system.components) do
 			componentSumMemory = componentSumMemory + component.frameMemory
@@ -370,7 +475,8 @@ function Profiler.StopSystem()
 		system.totalTime = ValidateNumber(globals.RealTime() - systemData.startTime, 0)
 
 		-- Store both system-level and component-sum memory measurements
-		local systemLevelMemory = ValidateNumber(math.abs(collectgarbage("count") - systemData.startMemory), 0)
+		local rawSystemMemory = math.abs(collectgarbage("count") - systemData.startMemory)
+		local systemLevelMemory = ValidateNumber(CompensateMemoryOverhead(rawSystemMemory), 0)
 		local componentSumMemory = 0
 		for componentName, component in pairs(system.components) do
 			componentSumMemory = componentSumMemory + component.frameMemory
@@ -453,7 +559,7 @@ function Profiler.StopComponent()
 		-- Negative values usually mean GC ran, which isn't our function's fault
 		local rawDelta = endMemory - component.startMemory
 		if rawDelta > 0.01 then -- Only count meaningful memory increases (>0.01KB)
-			memoryDelta = ValidateNumber(rawDelta, 0)
+			memoryDelta = ValidateNumber(CompensateMemoryOverhead(rawDelta), 0)
 		end
 	end
 
@@ -577,7 +683,27 @@ function Profiler.Draw()
 		local systemLabelWidth = 200 -- Reserve space for system label
 		draw.Color(255, 255, 255, 255)
 		local systemText = systemName
-		local memoryText = string.format("%.1fKB", system.totalMemory)
+
+		-- Apply rate limiting to system memory display
+		local systemDisplayState = DisplayState[systemName] and DisplayState[systemName]["__system__"]
+		if not systemDisplayState then
+			-- Initialize system display state if missing
+			if not DisplayState[systemName] then
+				DisplayState[systemName] = {}
+			end
+			DisplayState[systemName]["__system__"] = {
+				lastTextUpdate = 0,
+				displayMemory = system.totalMemory,
+			}
+			systemDisplayState = DisplayState[systemName]["__system__"]
+		end
+
+		if CurrentFrame - systemDisplayState.lastTextUpdate >= Config.textUpdateInterval then
+			systemDisplayState.displayMemory = system.totalMemory
+			systemDisplayState.lastTextUpdate = CurrentFrame
+		end
+
+		local memoryText = string.format("%.1fKB", systemDisplayState.displayMemory)
 
 		-- Draw system name (fixed position for stable text)
 		draw.Text(5, math.floor(systemY + 2), systemText)
@@ -599,26 +725,38 @@ function Profiler.Draw()
 			InitializeComponentDisplay(systemName, componentName)
 			local displayState = DisplayState[systemName][componentName]
 
-			-- Calculate dynamic minimum width based on text content
+			-- Get current real-time values
 			local timeMs = componentData.avgTime * 1000
 			local memKB = componentData.avgMemory
 			local hasTime = timeMs >= 0.01
 
-			-- Measure text widths for stable minimum sizing
+			-- Update text values only every textUpdateInterval frames (4 times per second max)
+			if currentFrame - displayState.lastTextUpdate >= Config.textUpdateInterval then
+				displayState.displayMemory = memKB
+				displayState.displayTime = timeMs
+				displayState.lastTextUpdate = currentFrame
+			end
+
+			-- Use throttled display values for consistent text width calculation
+			local displayMemKB = displayState.displayMemory
+			local displayTimeMs = displayState.displayTime
+			local displayHasTime = displayTimeMs >= 0.01
+
+			-- Measure text widths for stable minimum sizing using throttled values
 			local nameWidth = draw.GetTextSize(componentName)
-			local memText = string.format("%.1fKB", memKB)
+			local memText = string.format("%.1fKB", displayMemKB)
 			local memWidth = draw.GetTextSize(memText)
 
 			local timeWidth = 0
-			if hasTime then
-				local timeText = string.format("%.2fms", timeMs)
+			if displayHasTime then
+				local timeText = string.format("%.2fms", displayTimeMs)
 				timeWidth = draw.GetTextSize(timeText)
 			end
 
 			-- Use the widest text as minimum width (plus padding)
 			local minComponentWidth = math.max(nameWidth, memWidth, timeWidth) + Config.textPadding
 
-			-- Calculate target component width proportional to memory usage
+			-- Calculate target component width proportional to memory usage (use real-time for responsiveness)
 			local targetWidth = minComponentWidth
 			if totalSystemMemory > 0 and componentData.avgMemory > 0 then
 				local memoryProportion = componentData.avgMemory / totalSystemMemory
@@ -632,15 +770,28 @@ function Profiler.Draw()
 
 			-- Update display state with smooth interpolation
 			displayState.targetWidth = targetWidth
-			displayState.width =
+			local newWidth =
 				SmoothLerp(displayState.width, displayState.targetWidth, Config.smoothingSpeed, Config.smoothingDecay)
 
-			-- Update text values only every textUpdateInterval frames (4 times per second max)
-			if currentFrame - displayState.lastTextUpdate >= Config.textUpdateInterval then
-				displayState.displayMemory = memKB
-				displayState.displayTime = timeMs
-				displayState.lastTextUpdate = currentFrame
+			-- Apply additional smoothing filter to reduce jitter
+			local smoothingHistory = displayState.smoothingHistory
+			table.insert(smoothingHistory, newWidth)
+
+			-- Keep only last 3 frames for smoothing
+			if #smoothingHistory > 3 then
+				table.remove(smoothingHistory, 1)
 			end
+
+			-- Use weighted average of recent values for final smoothing
+			local smoothedWidth = 0
+			local totalWeight = 0
+			for i, width in ipairs(smoothingHistory) do
+				local weight = i / #smoothingHistory -- More weight to recent values
+				smoothedWidth = smoothedWidth + width * weight
+				totalWeight = totalWeight + weight
+			end
+
+			displayState.width = smoothedWidth / totalWeight
 
 			-- Use the smoothed width for rendering
 			local componentWidth = displayState.width
@@ -745,11 +896,11 @@ function Profiler.SetWindowSize(frames)
 end
 
 function Profiler.SetSmoothingSpeed(speed)
-	Config.smoothingSpeed = math.max(0.1, math.min(speed, 20.0))
+	Config.smoothingSpeed = math.max(1.0, math.min(speed, 50.0)) -- 1-50% per frame
 end
 
 function Profiler.SetSmoothingDecay(decay)
-	Config.smoothingDecay = math.max(0.1, math.min(decay, 20.0))
+	Config.smoothingDecay = math.max(1.0, math.min(decay, 50.0)) -- 1-50% per frame
 end
 
 function Profiler.SetTextUpdateInterval(interval)
@@ -759,6 +910,15 @@ end
 function Profiler.SetSystemMemoryMode(mode)
 	if mode == "system" or mode == "components" then
 		Config.systemMemoryMode = mode
+	end
+end
+
+function Profiler.SetOverheadCompensation(enabled)
+	Config.compensateOverhead = enabled
+	if enabled then
+		-- Reset overhead measurements when re-enabling
+		ProfilerOverhead.averageOverhead = 0
+		ProfilerOverhead.measurementCount = 0
 	end
 end
 
@@ -772,6 +932,13 @@ function Profiler.Reset()
 	CurrentSystem = nil
 	HistoryIndex = 1
 	HistoryCount = 0
+
+	-- Reset profiler overhead measurements
+	ProfilerOverhead.isTracking = false
+	ProfilerOverhead.baselineMemory = 0
+	ProfilerOverhead.lastMeasurement = 0
+	ProfilerOverhead.averageOverhead = 0
+	ProfilerOverhead.measurementCount = 0
 end
 
 -- Load configuration on startup

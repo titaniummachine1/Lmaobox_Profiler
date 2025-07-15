@@ -45,14 +45,17 @@ Profiler.EndSystem("aimbot")
 -- Quick setup
 Profiler.Setup({
     visible = true,
-    smoothingSpeed = 5.0,        -- How fast bars react (1-10)
-    smoothingDecay = 1.0,        -- How fast bars shrink (0.5-2)
-    systemMemoryMode = "system"  -- "system" or "components"
+    smoothingSpeed = 15.0,       -- Percentage per frame (1-50, higher = more responsive)
+    smoothingDecay = 8.0,        -- Percentage per frame when decaying (1-50)
+    systemMemoryMode = "system", -- "system" or "components"
+    compensateOverhead = true    -- Subtract profiler's own memory usage
 })
 
 -- Individual settings
-Profiler.SetSmoothingSpeed(5.0)              -- Animation speed
+Profiler.SetSmoothingSpeed(15.0)             -- Animation speed (1-50% per frame)
+Profiler.SetSmoothingDecay(8.0)              -- Decay speed (1-50% per frame)
 Profiler.SetSystemMemoryMode("system")       -- Memory calculation
+Profiler.SetOverheadCompensation(true)       -- Enable overhead compensation
 Profiler.SetTextUpdateInterval(15)           -- Text update rate
 Profiler.Reset()                             -- Clear all data
 ```
@@ -89,21 +92,30 @@ Profiler.Reset()                             -- Clear all data
 
 ## 📊 Settings Reference
 
+### New Smoothing System
+
+The profiler now uses a **percentage-based smoothing system** that's more predictable and responsive:
+
+- **smoothingSpeed**: Percentage of remaining distance to move per frame (1-50%)
+- **smoothingDecay**: Percentage to move when bars are shrinking (1-50%)
+- **Additional filtering**: Multi-frame weighted average reduces jitter
+
 ### Animation Speed
 
 ```
-smoothingSpeed:  1.0 ←────────────→ 10.0
-                slow    balanced    fast
+smoothingSpeed:  5.0 ←────────────→ 30.0
+                smooth   balanced   responsive
                  🐌        🎯        ⚡
+              (gradual)  (default)  (snappy)
 ```
 
 ### Peak Decay
 
 ```
-smoothingDecay:  0.5 ←────────────→ 2.0
+smoothingDecay:  3.0 ←────────────→ 20.0
                 slow    balanced    fast
                  📈        🎯        📉
-              (peaks stay) (balanced) (peaks fade)
+              (peaks stay) (default) (peaks fade)
 ```
 
 ### Text Updates
@@ -126,12 +138,13 @@ textUpdateInterval: 6 ←──────────→ 30 frames
 
 | Setting              | Default  | Range                       | Visual Guide                |
 | -------------------- | -------- | --------------------------- | --------------------------- |
-| `smoothingSpeed`     | 5.0      | 0.1-20.0                    | 🐌 ←→ ⚡ (spike response)   |
-| `smoothingDecay`     | 1.0      | 0.1-20.0                    | 📈 ←→ 📉 (peak persistence) |
+| `smoothingSpeed`     | 15.0     | 1.0-50.0                    | 🐌 ←→ ⚡ (spike response)   |
+| `smoothingDecay`     | 8.0      | 1.0-50.0                    | 📈 ←→ 📉 (peak persistence) |
 | `textUpdateInterval` | 15       | 1-120                       | 📱 ←→ 📺 (update frequency) |
 | `windowSize`         | 60       | 1-300                       | ⚡ ←→ 🧘 (averaging window) |
 | `sortMode`           | "size"   | "size", "static", "reverse" | 📊 📋 🔄                    |
 | `systemMemoryMode`   | "system" | "system", "components"      | 🎯 ➕                       |
+| `compensateOverhead` | true     | true, false                 | 📏 ❌ (accuracy vs raw)     |
 
 ## 💡 Tips
 
@@ -139,8 +152,8 @@ textUpdateInterval: 6 ←──────────→ 30 frames
 
 ```lua
 Profiler.Setup({
-    smoothingSpeed = 8.0,    -- Fast spike detection
-    smoothingDecay = 0.5,    -- Keep peaks visible longer
+    smoothingSpeed = 25.0,   -- Fast spike detection
+    smoothingDecay = 5.0,    -- Keep peaks visible longer
     systemMemoryMode = "system"
 })
 ```
@@ -149,8 +162,8 @@ Profiler.Setup({
 
 ```lua
 Profiler.Setup({
-    smoothingSpeed = 3.0,    -- Smooth animations
-    smoothingDecay = 1.5,    -- Balanced decay
+    smoothingSpeed = 8.0,    -- Smooth animations
+    smoothingDecay = 12.0,   -- Balanced decay
     systemMemoryMode = "components"
 })
 ```

@@ -45,15 +45,15 @@ Profiler.EndSystem("aimbot")
 -- Quick setup
 Profiler.Setup({
     visible = true,
-    smoothingSpeed = 15.0,       -- Percentage per frame (1-50, higher = more responsive)
-    smoothingDecay = 8.0,        -- Percentage per frame when decaying (1-50)
+    smoothingSpeed = 2.5,        -- Percentage per frame (1-50, higher = more responsive)
+    smoothingDecay = 1.5,        -- Percentage per frame when decaying (1-50)
     systemMemoryMode = "system", -- "system" or "components"
     compensateOverhead = true    -- Subtract profiler's own memory usage
 })
 
 -- Individual settings
-Profiler.SetSmoothingSpeed(15.0)             -- Animation speed (1-50% per frame)
-Profiler.SetSmoothingDecay(8.0)              -- Decay speed (1-50% per frame)
+Profiler.SetSmoothingSpeed(2.5)              -- Animation speed (1-50% per frame)
+Profiler.SetSmoothingDecay(1.5)              -- Decay speed (1-50% per frame)
 Profiler.SetSystemMemoryMode("system")       -- Memory calculation
 Profiler.SetOverheadCompensation(true)       -- Enable overhead compensation
 Profiler.SetTextUpdateInterval(15)           -- Text update rate
@@ -138,9 +138,9 @@ textUpdateInterval: 6 ←──────────→ 30 frames
 
 | Setting              | Default  | Range                       | Visual Guide                |
 | -------------------- | -------- | --------------------------- | --------------------------- |
-| `smoothingSpeed`     | 15.0     | 1.0-50.0                    | 🐌 ←→ ⚡ (spike response)   |
-| `smoothingDecay`     | 8.0      | 1.0-50.0                    | 📈 ←→ 📉 (peak persistence) |
-| `textUpdateInterval` | 15       | 1-120                       | 📱 ←→ 📺 (update frequency) |
+| `smoothingSpeed`     | 2.5      | 1.0-50.0                    | 🐌 ←→ ⚡ (spike response)   |
+| `smoothingDecay`     | 1.5      | 1.0-50.0                    | 📈 ←→ 📉 (peak persistence) |
+| `textUpdateInterval` | 20       | 1-120                       | 📱 ←→ 📺 (update frequency) |
 | `windowSize`         | 60       | 1-300                       | ⚡ ←→ 🧘 (averaging window) |
 | `sortMode`           | "size"   | "size", "static", "reverse" | 📊 📋 🔄                    |
 | `systemMemoryMode`   | "system" | "system", "components"      | 🎯 ➕                       |
@@ -152,8 +152,8 @@ textUpdateInterval: 6 ←──────────→ 30 frames
 
 ```lua
 Profiler.Setup({
-    smoothingSpeed = 25.0,   -- Fast spike detection
-    smoothingDecay = 5.0,    -- Keep peaks visible longer
+    smoothingSpeed = 12.0,   -- Fast spike detection
+    smoothingDecay = 3.0,    -- Keep peaks visible longer
     systemMemoryMode = "system"
 })
 ```
@@ -162,8 +162,8 @@ Profiler.Setup({
 
 ```lua
 Profiler.Setup({
-    smoothingSpeed = 8.0,    -- Smooth animations
-    smoothingDecay = 12.0,   -- Balanced decay
+    smoothingSpeed = 2.5,    -- Very smooth animations (default)
+    smoothingDecay = 1.5,    -- Slow decay (default)
     systemMemoryMode = "components"
 })
 ```

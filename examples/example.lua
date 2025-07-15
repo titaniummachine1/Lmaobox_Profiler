@@ -328,8 +328,9 @@ local function ProfiledMovement(cmd)
 		-- Different movement calculations based on random type
 		if movement_type == 1 then -- Strafe
 			for i = 1, math.random(30, 80) do
+				local vel_length = velocity:Length() or 0
 				movement_data[i] = {
-					angle = math.sqrt(velocity:Length() + i),
+					angle = math.sqrt(math.abs(vel_length) + i),
 					strafe_power = math.random() * 100,
 					type = "strafe",
 				}
@@ -344,17 +345,30 @@ local function ProfiledMovement(cmd)
 			end
 		elseif movement_type == 3 then -- Air strafe
 			for i = 1, math.random(40, 100) do
+				local vel_length = velocity:Length() or 0
 				movement_data[i] = {
 					air_accel = math.random() * 10,
 					turn_rate = math.random() * 180,
-					velocity_prediction = velocity:Length() * math.random(),
+					velocity_prediction = math.abs(vel_length) * math.random(),
 					type = "airstrafe",
 				}
 			end
 		else -- Advanced movement
 			for i = 1, math.random(50, 120) do
+				local tan_val = math.tan(i / 4)
+				-- Clamp tan value to prevent infinity
+				if tan_val > 1000 then
+					tan_val = 1000
+				end
+				if tan_val < -1000 then
+					tan_val = -1000
+				end
+				if tan_val ~= tan_val then
+					tan_val = 0
+				end -- Check for NaN
+
 				movement_data[i] = {
-					advanced_calc = math.sin(i) * math.cos(i / 2) * math.tan(i / 4),
+					advanced_calc = math.sin(i) * math.cos(i / 2) * tan_val,
 					momentum = math.random() * 500,
 					optimal_angle = math.random() * 360,
 					type = "advanced",
@@ -383,8 +397,8 @@ local function ProfiledMovement(cmd)
 		physics_history[i] = {
 			previous_calc = physics_calc - math.random(),
 			current_calc = physics_calc,
-			delta = math.random(-0.5, 0.5),
-			interpolated = physics_calc + math.random(-0.1, 0.1),
+			delta = (math.random() - 0.5),
+			interpolated = physics_calc + (math.random() - 0.5) * 0.2,
 		}
 
 		movement_data[#movement_data + 1] = {

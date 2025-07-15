@@ -34,9 +34,9 @@ local Config = {
 	fontSize = 12,
 	maxSystems = 20, -- max systems before we stop drawing more
 	textPadding = 6, -- padding around text in components
-	smoothingSpeed = 15.0, -- Percentage of width to move per frame towards target (higher = less smooth, more responsive)
-	smoothingDecay = 8.0, -- Percentage of width to move per frame when decaying (lower = slower decay, peaks stay longer)
-	textUpdateInterval = 15, -- Update text every N frames (15 frames = 250ms at 60fps, 4 times per second max)
+	smoothingSpeed = 2.5, -- Percentage of width to move per frame towards target (higher = less smooth, more responsive)
+	smoothingDecay = 1.5, -- Percentage of width to move per frame when decaying (lower = slower decay, peaks stay longer)
+	textUpdateInterval = 20, -- Update text every N frames (20 frames = 333ms at 60fps, 3 times per second max)
 	systemMemoryMode = "system", -- "system" (actual system memory usage) or "components" (sum of component memory)
 	compensateOverhead = true, -- Subtract profiler's own memory usage from measurements
 }
@@ -692,15 +692,15 @@ function Profiler.Draw()
 				DisplayState[systemName] = {}
 			end
 			DisplayState[systemName]["__system__"] = {
-				lastTextUpdate = 0,
-				displayMemory = system.totalMemory,
+				lastTextUpdate = currentFrame - Config.textUpdateInterval, -- Force immediate update
+				displayMemory = 0,
 			}
 			systemDisplayState = DisplayState[systemName]["__system__"]
 		end
 
-		if CurrentFrame - systemDisplayState.lastTextUpdate >= Config.textUpdateInterval then
+		if currentFrame - systemDisplayState.lastTextUpdate >= Config.textUpdateInterval then
 			systemDisplayState.displayMemory = system.totalMemory
-			systemDisplayState.lastTextUpdate = CurrentFrame
+			systemDisplayState.lastTextUpdate = currentFrame
 		end
 
 		local memoryText = string.format("%.1fKB", systemDisplayState.displayMemory)

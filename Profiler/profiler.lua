@@ -350,6 +350,167 @@ function Profiler.EndSystem(systemName)
 	end
 end
 
+-- Simplified API - No need to specify names when ending
+-- Uses the last started item from the stack
+
+function Profiler.BeginSystem(systemName)
+	return Profiler.StartSystem(systemName)
+end
+
+function Profiler.StopSystem()
+	if not Config.visible or #SystemStack == 0 then
+		return
+	end
+
+	local systemData = table.remove(SystemStack)
+	local systemName = systemData.name
+
+	local system = Systems[systemName]
+	if system then
+		system.totalTime = ValidateNumber(globals.RealTime() - systemData.startTime, 0)
+
+		-- Store both system-level and component-sum memory measurements
+		local systemLevelMemory = ValidateNumber(math.abs(collectgarbage("count") - systemData.startMemory), 0)
+		local componentSumMemory = 0
+		for componentName, component in pairs(system.components) do
+			componentSumMemory = componentSumMemory + component.frameMemory
+		end
+
+		-- Choose which measurement to use based on config
+		if Config.systemMemoryMode == "components" then
+			system.totalMemory = ValidateNumber(componentSumMemory, 0)
+		else
+			system.totalMemory = ValidateNumber(systemLevelMemory, 0)
+		end
+
+		-- Store both values for potential future use
+		system.systemLevelMemory = systemLevelMemory
+		system.componentSumMemory = componentSumMemory
+
+		-- Update rolling averages for all components
+		for componentName, component in pairs(system.components) do
+			if not History[systemName][componentName] then
+				History[systemName][componentName] = {}
+				for i = 1, Config.windowSize do
+					History[systemName][componentName][i] = { time = 0, memory = 0 }
+				end
+			end
+
+			-- Store current frame data into circular history buffer
+			History[systemName][componentName][HistoryIndex] = {
+				time = component.frameTime,
+				memory = component.frameMemory,
+			}
+
+			-- Compute rolling average over the last windowSize frames (~1 second)
+			local totalTime, totalMemory = 0, 0
+			local frames = math.min(HistoryCount, Config.windowSize)
+			for i = 1, frames do
+				local h = History[systemName][componentName][i]
+				totalTime = totalTime + ValidateNumber(h.time, 0)
+				totalMemory = totalMemory + ValidateNumber(h.memory, 0)
+			end
+			component.avgTime = ValidateNumber(frames > 0 and totalTime / frames or 0, 0)
+			component.avgMemory = ValidateNumber(frames > 0 and totalMemory / frames or 0, 0)
+		end
+	end
+
+	CurrentSystem = #SystemStack > 0 and SystemStack[#SystemStack].name or nil
+
+	-- Advance circular history index once per frame when we end the outermost system
+	if CurrentSystem == nil then
+		HistoryIndex = HistoryIndex + 1
+		if HistoryIndex > Config.windowSize then
+			HistoryIndex = 1
+		end
+		if HistoryCount < Config.windowSize then
+			HistoryCount = HistoryCount + 1
+		end
+	end
+end
+
+function Profiler.BeginComponent(componentName)
+	return Profiler.StartComponent(componentName)
+end
+
+function Profiler.StopComponent()
+	if not Config.visible or not CurrentSystem or #ComponentStack == 0 then
+		return
+	end
+
+	local component = table.remove(ComponentStack)
+	local componentName = component.name
+
+	-- High-precision timing measurement
+	local endTime = globals.RealTime()
+	local duration = ValidateNumber(endTime - component.startTime, 0)
+
+	-- Smart memory measurement to reduce overhead
+	local memoryDelta = 0
+	if component.measureMemory and component.startMemory then
+		local endMemory = collectgarbage("count")
+		-- Only count positive memory growth (actual allocations)
+		-- Negative values usually mean GC ran, which isn't our function's fault
+		local rawDelta = endMemory - component.startMemory
+		if rawDelta > 0.01 then -- Only count meaningful memory increases (>0.01KB)
+			memoryDelta = ValidateNumber(rawDelta, 0)
+		end
+	end
+
+	local system = Systems[CurrentSystem]
+	if not system.components[componentName] then
+		system.components[componentName] = {
+			avgTime = 0,
+			avgMemory = 0,
+			frameTime = 0,
+			frameMemory = 0,
+			order = 0,
+		}
+
+		-- Set order based on when first measured
+		local componentCount = 0
+		for _ in pairs(system.components) do
+			componentCount = componentCount + 1
+		end
+		system.components[componentName].order = componentCount
+
+		-- Initialize component history
+		History[CurrentSystem][componentName] = {}
+		for i = 1, Config.windowSize do
+			History[CurrentSystem][componentName][i] = { time = 0, memory = 0 }
+		end
+
+		-- Initialize display state
+		InitializeComponentDisplay(CurrentSystem, componentName)
+	end
+
+	system.components[componentName].frameTime = system.components[componentName].frameTime + duration
+	system.components[componentName].frameMemory = system.components[componentName].frameMemory + memoryDelta
+end
+
+-- Ultra-simplified API - Begin/End without specifying type
+-- Automatically detects if we're starting a system or component based on context
+
+function Profiler.Begin(name)
+	-- If no current system, this is a system start
+	if not CurrentSystem then
+		return Profiler.BeginSystem(name)
+	else
+		-- If we have a current system, this is a component start
+		return Profiler.BeginComponent(name)
+	end
+end
+
+function Profiler.End()
+	-- If we have components running, end the component
+	if #ComponentStack > 0 then
+		return Profiler.StopComponent()
+	-- Otherwise, end the system
+	elseif #SystemStack > 0 then
+		return Profiler.StopSystem()
+	end
+end
+
 -- Get sorted components based on sort mode
 local function GetSortedComponents(system)
 	local components = {}

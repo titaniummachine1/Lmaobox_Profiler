@@ -11,6 +11,29 @@ A lightweight, real-time performance profiler that shows you exactly what's eati
 
 ## 🚀 Quick Start
 
+### New Simplified API (Recommended)
+
+```lua
+local Profiler = require("Profiler")
+Profiler.SetVisible(true)
+
+-- Ultra-simple: Begin/End automatically detects system vs component
+Profiler.Begin("aimbot")
+    Profiler.Begin("targeting")
+    -- ... your code ...
+    Profiler.End() -- Automatically ends "targeting"
+Profiler.End() -- Automatically ends "aimbot"
+
+-- Or use explicit functions (no names needed when ending)
+Profiler.BeginSystem("aimbot")
+    Profiler.BeginComponent("targeting")
+    -- ... your code ...
+    Profiler.StopComponent() -- Automatically ends last component
+Profiler.StopSystem() -- Automatically ends last system
+```
+
+### Original API (Still Supported)
+
 ```lua
 local Profiler = require("Profiler")
 --Profiler.SetVisible(true)
@@ -43,11 +66,24 @@ Profiler.Reset()                             -- Clear all data
 
 ## 🎮 Controls
 
+### New Simplified API
+
+| Function                          | Description                          |
+| --------------------------------- | ------------------------------------ |
+| `Profiler.SetVisible(true/false)` | Show/hide profiler                   |
+| `Profiler.Enable()`               | Quick enable                         |
+| `Profiler.Disable()`              | Quick disable                        |
+| `Profiler.Begin("name")`          | Auto-start system or component       |
+| `Profiler.End()`                  | Auto-end last started item           |
+| `Profiler.BeginSystem("name")`    | Explicitly start measuring system    |
+| `Profiler.BeginComponent("name")` | Explicitly start measuring component |
+| `Profiler.StopSystem()`           | End last started system              |
+| `Profiler.StopComponent()`        | End last started component           |
+
+### Original API (Still Supported)
+
 | Function                          | Description               |
 | --------------------------------- | ------------------------- |
-| `Profiler.SetVisible(true/false)` | Show/hide profiler        |
-| `Profiler.Enable()`               | Quick enable              |
-| `Profiler.Disable()`              | Quick disable             |
 | `Profiler.StartSystem("name")`    | Start measuring system    |
 | `Profiler.StartComponent("name")` | Start measuring component |
 | `Profiler.EndComponent("name")`   | End measuring component   |
@@ -130,6 +166,48 @@ Profiler.Setup({
 
 ## 📝 Examples
 
+### New Simplified API Examples
+
+**Ultra-Simple Usage:**
+
+```lua
+local Profiler = require("Profiler")
+Profiler.SetVisible(true)
+
+-- In your aimbot - super clean!
+Profiler.Begin("aimbot")
+    Profiler.Begin("get_targets")
+    local targets = GetTargets()
+    Profiler.End() -- Automatically ends "get_targets"
+
+    Profiler.Begin("calculate_aim")
+    local angles = CalculateAim(targets[1])
+    Profiler.End() -- Automatically ends "calculate_aim"
+Profiler.End() -- Automatically ends "aimbot"
+```
+
+**Explicit Simplified API:**
+
+```lua
+local Profiler = require("Profiler")
+Profiler.SetVisible(true)
+
+-- Multiple systems - no names needed when ending
+Profiler.BeginSystem("movement")
+    Profiler.BeginComponent("bhop")
+    -- ... bhop code ...
+    Profiler.StopComponent() -- Ends last component
+Profiler.StopSystem() -- Ends last system
+
+Profiler.BeginSystem("esp")
+    Profiler.BeginComponent("players")
+    -- ... player ESP ...
+    Profiler.StopComponent() -- Ends last component
+Profiler.StopSystem() -- Ends last system
+```
+
+### Original API Examples
+
 **Basic Usage:**
 
 ```lua
@@ -169,9 +247,17 @@ Profiler.EndSystem("esp")
 **Quick Function Timing:**
 
 ```lua
+-- Using the Time helper (works with both APIs)
 local result = Profiler.Time("calculations", "pathfinding", function()
     return ExpensiveFunction()
 end)
+
+-- Or with the new simplified API
+Profiler.Begin("calculations")
+    Profiler.Begin("pathfinding")
+    local result = ExpensiveFunction()
+    Profiler.End() -- Ends pathfinding
+Profiler.End() -- Ends calculations
 ```
 
 ---

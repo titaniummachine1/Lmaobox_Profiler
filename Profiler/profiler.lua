@@ -753,7 +753,7 @@ function Profiler.Draw()
 				timeWidth = draw.GetTextSize(timeText)
 			end
 
-			-- Use the widest text as minimum width (plus padding)
+			-- Use the widest text as absolute minimum width (plus padding)
 			local minComponentWidth = math.max(nameWidth, memWidth, timeWidth) + Config.textPadding
 
 			-- Calculate target component width proportional to memory usage (use real-time for responsiveness)
@@ -767,6 +767,9 @@ function Profiler.Draw()
 			-- Ensure we don't exceed available component area
 			local remainingWidth = screenW - currentX
 			targetWidth = math.min(targetWidth, remainingWidth)
+
+			-- But always ensure we're at least wide enough for the text (prevents text truncation)
+			targetWidth = math.max(targetWidth, minComponentWidth)
 
 			-- Update display state with smooth interpolation
 			displayState.targetWidth = targetWidth
@@ -793,8 +796,8 @@ function Profiler.Draw()
 
 			displayState.width = smoothedWidth / totalWeight
 
-			-- Use the smoothed width for rendering
-			local componentWidth = displayState.width
+			-- Use the smoothed width for rendering, but never smaller than minimum text width
+			local componentWidth = math.max(displayState.width, minComponentWidth)
 
 			if componentWidth > 10 and currentX < screenW - 10 then -- Only draw if meaningful size
 				-- Generate color based on component name hash
@@ -833,19 +836,10 @@ function Profiler.Draw()
 
 				draw.Color(255, 255, 255, 255)
 
-				-- Component name (shortened if needed, but stable)
+				-- Component name (full name - width is calculated to fit)
 				local nameText = componentName
 				local nameWidth, nameHeight = draw.GetTextSize(nameText)
-
-				-- Shorten name if too long for current width
-				if nameWidth + 6 > componentWidth and #nameText > 3 then
-					nameText = string.sub(nameText, 1, math.max(1, math.floor(componentWidth / 8))) .. "..."
-					nameWidth, nameHeight = draw.GetTextSize(nameText)
-				end
-
-				if nameWidth + 6 <= componentWidth then
-					draw.Text(math.floor(textX), math.floor(textY), nameText)
-				end
+				draw.Text(math.floor(textX), math.floor(textY), nameText)
 
 				-- Memory amount (always visible, fixed position) - use throttled display value
 				local infoY = textY + nameHeight + 3
@@ -860,8 +854,8 @@ function Profiler.Draw()
 					local timeWidth, timeHeight = draw.GetTextSize(displayTimeText)
 					local timeY = infoY + 14 -- Fixed position below memory
 
-					-- Check if there's space for time display
-					if timeY + timeHeight <= insetY + insetHeight - 2 and timeWidth + 6 <= componentWidth then
+					-- Check if there's vertical space for time display
+					if timeY + timeHeight <= insetY + insetHeight - 2 then
 						-- Draw red background for time highlighting
 						draw.Color(150, 50, 50, 180)
 						draw.FilledRect(

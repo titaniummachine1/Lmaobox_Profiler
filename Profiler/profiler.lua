@@ -488,27 +488,18 @@ function Profiler.StopComponent()
 	system.components[componentName].frameMemory = system.components[componentName].frameMemory + memoryDelta
 end
 
--- Ultra-simplified API - Begin/End without specifying type
--- Automatically detects if we're starting a system or component based on context
+-- Simplified API - Explicit system calls, Begin for components
+-- BeginSystem/EndSystem for top-level systems
+-- Begin/End for components (used most frequently)
 
 function Profiler.Begin(name)
-	-- If no current system, this is a system start
-	if not CurrentSystem then
-		return Profiler.BeginSystem(name)
-	else
-		-- If we have a current system, this is a component start
-		return Profiler.BeginComponent(name)
-	end
+	-- Begin is always for components
+	return Profiler.BeginComponent(name)
 end
 
 function Profiler.End()
-	-- If we have components running, end the component
-	if #ComponentStack > 0 then
-		return Profiler.StopComponent()
-	-- Otherwise, end the system
-	elseif #SystemStack > 0 then
-		return Profiler.StopSystem()
-	end
+	-- End is always for components
+	return Profiler.StopComponent()
 end
 
 -- Get sorted components based on sort mode

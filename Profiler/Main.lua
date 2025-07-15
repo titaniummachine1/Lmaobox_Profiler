@@ -49,15 +49,11 @@ Profiler.EndComponent = ProfilerCore.EndComponent
 Profiler.EndSystem = ProfilerCore.EndSystem
 Profiler.Draw = ProfilerCore.Draw
 
--- Simplified API - better naming and automatic stack-based ending
+-- Simplified API - explicit systems, Begin for components
 Profiler.BeginSystem = ProfilerCore.BeginSystem
-Profiler.BeginComponent = ProfilerCore.BeginComponent
-Profiler.StopSystem = ProfilerCore.StopSystem -- No parameters needed
-Profiler.StopComponent = ProfilerCore.StopComponent -- No parameters needed
-
--- Ultra-simplified API - automatic detection of system vs component
-Profiler.Begin = ProfilerCore.Begin
-Profiler.End = ProfilerCore.End
+Profiler.EndSystem = ProfilerCore.StopSystem -- No parameters needed
+Profiler.Begin = ProfilerCore.Begin -- Always for components
+Profiler.End = ProfilerCore.End -- Always for components
 
 -- Config helpers
 Profiler.SetSortMode = ProfilerCore.SetSortMode

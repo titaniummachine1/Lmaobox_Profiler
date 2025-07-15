@@ -1,17 +1,6 @@
---[[
-    Lmaobox Profiler Library - Real Usage Example
-    This example shows how to profile actual Lmaobox scripts and monitor memory usage
-    
-    Place this in your %localappdata% folder and load with: lua_load example.lua
-]]
-
---[[
-    IMPORTANT: If reloading this script, first run:
-    lua_load unload_profiler.lua
-    
-    Then reload this script:
-    lua_load example.lua
-]]
+-- Lmaobox Profiler Example
+-- Save as example.lua in %localappdata%
+-- Load with: lua_load example.lua
 
 -- Clear any existing profiler before loading new one
 if package.loaded["Profiler"] then
@@ -32,22 +21,11 @@ Profiler.SetWindowSize(60) -- Average over 60 frames for smooth data
 print("✅ Lmaobox Profiler enabled! Memory and performance monitoring active.")
 
 --[[
-    PROFILER USAGE PATTERNS:
-    
-    1. System + Components (Organized):
-       Profiler.StartSystem("mysystem")
-           Profiler.StartComponent("task1")
-           -- code --
-           Profiler.EndComponent("task1")
-       Profiler.EndSystem("mysystem")
-    
-    2. Component Only (Auto-assigns to "misc" system):
-       Profiler.StartComponent("standalone_task")
-       -- code --
-       Profiler.EndComponent("standalone_task")
-       
-    The profiler will automatically show individual component memory usage
-    and time (when >= 0.01ms with red background) for debugging purposes.
+    USAGE:
+    Profiler.BeginSystem("name") - Start system profiling
+    Profiler.EndSystem() - End system profiling
+    Profiler.Begin("name") - Start component profiling
+    Profiler.End() - End component profiling
 ]]
 
 -- Create fonts for our example scripts (like the community examples)
@@ -61,7 +39,7 @@ local damage_events = {}
 -- FPS Counter (based on x6h's example) - Profiled version
 local function ProfiledFPSCounter()
 	-- This will automatically be assigned to "misc" system since no system is active
-	Profiler.StartComponent("fps_counter")
+	Profiler.Begin("fps_counter")
 
 	draw.SetFont(consolas)
 	draw.Color(255, 255, 255, 255)
@@ -73,15 +51,15 @@ local function ProfiledFPSCounter()
 
 	draw.Text(5, 5, "[lmaobox | fps: " .. tostring(current_fps) .. " | profiler: ON]")
 
-	Profiler.EndComponent("fps_counter")
+	Profiler.End()
 end
 
 -- Basic Player ESP (based on community example) - Profiled version
 local function ProfiledPlayerESP()
-	Profiler.StartComponent("player_esp")
+	Profiler.Begin("player_esp")
 
 	if engine.Con_IsVisible() or engine.IsGameUIVisible() then
-		Profiler.EndComponent("player_esp")
+		Profiler.End()
 		return
 	end
 
@@ -99,17 +77,17 @@ local function ProfiledPlayerESP()
 		end
 	end
 
-	Profiler.EndComponent("player_esp")
+	Profiler.End()
 end
 
 -- Damage Logger (based on @RC's example) - Profiled version
 local function ProfiledDamageLogger(event)
-	Profiler.StartComponent("damage_logger")
+	Profiler.Begin("damage_logger")
 
 	if event:GetName() == "player_hurt" then
 		local localPlayer = entities.GetLocalPlayer()
 		if not localPlayer then
-			Profiler.EndComponent("damage_logger")
+			Profiler.End()
 			return
 		end
 
@@ -144,16 +122,16 @@ local function ProfiledDamageLogger(event)
 		end
 	end
 
-	Profiler.EndComponent("damage_logger")
+	Profiler.End()
 end
 
 -- Example aimbot logic (expensive computation)
 local function ProfiledAimbot(cmd)
-	Profiler.StartComponent("aimbot")
+	Profiler.Begin("aimbot")
 
 	local localPlayer = entities.GetLocalPlayer()
 	if not localPlayer or not localPlayer:IsAlive() then
-		Profiler.EndComponent("aimbot")
+		Profiler.End()
 		return
 	end
 
@@ -181,16 +159,16 @@ local function ProfiledAimbot(cmd)
 		end
 	end
 
-	Profiler.EndComponent("aimbot")
+	Profiler.End()
 end
 
 -- Example movement assistance
 local function ProfiledMovement(cmd)
-	Profiler.StartComponent("movement")
+	Profiler.Begin("movement")
 
 	local localPlayer = entities.GetLocalPlayer()
 	if not localPlayer then
-		Profiler.EndComponent("movement")
+		Profiler.End()
 		return
 	end
 
@@ -203,94 +181,31 @@ local function ProfiledMovement(cmd)
 		end
 	end
 
-	Profiler.EndComponent("movement")
+	Profiler.End()
 end
 
--- Helper functions -----------------------------------------------------------
-local function TryUnregister(event, id)
-	if callbacks and callbacks.Unregister then
-		pcall(callbacks.Unregister, event, id)
-	end
-end
+-- Register callbacks
+callbacks.Unregister("CreateMove", "profiled_createmove")
+callbacks.Unregister("Draw", "profiled_draw")
+callbacks.Unregister("FireGameEvent", "profiled_events")
 
-local function TryRegister(event, id, func)
-	if callbacks and callbacks.Register then
-		pcall(function()
-			callbacks.Register(event, id, func)
-		end)
-	end
-end
-
--- Clear any existing profiler callbacks -------------------------------------
-TryUnregister("CreateMove", "profiled_createmove")
-TryUnregister("Draw", "profiled_draw")
-TryUnregister("FireGameEvent", "profiled_events")
-TryUnregister("Think", "profiled_think")
-
--- Register fresh callbacks --------------------------------------------------
-TryRegister("CreateMove", "profiled_createmove", function(cmd)
-	Profiler.StartSystem("oncreatemove")
+callbacks.Register("CreateMove", "profiled_createmove", function(cmd)
+	Profiler.BeginSystem("oncreatemove")
 	ProfiledAimbot(cmd)
 	ProfiledMovement(cmd)
-	Profiler.EndSystem("oncreatemove")
+	Profiler.EndSystem()
 end)
 
-TryRegister("Draw", "profiled_draw", function()
-	Profiler.StartSystem("ondraw")
+callbacks.Register("Draw", "profiled_draw", function()
+	Profiler.BeginSystem("ondraw")
 	ProfiledFPSCounter()
 	ProfiledPlayerESP()
 	Profiler.Draw()
-	Profiler.EndSystem("ondraw")
+	Profiler.EndSystem()
 end)
 
-TryRegister("FireGameEvent", "profiled_events", function(event)
-	Profiler.StartSystem("onevent")
+callbacks.Register("FireGameEvent", "profiled_events", function(event)
+	Profiler.BeginSystem("onevent")
 	ProfiledDamageLogger(event)
-	Profiler.EndSystem("onevent")
+	Profiler.EndSystem()
 end)
-
-TryRegister("Think", "profiled_think", function()
-	Profiler.StartSystem("onthink")
-	Profiler.StartComponent("misc_features")
-	local r = 0
-	for i = 1, 20 do
-		r = r + math.random() * 100
-	end
-	Profiler.EndComponent("misc_features")
-	Profiler.StartComponent("config_check")
-	local cfg = math.random() * 50
-	Profiler.EndComponent("config_check")
-	Profiler.EndSystem("onthink")
-end)
-
---[[
-    HOW TO USE THIS EXAMPLE:
-    
-    1. Save this as example.lua in your %localappdata% folder
-    2. In TF2 with Lmaobox loaded, type: lua_load example.lua
-    3. The profiler will immediately show performance data for:
-       - CreateMove: aimbot and movement calculations
-       - Draw: FPS counter and player ESP rendering  
-       - FireGameEvent: damage logging
-       - Think: misc background tasks
-    
-    WHAT YOU'LL SEE:
-    - Systems stacked from bottom of screen upward
-    - Components within each system from left to right
-    - Time and memory usage for each component
-    - Color-coded components for easy identification
-    - Real-time performance monitoring
-    
-    MEMORY MONITORING:
-    The profiler tracks memory allocation for:
-    - Table creation (damage_events)
-    - String operations (player names, formatting)
-    - Mathematical calculations (FOV, movement)
-    - Drawing operations (fonts, text rendering)
-    
-    PERFORMANCE INSIGHTS:
-    - Player ESP is typically the most expensive (entities.FindByClass every frame)
-    - Aimbot calculations vary based on player count
-    - Drawing operations have consistent but measurable cost
-    - Event handling spikes during combat
-]]

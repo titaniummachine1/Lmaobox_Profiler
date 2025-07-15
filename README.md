@@ -176,8 +176,10 @@ Profiler.SetVisible(true)
 
 -- In your aimbot - super clean!
 Profiler.Begin("aimbot")
+    local targets
+
     Profiler.Begin("get_targets")
-    local targets = GetTargets()
+    targets = GetTargets()
     Profiler.End() -- Automatically ends "get_targets"
 
     Profiler.Begin("calculate_aim")
@@ -216,8 +218,10 @@ Profiler.SetVisible(true)
 
 -- In your aimbot
 Profiler.StartSystem("aimbot")
+    local targets
+
     Profiler.StartComponent("get_targets")
-    local targets = GetTargets()
+    targets = GetTargets()
     Profiler.EndComponent("get_targets")
 
     Profiler.StartComponent("calculate_aim")
@@ -255,7 +259,7 @@ end)
 -- Or with the new simplified API
 Profiler.Begin("calculations")
     Profiler.Begin("pathfinding")
-    local result = ExpensiveFunction()
+    ExpensiveFunction()
     Profiler.End() -- Ends pathfinding
 Profiler.End() -- Ends calculations
 ```

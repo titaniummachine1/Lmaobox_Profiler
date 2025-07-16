@@ -259,6 +259,18 @@ function Profiler.StartSystem(systemName)
 		return
 	end
 
+	-- Error handling: Check if a system is already active (idiot-proofing)
+	if CurrentSystem and #SystemStack > 0 then
+		print(
+			"WARNING: Starting system '"
+				.. systemName
+				.. "' while system '"
+				.. CurrentSystem
+				.. "' is still active. Ignoring duplicate BeginSystem call."
+		)
+		return
+	end
+
 	InitializeSystem(systemName)
 
 	-- Measure profiler overhead periodically (every 30 frames to avoid performance impact)
@@ -459,6 +471,22 @@ end
 -- Uses the last started item from the stack
 
 function Profiler.BeginSystem(systemName)
+	if not Config.visible then
+		return
+	end
+
+	-- Error handling: Check if a system is already active (idiot-proofing)
+	if CurrentSystem and #SystemStack > 0 then
+		print(
+			"WARNING: Starting system '"
+				.. systemName
+				.. "' while system '"
+				.. CurrentSystem
+				.. "' is still active. Ignoring duplicate BeginSystem call."
+		)
+		return
+	end
+
 	return Profiler.StartSystem(systemName)
 end
 
@@ -608,7 +636,7 @@ function Profiler.End()
 	return Profiler.StopComponent()
 end
 
--- Get sorted components based on sort mode
+-- Get sorted components based on sort mode (FIXED: use memory for 'size' mode)
 local function GetSortedComponents(system)
 	local components = {}
 
@@ -617,12 +645,14 @@ local function GetSortedComponents(system)
 	end
 
 	if Config.sortMode == "size" then
+		-- FIXED: Sort by memory usage (avgMemory) instead of time (avgTime)
 		table.sort(components, function(a, b)
-			return a.data.avgTime > b.data.avgTime
+			return a.data.avgMemory > b.data.avgMemory
 		end)
 	elseif Config.sortMode == "reverse" then
+		-- FIXED: Sort by memory usage (avgMemory) instead of time (avgTime)
 		table.sort(components, function(a, b)
-			return a.data.avgTime < b.data.avgTime
+			return a.data.avgMemory < b.data.avgMemory
 		end)
 	elseif Config.sortMode == "static" then
 		table.sort(components, function(a, b)
@@ -633,7 +663,44 @@ local function GetSortedComponents(system)
 	return components
 end
 
--- Draw the profiler
+-- Get sorted systems based on sort mode (NEW: real-time system sorting)
+local function GetSortedSystems(activeSystems)
+	local systemsWithData = {}
+
+	for _, systemName in ipairs(activeSystems) do
+		local system = Systems[systemName]
+		if system then
+			table.insert(systemsWithData, { name = systemName, data = system })
+		end
+	end
+
+	if Config.sortMode == "size" then
+		-- Sort systems by memory usage (totalMemory) - most memory intensive first
+		table.sort(systemsWithData, function(a, b)
+			return a.data.totalMemory > b.data.totalMemory
+		end)
+	elseif Config.sortMode == "reverse" then
+		-- Sort systems by memory usage (totalMemory) - least memory intensive first
+		table.sort(systemsWithData, function(a, b)
+			return a.data.totalMemory < b.data.totalMemory
+		end)
+	elseif Config.sortMode == "static" then
+		-- Keep original order
+		table.sort(systemsWithData, function(a, b)
+			return a.data.order < b.data.order
+		end)
+	end
+
+	-- Extract system names in sorted order
+	local sortedSystems = {}
+	for _, systemEntry in ipairs(systemsWithData) do
+		table.insert(sortedSystems, systemEntry.name)
+	end
+
+	return sortedSystems
+end
+
+-- Draw the profiler (FIXED: overflow handling and real-time sorting)
 function Profiler.Draw()
 	if not Config.visible then
 		return
@@ -654,14 +721,52 @@ function Profiler.Draw()
 		end
 	end
 
-	-- Limit number of systems displayed
-	local systemsToShow = math.min(#activeSystems, Config.maxSystems)
-	local totalHeight = systemsToShow * Config.systemHeight
+	-- FIXED: Sort systems by memory usage in real-time
+	local sortedActiveSystems = GetSortedSystems(activeSystems)
+
+	-- FIXED: Filter out systems with 0.0 memory when we need space (overflow handling)
+	local meaningfulSystems = {}
+	local zeroSystems = {}
+
+	for _, systemName in ipairs(sortedActiveSystems) do
+		local system = Systems[systemName]
+		if system.totalMemory > 0.001 then -- Systems with meaningful memory usage
+			table.insert(meaningfulSystems, systemName)
+		else -- Systems with essentially 0.0 memory
+			table.insert(zeroSystems, systemName)
+		end
+	end
+
+	-- Calculate how many systems we can fit
+	local maxSystemsOnScreen = math.floor(screenH / Config.systemHeight)
+	local systemsToShow = math.min(maxSystemsOnScreen, Config.maxSystems)
+
+	-- FIXED: Prioritize meaningful systems, only show 0.0 systems if we have space
+	local finalSystemsToShow = {}
+	local systemCount = 0
+
+	-- First, add all meaningful systems (up to limit)
+	for _, systemName in ipairs(meaningfulSystems) do
+		if systemCount < systemsToShow then
+			table.insert(finalSystemsToShow, systemName)
+			systemCount = systemCount + 1
+		end
+	end
+
+	-- Then add 0.0 systems only if we have remaining space
+	for _, systemName in ipairs(zeroSystems) do
+		if systemCount < systemsToShow then
+			table.insert(finalSystemsToShow, systemName)
+			systemCount = systemCount + 1
+		end
+	end
+
+	local totalHeight = systemCount * Config.systemHeight
 	local startY = screenH - totalHeight
 
 	-- Draw each system
-	for i = 1, systemsToShow do
-		local systemName = activeSystems[i]
+	for i = 1, systemCount do
+		local systemName = finalSystemsToShow[i]
 		local system = Systems[systemName]
 		local systemY = startY + (i - 1) * Config.systemHeight
 
@@ -717,7 +822,43 @@ function Profiler.Draw()
 		local componentAreaWidth = screenW - systemLabelWidth
 		local currentX = componentStartX
 
+		-- FIXED: Filter out 0.0 components when we're running out of screen space
+		local meaningfulComponents = {}
+		local zeroComponents = {}
+
 		for _, comp in ipairs(sortedComponents) do
+			if comp.data.avgMemory > 0.001 then -- Components with meaningful memory usage
+				table.insert(meaningfulComponents, comp)
+			else -- Components with essentially 0.0 memory
+				table.insert(zeroComponents, comp)
+			end
+		end
+
+		-- Determine available screen width for components
+		local availableWidth = screenW - componentStartX
+		local estimatedComponentWidth = 100 -- Rough estimate for space calculation
+		local maxComponentsOnScreen = math.floor(availableWidth / estimatedComponentWidth)
+
+		-- Prioritize meaningful components, add 0.0 components only if space allows
+		local finalComponents = {}
+		local componentCount = 0
+
+		for _, comp in ipairs(meaningfulComponents) do
+			table.insert(finalComponents, comp)
+			componentCount = componentCount + 1
+		end
+
+		-- Only add 0.0 components if we have estimated space
+		if componentCount < maxComponentsOnScreen then
+			for _, comp in ipairs(zeroComponents) do
+				if componentCount < maxComponentsOnScreen then
+					table.insert(finalComponents, comp)
+					componentCount = componentCount + 1
+				end
+			end
+		end
+
+		for _, comp in ipairs(finalComponents) do
 			local componentName = comp.name
 			local componentData = comp.data
 

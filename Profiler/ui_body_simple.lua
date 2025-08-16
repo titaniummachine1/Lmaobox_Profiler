@@ -245,7 +245,10 @@ local function handleInput(screenW, screenH, topBarHeight)
 		offsetX = offsetX - deltaX
 		offsetY = offsetY - deltaY
 
-		print(string.format("🎯 DRAGGING: offsetX=%.1f, offsetY=%.1f", offsetX, offsetY))
+		-- Reduce spam - only print on significant movement
+		if math.abs(deltaX) > 10 or math.abs(deltaY) > 10 then
+			print(string.format("🎯 DRAGGING: offsetX=%.1f, offsetY=%.1f", offsetX, offsetY))
+		end
 
 		lastMouseX = mx
 		lastMouseY = bodyMy

@@ -276,8 +276,9 @@ local function handleInput(screenW, screenH, topBarHeight)
 			end
 
 			-- Clamp zoom
-			timeScale = math.max(1.0, math.min(10000.0, timeScale))
-			verticalScale = math.max(0.1, math.min(10.0, verticalScale))
+			-- Clamp zoom levels: timeScale 1px/s to 5000px/s, verticalScale 0.2x to 5x
+			timeScale = math.max(1.0, math.min(5000.0, timeScale))
+			verticalScale = math.max(0.2, math.min(5.0, verticalScale))
 
 			-- Adjust offset to keep zoom centered on mouse position
 			local scaleChangeX = timeScale / oldTimeScale
@@ -388,7 +389,7 @@ function UIBody.ResetCamera()
 end
 
 function UIBody.SetZoom(newZoom)
-	timeScale = math.max(1.0, math.min(10000.0, newZoom))
+	timeScale = math.max(1.0, math.min(5000.0, newZoom))
 end
 
 function UIBody.GetZoom()

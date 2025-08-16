@@ -208,7 +208,7 @@ local function shouldProfile(info)
 		return false -- Skip profiler-related scripts and unknowns
 	end
 
-    -- Allow all user scripts; previously restricted to example.lua which hid data
+	-- Allow all user scripts; previously restricted to example.lua which hid data
 
 	-- Skip internal profiler functions by name
 	if

@@ -27,10 +27,10 @@ local PROFILER_SOURCES = {
 local inProfilerAPI = false
 
 -- Performance limits (MINIMAL for performance)
-local MAX_RECORD_TIME = 2.0 -- Keep records for 2 seconds max
-local MAX_TIMELINE_SIZE = 15 -- Limit main timeline to 15 records (AGGRESSIVE)
-local MAX_CUSTOM_THREADS = 3 -- Limit custom threads (AGGRESSIVE)
-local CLEANUP_INTERVAL = 0.5 -- Clean up every 0.5 seconds (AGGRESSIVE)
+local MAX_RECORD_TIME = 5.0 -- Keep records for 5 seconds max (as requested)
+local MAX_TIMELINE_SIZE = 50 -- Increase limit to show more functions
+local MAX_CUSTOM_THREADS = 10 -- Increase custom threads limit
+local CLEANUP_INTERVAL = 1.0 -- Clean up every 1 second
 
 -- Global variables for retained mode (not local)
 isEnabled = false
@@ -63,6 +63,9 @@ local function getMemory()
 	return collectgarbage("count")
 end
 
+-- Track when profiler was paused for cleanup reference
+local pauseStartTime = nil
+
 -- Cleanup old records to prevent memory leaks and lag
 local function cleanupOldRecords()
 	local currentTime = getTime()
@@ -74,28 +77,39 @@ local function cleanupOldRecords()
 
 	lastCleanupTime = currentTime
 
-	-- Clean main timeline - remove records older than MAX_RECORD_TIME
+	-- Use pause time as reference if paused, otherwise current time
+	local referenceTime = isPaused and pauseStartTime or currentTime
+	if not referenceTime then
+		referenceTime = currentTime
+	end
+
+	local functionsRemoved = 0
+
+	-- Clean main timeline - remove records older than MAX_RECORD_TIME from reference
 	local i = 1
 	while i <= #mainTimeline do
 		local record = mainTimeline[i]
-		if record.endTime and (currentTime - record.endTime) > MAX_RECORD_TIME then
+		if record.endTime and (referenceTime - record.endTime) > MAX_RECORD_TIME then
 			table.remove(mainTimeline, i)
+			functionsRemoved = functionsRemoved + 1
 		else
 			i = i + 1
 		end
 	end
 
-	-- Limit main timeline size
+	-- Limit main timeline size aggressively
 	while #mainTimeline > MAX_TIMELINE_SIZE do
 		table.remove(mainTimeline, 1)
+		functionsRemoved = functionsRemoved + 1
 	end
 
 	-- Clean custom threads
 	local j = 1
 	while j <= #customThreads do
 		local thread = customThreads[j]
-		if thread.endTime and (currentTime - thread.endTime) > MAX_RECORD_TIME then
+		if thread.endTime and (referenceTime - thread.endTime) > MAX_RECORD_TIME then
 			table.remove(customThreads, j)
+			functionsRemoved = functionsRemoved + 1
 		else
 			j = j + 1
 		end
@@ -104,6 +118,7 @@ local function cleanupOldRecords()
 	-- Limit custom threads
 	while #customThreads > MAX_CUSTOM_THREADS do
 		table.remove(customThreads, 1)
+		functionsRemoved = functionsRemoved + 1
 	end
 
 	-- Clean active custom stack of completed threads
@@ -112,6 +127,7 @@ local function cleanupOldRecords()
 		local thread = activeCustomStack[k]
 		if thread.endTime then
 			table.remove(activeCustomStack, k)
+			functionsRemoved = functionsRemoved + 1
 		else
 			k = k + 1
 		end
@@ -122,8 +138,9 @@ local function cleanupOldRecords()
 		local m = 1
 		while m <= #scriptData.functions do
 			local func = scriptData.functions[m]
-			if func.endTime and (currentTime - func.endTime) > MAX_RECORD_TIME then
+			if func.endTime and (referenceTime - func.endTime) > MAX_RECORD_TIME then
 				table.remove(scriptData.functions, m)
+				functionsRemoved = functionsRemoved + 1
 			else
 				m = m + 1
 			end
@@ -133,6 +150,11 @@ local function cleanupOldRecords()
 		if #scriptData.functions == 0 then
 			scriptTimelines[scriptName] = nil
 		end
+	end
+
+	-- Report cleanup activity
+	if functionsRemoved > 0 then
+		print(string.format("🧹 Cleanup: removed %d old functions (ref time: %.1fs)", functionsRemoved, referenceTime))
 	end
 end
 
@@ -291,16 +313,16 @@ local function profileHook(event)
 		return
 	end
 
-	-- Skip expensive operations if paused
-	if isPaused then
-		return -- Don't profile when paused = instant lag fix
-	end
-
-	-- Only cleanup occasionally to reduce overhead
+	-- Cleanup runs even when paused to manage memory
 	local currentTime = getTime()
 	if currentTime - lastCleanupTime > CLEANUP_INTERVAL then
 		cleanupOldRecords()
 		autoDisableIfIdle()
+	end
+
+	-- Skip profiling if paused (but cleanup still happened above)
+	if isPaused then
+		return -- Don't profile when paused = instant lag fix
 	end
 
 	-- MINIMAL info gathering for performance
@@ -503,13 +525,16 @@ function MicroProfiler.IsHooked()
 end
 
 function MicroProfiler.SetPaused(paused)
+	local wasPaused = isPaused
 	isPaused = paused
 
-	if paused then
-		-- Just set pause flag - keep hook enabled for immediate resume
+	if paused and not wasPaused then
+		-- Just paused - record pause time for cleanup reference
+		pauseStartTime = getTime()
 		print("⏸️ Profiler PAUSED - recording stopped (automatic + manual)")
-	else
-		-- Resume recording
+	elseif not paused and wasPaused then
+		-- Just resumed - clear pause reference
+		pauseStartTime = nil
 		print("▶️ Profiler RESUMED - recording started (automatic + manual)")
 		-- Ensure hook is enabled when resuming
 		if isEnabled and not isHooked then

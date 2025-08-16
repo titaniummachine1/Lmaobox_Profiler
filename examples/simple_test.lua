@@ -20,8 +20,8 @@ local function PerformTraceTests()
 
 	local traces = {}
 
-	-- Test 200 trace lines in different directions (more work)
-	for i = 1, 200 do
+	-- Test 30 trace lines every frame (lighter but measurable)
+	for i = 1, 30 do
 		-- Vary the direction slightly for each trace
 		local angleOffset = (i - 25) * 2 -- -48 to +48 degrees spread
 		local yawOffset = math.rad(angleOffset)
@@ -62,33 +62,33 @@ local function EntityScanning()
 		if entity:IsAlive() and not entity:IsDormant() then
 			local origin = entity:GetAbsOrigin()
 			local distance = origin:Length()
-			
-			-- Do heavy math work to make it measurable
-			for j = 1, 100 do
+
+			-- Do light math work every frame to make it measurable
+			for j = 1, 10 do
 				local calc = math.sin(distance + j) * math.cos(distance - j) + math.sqrt(j)
 				local string_work = string.format("player_%d_calc_%d_%.6f", i, j, calc)
 			end
-			
+
 			calculations[#calculations + 1] = {
 				type = "player",
 				distance = distance,
 				health = entity:GetHealth(),
-				processed_data = distance * 1.234567
+				processed_data = distance * 1.234567,
 			}
 		end
 	end
 
-	-- Process all other entities too
+	-- Process all other entities too (lighter for every frame)
 	for i, building in ipairs(buildings) do
 		if building:IsAlive() then
-			for j = 1, 50 do
+			for j = 1, 5 do
 				local work = math.tan(i + j) * math.log(j + 1)
 			end
 		end
 	end
 
 	for i, kit in ipairs(medikits) do
-		for j = 1, 25 do
+		for j = 1, 3 do
 			local work = math.exp(i * 0.1) + math.pow(j, 1.5)
 		end
 	end
@@ -96,19 +96,19 @@ local function EntityScanning()
 	return calculations
 end
 
-local function HeavyMathWork()
-	-- Deliberately heavy work to create measurable timing differences
+local function MathWork()
+	-- Light math work for every frame
 	local results = {}
-	for i = 1, 1000 do
-		local heavy = 0
-		for j = 1, 100 do
-			heavy = heavy + math.sin(i * j * 0.001) * math.cos(i + j) + math.sqrt(i * j + 1)
+	for i = 1, 50 do
+		local calc = 0
+		for j = 1, 20 do
+			calc = calc + math.sin(i * j * 0.001) * math.cos(i + j) + math.sqrt(i * j + 1)
 		end
-		results[i] = heavy
-		
+		results[i] = calc
+
 		-- Some string work too
-		local text = string.format("heavy_calc_%d_result_%.6f_iteration_%d", i, heavy, j)
-		results[text] = heavy * 2
+		local text = string.format("calc_%d_result_%.3f", i, calc)
+		results[text] = calc * 2
 	end
 	return results
 end
@@ -119,7 +119,7 @@ local function ManualTest()
 	-- Do the actual trace work
 	local traces = PerformTraceTests()
 	local entities = EntityScanning()
-	local heavy = HeavyMathWork()
+	local math_results = MathWork()
 
 	-- Process results
 	local hitCount = 0
@@ -130,20 +130,16 @@ local function ManualTest()
 	end
 
 	Profiler.End()
-	return hitCount, #entities, #heavy
+	return hitCount, #entities, #math_results
 end
 
--- Register useful callbacks with different timing
+-- Register callbacks to run work every frame (lighter workload)
 callbacks.Register("CreateMove", "simple_test", function(cmd)
 	PerformTraceTests()
+	EntityScanning()  -- Every frame now
 	
-	-- Heavy work every 30 frames to create timing differences
-	if globals.FrameCount() % 30 == 0 then
-		EntityScanning()
-	end
-
-	-- Manual test every 90 frames (different timing)
-	if globals.FrameCount() % 90 == 0 then
+	-- Manual test occasionally
+	if globals.FrameCount() % 120 == 0 then
 		ManualTest()
 	end
 end)
@@ -151,14 +147,12 @@ end)
 callbacks.Register("Draw", "simple_test", function()
 	-- Simple FPS display
 	draw.Color(255, 255, 255, 255)
-	draw.Text(10, 10, string.format("FPS: %d | Heavy Trace Test", math.floor(1 / globals.FrameTime())))
+	draw.Text(10, 10, string.format("FPS: %d | Light Work Every Frame", math.floor(1 / globals.FrameTime())))
 
-	-- Different work in draw with different timing
-	if globals.FrameCount() % 45 == 0 then
-		HeavyMathWork()
-	end
+	-- Math work every frame
+	MathWork()
 	
-	-- Lighter trace work every frame in draw
+	-- More traces every frame
 	PerformTraceTests()
 end)
 

@@ -7,11 +7,11 @@ Profiler.SetVisible(true)
 -- Don't pause immediately - let it collect data first
 
 print("✅ Simple profiler test loaded!")
-print("🔧 Profiler visible:", Profiler.IsVisible())
-print("🔧 Profiler paused:", Profiler.IsPaused())
--- Check body visibility after a delay to ensure profiler is initialized
+-- Check all status after a delay to ensure profiler is fully initialized
 callbacks.Register("CreateMove", "check_status", function(cmd)
 	if globals.FrameCount() == 5 then
+		print("🔧 Profiler visible:", Profiler.IsVisible())
+		print("🔧 Profiler paused:", Profiler.IsPaused())
 		print("🔧 Body visible:", Profiler.IsBodyVisible())
 		Profiler.SetBodyVisible(true)
 		print("🔧 Body set to visible")

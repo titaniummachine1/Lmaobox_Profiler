@@ -208,8 +208,8 @@ local function shouldProfile(info)
 	end
 
 	-- Allow ALL user scripts (including unknown ones) for auto-hooking
-	-- Debug: Show what scripts we're profiling
-	if scriptName ~= "Unknown" and (G and G.DEBUG) then
+	-- Debug: Show what scripts we're profiling (always show for debugging)
+	if scriptName ~= "Unknown" then
 		print(string.format("🔍 Auto-profiling script: %s (function: %s)", scriptName, name or "unnamed"))
 	end
 

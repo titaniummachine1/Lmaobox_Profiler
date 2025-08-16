@@ -4,8 +4,20 @@
 -- Load the profiler
 local Profiler = require("Profiler")
 Profiler.SetVisible(true)
+Profiler.SetBodyVisible(true)  -- Ensure body is visible
 
 print("✅ Simple profiler test loaded!")
+print("🔧 Profiler visible:", Profiler.IsVisible())
+print("🔧 Profiler paused:", Profiler.IsPaused())
+
+-- Simple test function that should be easily detected
+local function SimpleTestFunction()
+	local result = 0
+	for i = 1, 1000 do
+		result = result + math.sin(i) * math.cos(i)
+	end
+	return result
+end
 
 -- Useful trace testing functions with more work to be measurable
 local function PerformTraceTests()
@@ -21,7 +33,7 @@ local function PerformTraceTests()
 	local traces = {}
 
 	-- Test 100 trace lines with heavy math work
-	for i = 1, 100 do
+	for i = 1, 10 do
 		-- Vary the direction slightly for each trace
 		local angleOffset = (i - 25) * 2 -- -48 to +48 degrees spread
 		local yawOffset = math.rad(angleOffset)
@@ -73,7 +85,7 @@ local function EntityScanning()
 			local distance = origin:Length()
 
 			-- Do heavy math work to make it measurable
-			for j = 1, 500 do
+			for j = 1, 50 do
 				local calc = math.sin(distance + j) * math.cos(distance - j) + math.sqrt(j)
 				local heavy = math.tan(j * 0.01) + math.log(j + 1) + math.exp(j * 0.001)
 				local string_work = string.format("player_%d_calc_%d_%.6f_%.6f", i, j, calc, heavy)
@@ -91,14 +103,14 @@ local function EntityScanning()
 	-- Process all other entities too (heavy work)
 	for i, building in ipairs(buildings) do
 		if building:IsAlive() then
-			for j = 1, 200 do
+			for j = 1, 20 do
 				local work = math.tan(i + j) * math.log(j + 1) + math.sin(j * 0.1)
 			end
 		end
 	end
 
 	for i, kit in ipairs(medikits) do
-		for j = 1, 100 do
+		for j = 1, 10 do
 			local work = math.exp(i * 0.1) + math.pow(j, 1.5) + math.cos(j * 0.1)
 		end
 	end
@@ -109,9 +121,9 @@ end
 local function MathWork()
 	-- Heavy math work for measurable duration
 	local results = {}
-	for i = 1, 200 do
+	for i = 1, 20 do
 		local calc = 0
-		for j = 1, 100 do
+		for j = 1, 10 do
 			calc = calc + math.sin(i * j * 0.001) * math.cos(i + j) + math.sqrt(i * j + 1)
 			calc = calc + math.tan(i * 0.01) + math.log(j + 1) + math.exp(i * 0.001)
 		end
@@ -131,21 +143,21 @@ local function ManualTest()
 
 	-- Do the actual trace work with forced delays
 	local traces = PerformTraceTests()
-	
+
 	-- Forced delay between operations
 	local delay_start = _G.globals.RealTime()
 	while (_G.globals.RealTime() - delay_start) < 0.001 do
 		-- Busy wait for 1ms
 	end
-	
+
 	local entities = EntityScanning()
-	
+
 	-- Another forced delay
 	delay_start = _G.globals.RealTime()
 	while (_G.globals.RealTime() - delay_start) < 0.002 do
 		-- Busy wait for 2ms
 	end
-	
+
 	local math_results = MathWork()
 
 	-- Process results
@@ -162,11 +174,19 @@ end
 
 -- Register callbacks to run work every frame (lighter workload)
 callbacks.Register("CreateMove", "simple_test", function(cmd)
+	if globals.FrameCount() % 60 == 0 then
+		print("🎯 CreateMove callback running - Frame:", globals.FrameCount())
+	end
+	
+	-- Call simple test function first
+	SimpleTestFunction()
+	
 	PerformTraceTests()
 	EntityScanning() -- Every frame now
 
 	-- Manual test occasionally
 	if globals.FrameCount() % 120 == 0 then
+		print("🎯 Running ManualTest() - Frame:", globals.FrameCount())
 		ManualTest()
 	end
 end)

@@ -66,8 +66,13 @@ end
 -- Track when profiler was paused for cleanup reference
 local pauseStartTime = nil
 
--- Cleanup old records to prevent memory leaks and lag
+-- Cleanup old records - ONLY when NOT paused to preserve navigation data
 local function cleanupOldRecords()
+	-- DON'T cleanup when paused - keep ALL data for navigation
+	if isPaused then
+		return
+	end
+
 	local currentTime = getTime()
 
 	-- Skip if not enough time has passed
@@ -76,20 +81,13 @@ local function cleanupOldRecords()
 	end
 
 	lastCleanupTime = currentTime
-
-	-- Use pause time as reference if paused, otherwise current time
-	local referenceTime = isPaused and pauseStartTime or currentTime
-	if not referenceTime then
-		referenceTime = currentTime
-	end
-
 	local functionsRemoved = 0
 
-	-- Clean main timeline - remove records older than MAX_RECORD_TIME from reference
+	-- Clean main timeline - remove records older than MAX_RECORD_TIME
 	local i = 1
 	while i <= #mainTimeline do
 		local record = mainTimeline[i]
-		if record.endTime and (referenceTime - record.endTime) > MAX_RECORD_TIME then
+		if record.endTime and (currentTime - record.endTime) > MAX_RECORD_TIME then
 			table.remove(mainTimeline, i)
 			functionsRemoved = functionsRemoved + 1
 		else
@@ -97,39 +95,15 @@ local function cleanupOldRecords()
 		end
 	end
 
-	-- Limit main timeline size aggressively
-	while #mainTimeline > MAX_TIMELINE_SIZE do
-		table.remove(mainTimeline, 1)
-		functionsRemoved = functionsRemoved + 1
-	end
-
 	-- Clean custom threads
 	local j = 1
 	while j <= #customThreads do
 		local thread = customThreads[j]
-		if thread.endTime and (referenceTime - thread.endTime) > MAX_RECORD_TIME then
+		if thread.endTime and (currentTime - thread.endTime) > MAX_RECORD_TIME then
 			table.remove(customThreads, j)
 			functionsRemoved = functionsRemoved + 1
 		else
 			j = j + 1
-		end
-	end
-
-	-- Limit custom threads
-	while #customThreads > MAX_CUSTOM_THREADS do
-		table.remove(customThreads, 1)
-		functionsRemoved = functionsRemoved + 1
-	end
-
-	-- Clean active custom stack of completed threads
-	local k = 1
-	while k <= #activeCustomStack do
-		local thread = activeCustomStack[k]
-		if thread.endTime then
-			table.remove(activeCustomStack, k)
-			functionsRemoved = functionsRemoved + 1
-		else
-			k = k + 1
 		end
 	end
 
@@ -138,7 +112,7 @@ local function cleanupOldRecords()
 		local m = 1
 		while m <= #scriptData.functions do
 			local func = scriptData.functions[m]
-			if func.endTime and (referenceTime - func.endTime) > MAX_RECORD_TIME then
+			if func.endTime and (currentTime - func.endTime) > MAX_RECORD_TIME then
 				table.remove(scriptData.functions, m)
 				functionsRemoved = functionsRemoved + 1
 			else
@@ -152,9 +126,9 @@ local function cleanupOldRecords()
 		end
 	end
 
-	-- Report cleanup activity
-	if functionsRemoved > 0 then
-		print(string.format("🧹 Cleanup: removed %d old functions (ref time: %.1fs)", functionsRemoved, referenceTime))
+	-- Only report if significant cleanup happened
+	if functionsRemoved > 10 then
+		print(string.format("🧹 Cleanup: removed %d old functions while running", functionsRemoved))
 	end
 end
 
@@ -313,16 +287,16 @@ local function profileHook(event)
 		return
 	end
 
-	-- Cleanup runs even when paused to manage memory
+	-- Skip profiling if paused
+	if isPaused then
+		return -- Don't profile when paused = instant lag fix
+	end
+
+	-- Only cleanup when NOT paused to keep data available for navigation
 	local currentTime = getTime()
 	if currentTime - lastCleanupTime > CLEANUP_INTERVAL then
 		cleanupOldRecords()
 		autoDisableIfIdle()
-	end
-
-	-- Skip profiling if paused (but cleanup still happened above)
-	if isPaused then
-		return -- Don't profile when paused = instant lag fix
 	end
 
 	-- MINIMAL info gathering for performance
@@ -529,13 +503,11 @@ function MicroProfiler.SetPaused(paused)
 	isPaused = paused
 
 	if paused and not wasPaused then
-		-- Just paused - record pause time for cleanup reference
-		pauseStartTime = getTime()
-		print("⏸️ Profiler PAUSED - recording stopped (automatic + manual)")
+		-- Just paused - STOP cleanup to preserve data for navigation
+		print("⏸️ Profiler PAUSED - recording stopped, data preserved for navigation")
 	elseif not paused and wasPaused then
-		-- Just resumed - clear pause reference
-		pauseStartTime = nil
-		print("▶️ Profiler RESUMED - recording started (automatic + manual)")
+		-- Just resumed - resume cleanup
+		print("▶️ Profiler RESUMED - recording started, cleanup resumed")
 		-- Ensure hook is enabled when resuming
 		if isEnabled and not isHooked then
 			enableHook()

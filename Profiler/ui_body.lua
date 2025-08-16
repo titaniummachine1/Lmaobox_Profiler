@@ -237,7 +237,15 @@ local function drawFunctionBar(func, y, depth, startTime, timeRange, screenWidth
 			end
 			_barDebugCount = _barDebugCount + 1
 			if _barDebugCount <= 3 then
-				print(string.format("🎨 Drawing bar: %s at x1=%.0f, width=%.0f, y=%.0f", func.name or "unnamed", x1, width, indentedY))
+				print(
+					string.format(
+						"🎨 Drawing bar: %s at x1=%.0f, width=%.0f, y=%.0f",
+						func.name or "unnamed",
+						x1,
+						width,
+						indentedY
+					)
+				)
 			end
 		end
 
@@ -629,13 +637,19 @@ function UIBody.Draw(profilerData, topBarHeight)
 		for _, scriptData in pairs(profilerData.scriptTimelines) do
 			scriptCount = scriptCount + 1
 			if scriptData.functions and #scriptData.functions > 0 then
-				contentHeight = contentHeight + HEADER_HEIGHT + (#scriptData.functions * (THREAD_HEIGHT + THREAD_SPACING)) + 20
+				contentHeight = contentHeight
+					+ HEADER_HEIGHT
+					+ (#scriptData.functions * (THREAD_HEIGHT + THREAD_SPACING))
+					+ 20
 			else
 				contentHeight = contentHeight + HEADER_HEIGHT + 20
 			end
 		end
 		if scriptCount == 0 and profilerData.mainTimeline then
-			contentHeight = contentHeight + HEADER_HEIGHT + (#profilerData.mainTimeline * (THREAD_HEIGHT + THREAD_SPACING)) + 20
+			contentHeight = contentHeight
+				+ HEADER_HEIGHT
+				+ (#profilerData.mainTimeline * (THREAD_HEIGHT + THREAD_SPACING))
+				+ 20
 		end
 	end
 
@@ -695,7 +709,13 @@ function UIBody.Draw(profilerData, topBarHeight)
 				-- ALWAYS draw the thread header even if no functions yet
 				currentY = drawThread(scriptThread, currentY, startTime, timeRange, screenW)
 				if G and G.DEBUG then
-					print(string.format("📊 Drawing script timeline: %s (%d functions)", scriptName, #scriptData.functions))
+					print(
+						string.format(
+							"📊 Drawing script timeline: %s (%d functions)",
+							scriptName,
+							#scriptData.functions
+						)
+					)
 				end
 			end
 		end

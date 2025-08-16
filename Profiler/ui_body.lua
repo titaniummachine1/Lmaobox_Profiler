@@ -395,7 +395,8 @@ local function handleInput(screenWidth, screenHeight, topBarHeight)
 
 		if math.abs(deltaX) > 0 or math.abs(deltaY) > 0 then
 			viewportX = viewportX - deltaX * PAN_SPEED
-			viewportY = viewportY - deltaY * PAN_SPEED
+			-- Fix inverted vertical movement: dragging down increases viewportY
+			viewportY = viewportY + deltaY * PAN_SPEED
 		end
 
 		lastMouseX = mx

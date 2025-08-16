@@ -1,19 +1,27 @@
 --[[
-    Globals Module - Shared Runtime Data
+    Globals Module - Shared Runtime Data (Retained Mode)
     Used by: Main.lua, profiler.lua
     
-    This module provides a clean namespace for shared data
-    without polluting the built-in Lua global table (_G)
+    This module provides GLOBAL retained state to prevent multiple instances
 ]]
 
-local G = {}
+-- Use actual globals for retained mode (not local)
+if not _G.MICROPROFILER_GLOBALS then
+	_G.MICROPROFILER_GLOBALS = {
+		-- Profiler shared data
+		ProfilerEnabled = false,
+		CurrentFrame = 0,
+		LastDrawTime = 0,
+		BodyToggleRequested = false,
 
--- Profiler shared data
-G.ProfilerEnabled = false
-G.CurrentFrame = 0
-G.LastDrawTime = 0
+		-- Instance control
+		ProfilerInstance = nil,
+		ProfilerLoaded = false,
 
--- Debug settings
-G.DEBUG = false
+		-- Debug settings
+		DEBUG = false,
+	}
+end
 
-return G
+-- Return the global instance
+return _G.MICROPROFILER_GLOBALS

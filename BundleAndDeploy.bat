@@ -16,4 +16,14 @@ if errorlevel 1 (
 )
 
 echo ✅ Profiler Library deployed successfully to %localappdata%
+
+echo Deploying examples...
+call "examples\deployexamples.bat"
+if errorlevel 1 (
+    echo ❌ Examples deploy failed!
+    pause
+    exit /b 1
+)
+
+echo ✅ All files deployed successfully!
 exit

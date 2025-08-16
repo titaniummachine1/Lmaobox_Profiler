@@ -1,249 +1,200 @@
--- Lmaobox Profiler Example
+-- Lmaobox Microprofiler Example
 -- Save as example.lua in %localappdata%
 -- Load with: lua_load example.lua
+--
+-- This example demonstrates:
+-- 1. Automatic function profiling (no manual hooks needed!)
+-- 2. One manual profiling example for custom threads
+-- 3. Clean, readable code that shows performance characteristics
 
--- Clear any existing profiler before loading new one
-if package.loaded["Profiler"] then
-	local oldProfiler = package.loaded["Profiler"]
-	if oldProfiler and oldProfiler.Unload then
-		oldProfiler.Unload()
+-- RELOAD SUPPORT: Improved package unloading pattern
+if _G.MICROPROFILER_DEMO_LOADED then
+	print("🔄 Microprofiler demo already loaded - reloading for fresh updates...")
+
+	-- Unregister existing callbacks first
+	if _G.callbacks then
+		_G.callbacks.Unregister("CreateMove", "microprofiler_demo")
+		_G.callbacks.Unregister("Draw", "microprofiler_demo")
+		_G.callbacks.Unregister("FireGameEvent", "microprofiler_demo")
+		_G.callbacks.Unregister("Unload", "microprofiler_demo")
 	end
+
+	-- Clear demo flag to allow reload
+	_G.MICROPROFILER_DEMO_LOADED = false
+	print("   ✓ Demo callbacks cleared")
 end
 
--- Load the bundled Profiler library
+-- Get current script name using proper Windows path handling
+local scriptFullPath = GetScriptName()
+local scriptFileName = scriptFullPath:match("\\([^\\]-)$"):gsub("%.lua$", "") or "example"
+print(string.format("📜 Loading script: %s (from %s)", scriptFileName, scriptFullPath))
+
+-- Load the Microprofiler system (will auto-reload if needed)
 local Profiler = require("Profiler")
 
--- Enable the profiler with optimal settings for Lmaobox
+-- Mark demo as loaded
+_G.MICROPROFILER_DEMO_LOADED = true
+
+-- Suppress linter warnings for external APIs
+---@diagnostic disable: undefined-global
+
+-- IMPORTANT: Check if profiler is already visible to avoid double-enabling
+if not Profiler.SetVisible then
+	print("❌ ERROR: Profiler not loaded correctly!")
+	return
+end
+
+-- Just enable the profiler - no need to check microprofiler directly
 Profiler.SetVisible(true)
-Profiler.SetSortMode("size") -- Show biggest components first
-Profiler.SetWindowSize(60) -- Average over 60 frames for smooth data
+print("✅ Profiler enabled!")
 
-print("✅ Lmaobox Profiler enabled! Memory and performance monitoring active.")
+print("✅ Microprofiler enabled! All functions are automatically profiled.")
+print("Controls: P = Pause/Resume, O = Show/Hide detailed view")
+print("Features: Automatic timeline + Custom profiling threads")
+print("Click frame pillars to inspect timing, drag to pan, scroll to zoom!")
 
---[[
-    USAGE:
-    Profiler.BeginSystem("name") - Start system profiling
-    Profiler.EndSystem() - End system profiling
-    Profiler.Begin("name") - Start component profiling
-    Profiler.End() - End component profiling
-]]
+-- TEST: Heavy work that should be easily visible
+local function TestManualProfiling()
+	Profiler.Begin("HEAVY_MANUAL_WORK")
 
--- Create fonts for our example scripts (like the community examples)
+	-- MUCH more significant work to ensure it shows up
+	for i = 1, 5000 do -- Increased from 1000
+		local result = math.sin(i) * math.cos(i) + math.sqrt(i) + math.tan(i / 100)
+		local text = string.format("heavy_test_%d_%.6f", i, result)
+		-- Create significant memory allocation
+		local data = {
+			index = i,
+			value = result,
+			text = text,
+			timestamp = globals.RealTime(),
+			extra_data = {
+				computed = result * 2,
+				formatted = text .. "_extra",
+				nested = { level = i % 10, category = "test" },
+			},
+		}
+		-- Force string operations
+		local combined = data.text .. data.extra_data.formatted
+	end
+
+	Profiler.End("HEAVY_MANUAL_WORK")
+end
+
+-- Call test function immediately and repeatedly
+TestManualProfiling()
+print("🧪 Manual profiling test completed")
+
+-- Add continuous test functions that should show up
+local function ContinuousWork()
+	-- HEAVY work that should definitely be profiled
+	local total = 0
+	for i = 1, 200 do -- Increased from 50
+		total = total + math.sin(i * 0.1) * math.cos(i * 0.2) + math.log(i + 1)
+		-- Add string operations
+		local temp = string.format("calc_%d_%.3f", i, total)
+	end
+	return total
+end
+
+local function MoreWork()
+	-- HEAVY string work to profile
+	local result = ""
+	for i = 1, 100 do -- Increased from 20
+		result = result .. tostring(i) .. "_heavy_" .. string.rep("x", i % 10)
+		-- Add table operations
+		local temp = { id = i, value = result, computed = i * 2 }
+	end
+	return result
+end
+
+local function ExpensiveTableWork()
+	-- NEW: Heavy table operations
+	local bigTable = {}
+	for i = 1, 500 do
+		bigTable[i] = {
+			id = i,
+			data = string.format("entry_%d", i),
+			nested = { value = i * 2, flag = i % 2 == 0 },
+		}
+	end
+	-- Sort the table
+	table.sort(bigTable, function(a, b)
+		return a.id > b.id
+	end)
+	return #bigTable
+end
+
+-- Create fonts for our example
 local consolas = draw.CreateFont("Consolas", 17, 500)
 local verdana = draw.CreateFont("Verdana", 16, 800)
 
--- Variables for our example features
+-- Variables for our examples
 local current_fps = 0
 local damage_events = {}
 
--- FPS Counter (based on x6h's example) - Profiled version
-local function ProfiledFPSCounter()
-	Profiler.Begin("fps_counter")
-
+-- Example 1: Simple FPS Counter (automatically profiled)
+local function SimpleFPSCounter()
 	draw.SetFont(consolas)
 	draw.Color(255, 255, 255, 255)
 
-	-- Update fps every 100 frames (expensive operation)
+	-- Update fps every 100 frames
 	if globals.FrameCount() % 100 == 0 then
 		current_fps = math.floor(1 / globals.FrameTime())
 	end
 
-	-- Random memory allocation to show variety
-	local temp_data = {}
-	local fps_cache = {}
-	local frame_history = {}
-
-	for i = 1, math.random(5, 25) do
-		local frame_id = "frame_" .. globals.FrameCount() .. "_" .. i
-		temp_data[i] = frame_id
-
-		fps_cache[frame_id] = {
-			frame_number = globals.FrameCount(),
-			iteration = i,
-			fps_at_time = current_fps,
-			timestamp = globals.RealTime(),
-			debug_info = string.format("fps_debug_%d_%.2f", i, globals.RealTime()),
-		}
-
-		frame_history[i] = {
-			previous_fps = current_fps - math.random(0, 5),
-			current_fps = current_fps,
-			predicted_fps = current_fps + math.random(-2, 2),
-			frame_delta = globals.FrameTime(),
-			history_string = "fps_history_" .. tostring(i) .. "_" .. tostring(current_fps),
-		}
-	end
-
-	-- Create FPS statistics
-	local fps_stats = {
-		min_fps = current_fps - math.random(5, 15),
-		max_fps = current_fps + math.random(5, 15),
-		avg_fps = current_fps + math.random(-3, 3),
-		frame_count = globals.FrameCount(),
-		uptime = globals.RealTime(),
-		performance_level = current_fps > 60 and "high" or current_fps > 30 and "medium" or "low",
+	-- Some memory allocation for realistic profiling data (shows in profiler)
+	local _ = {
+		current = current_fps,
+		frame = globals.FrameCount(),
+		time = globals.RealTime(),
+		delta = globals.FrameTime(),
 	}
 
-	draw.Text(5, 5, "[lmaobox | fps: " .. tostring(current_fps) .. " | profiler: ON]")
-
-	Profiler.End()
+	draw.Text(5, 5, string.format("[FPS: %d | Microprofiler: ON | Frame: %d]", current_fps, globals.FrameCount()))
 end
 
--- Basic Player ESP (based on community example) - Profiled version
-local function ProfiledPlayerESP()
-	Profiler.Begin("player_esp")
-
+-- Example 2: Player ESP (automatically profiled)
+local function SimplePlayerESP()
 	if engine.Con_IsVisible() or engine.IsGameUIVisible() then
-		Profiler.End()
 		return
 	end
 
-	-- This is expensive - finding all players every frame
+	-- This function call will be automatically profiled
 	local players = entities.FindByClass("CTFPlayer")
 
-	-- Random extra computation to vary load
-	local complexity = math.random(1, 10)
-	local extra_data = {}
-	for i = 1, complexity * 3 do
-		extra_data[i] = {
-			id = i,
-			name = "player_data_" .. i,
-			pos = { math.random(100, 800), math.random(100, 600) },
-			active = math.random() > 0.5,
-		}
-	end
-
-	for i, p in ipairs(players) do
-		if p:IsAlive() and not p:IsDormant() then
-			local screenPos = client.WorldToScreen(p:GetAbsOrigin())
-			if screenPos ~= nil then
+	-- Process players
+	for i, player in ipairs(players) do
+		if player:IsAlive() and not player:IsDormant() then
+			local screenPos = client.WorldToScreen(player:GetAbsOrigin())
+			if screenPos then
 				draw.SetFont(verdana)
 				draw.Color(255, 255, 255, 255)
-				draw.Text(screenPos[1], screenPos[2], p:GetName())
-
-				-- Random additional processing
-				if math.random() > 0.7 then
-					local health_info = "HP: " .. tostring(math.random(1, 100))
-					extra_data[#extra_data + 1] = health_info
-				end
+				draw.Text(screenPos[1], screenPos[2], player:GetName())
 			end
 		end
 	end
-
-	Profiler.End()
 end
 
--- Damage Logger (based on @RC's example) - Profiled version
-local function ProfiledDamageLogger(event)
-	Profiler.Begin("damage_logger")
-
-	-- Random processing even when no damage event
-	local processing_load = math.random(1, 5)
-	local temp_calculations = {}
-	for i = 1, processing_load do
-		temp_calculations[i] = {
-			calc = math.sin(globals.RealTime() * i) * math.cos(i),
-			data = string.format("calc_%d_%.2f", i, globals.RealTime()),
-		}
-	end
-
-	if event:GetName() == "player_hurt" then
-		local localPlayer = entities.GetLocalPlayer()
-		if not localPlayer then
-			Profiler.End()
-			return
-		end
-
-		local victim = entities.GetByUserID(event:GetInt("userid"))
-		local health = event:GetInt("health")
-		local attacker = entities.GetByUserID(event:GetInt("attacker"))
-		local damage = event:GetInt("damageamount")
-
-		if attacker and localPlayer:GetIndex() == attacker:GetIndex() then
-			-- Store damage event with random extra data
-			local event_data = {
-				victim = victim:GetName(),
-				damage = damage,
-				health = health,
-				time = globals.RealTime(),
-				extra_stats = {},
-			}
-
-			-- Add random extra statistics
-			for i = 1, math.random(3, 8) do
-				event_data.extra_stats[i] = {
-					stat = "stat_" .. i,
-					value = math.random(1, 1000),
-					timestamp = globals.RealTime(),
-				}
-			end
-
-			table.insert(damage_events, event_data)
-
-			-- Keep only last 10 damage events to prevent memory bloat
-			if #damage_events > 10 then
-				table.remove(damage_events, 1)
-			end
-
-			print(
-				"You hit "
-					.. victim:GetName()
-					.. " for "
-					.. tostring(damage)
-					.. "HP (health: "
-					.. tostring(health)
-					.. ")"
-			)
-		end
-	end
-
-	Profiler.End()
-end
-
--- Example aimbot logic (expensive computation)
-local function ProfiledAimbot(cmd)
-	Profiler.Begin("aimbot")
-
+-- Example 3: Simplified Aimbot Logic (automatically profiled)
+local function SimplifiedAimbotLogic(cmd)
 	local localPlayer = entities.GetLocalPlayer()
 	if not localPlayer or not localPlayer:IsAlive() then
-		Profiler.End()
 		return
 	end
 
-	-- Random complexity multiplier
-	local complexity = math.random(1, 5)
-
-	-- Expensive: scan for enemies
+	-- Simplified computation - less memory intensive
 	local players = entities.FindByClass("CTFPlayer")
 	local bestTarget = nil
 	local bestFOV = 180
-	local target_analysis = {}
 
+	-- Simplified calculations
 	for i, player in ipairs(players) do
 		if player:IsAlive() and not player:IsDormant() and player:GetTeamNumber() ~= localPlayer:GetTeamNumber() then
-			-- Expensive: FOV calculation with random complexity
+			-- Simple FOV calculation
 			local fov = math.random() * 60
 
-			-- Random target analysis data
-			local analysis = {
-				player_id = i,
-				fov = fov,
-				distance = math.random(100, 2000),
-				threat_level = math.random(1, 10),
-				prediction_data = {},
-			}
-
-			-- Add random prediction calculations
-			for j = 1, complexity * 3 do
-				analysis.prediction_data[j] = {
-					frame = j,
-					x = math.random(-100, 100),
-					y = math.random(-100, 100),
-					confidence = math.random(),
-				}
-			end
-
-			target_analysis[i] = analysis
+			-- Minimal math for demonstration
+			local _ = math.sin(fov) * math.cos(fov / 2)
 
 			if fov < bestFOV then
 				bestFOV = fov
@@ -252,233 +203,206 @@ local function ProfiledAimbot(cmd)
 		end
 	end
 
-	-- Simulate aim adjustment (expensive math with random load)
+	-- Simple aim adjustment simulation
 	if bestTarget then
-		local iterations = math.random(50, 100)
-		local calculation_cache = {}
-		local result_strings = {}
-
-		for i = 1, iterations do
-			local calc_result = math.sin(i * complexity) * math.cos(i / complexity)
-			calculation_cache[i] = {
-				iteration = i,
-				result = calc_result,
-				formatted = string.format("calc_%d_%.4f", i, calc_result),
-				timestamp = globals.RealTime(),
-			}
-
-			-- Create string entries that use memory
-			result_strings[i] = "aim_calculation_" .. i .. "_" .. tostring(calc_result)
-		end
-
-		-- Random smoothing calculations with memory allocation
-		local smoothing_data = {}
-		local smoothing_history = {}
-		for i = 1, math.random(5, 15) do
-			local angle = math.random() * 360
-			local smooth_factor = math.random()
-
-			smoothing_data[i] = {
-				angle = angle,
-				smooth_factor = smooth_factor,
-				timestamp = globals.RealTime(),
-				debug_info = string.format("smooth_%.2f_%.4f", angle, smooth_factor),
-			}
-
-			-- Create history entries
-			smoothing_history[i] = {
-				previous_angle = angle - math.random(10, 30),
-				current_angle = angle,
-				delta = math.random(-5, 5),
-				smoothed_delta = smooth_factor * math.random(-5, 5),
-			}
-		end
-
-		-- Create lookup tables
-		local angle_lookup = {}
-		for angle = 0, 360, 5 do
-			angle_lookup[angle] = {
-				sin = math.sin(math.rad(angle)),
-				cos = math.cos(math.rad(angle)),
-				tan = math.tan(math.rad(angle)),
-			}
-		end
+		local angle = math.sin(globals.RealTime()) * 0.1
+		local _ = math.cos(angle) -- Simple calculation
 	end
-
-	Profiler.End()
 end
 
--- Example movement assistance
-local function ProfiledMovement(cmd)
-	Profiler.Begin("movement")
+-- Example 4: Simplified Manual Profiling API Test
+local function ManualProfilingExample()
+	-- This is the ONE manual profiling example to test the API
+	Profiler.Begin("custom_operation")
 
-	local localPlayer = entities.GetLocalPlayer()
-	if not localPlayer then
-		Profiler.End()
+	-- Simplified custom operation - less memory intensive
+	local work_size = math.random(10, 50) -- Much smaller
+	local total = 0
+
+	for i = 1, work_size do
+		-- Simple calculations without storing results
+		total = total + math.sqrt(i) * math.sin(i / 10)
+	end
+
+	-- Nested custom profiling
+	Profiler.Begin("custom_processing")
+	for i = 1, 10 do -- Much smaller loop
+		local _ = string.format("proc_%d_%.2f", i, globals.RealTime())
+	end
+	Profiler.End("custom_processing")
+
+	-- Simple operation
+	Profiler.Begin("custom_math")
+	local result = math.sin(total) * math.cos(globals.RealTime())
+	local _ = result -- Use the result
+	Profiler.End("custom_math")
+
+	Profiler.End("custom_operation")
+end
+
+-- Example 5: Event Handler (automatically profiled)
+local function DamageEventHandler(event)
+	if event:GetName() ~= "player_hurt" then
 		return
 	end
 
-	-- Random movement complexity
-	local movement_type = math.random(1, 4)
-	local movement_data = {}
-
-	-- Simulate strafe calculation (expensive)
-	local velocity = localPlayer:EstimateAbsVelocity()
-	if velocity then
-		-- Different movement calculations based on random type
-		if movement_type == 1 then -- Strafe
-			for i = 1, math.random(30, 80) do
-				local vel_length = velocity:Length() or 0
-				movement_data[i] = {
-					angle = math.sqrt(math.abs(vel_length) + i),
-					strafe_power = math.random() * 100,
-					type = "strafe",
-				}
-			end
-		elseif movement_type == 2 then -- Bhop
-			for i = 1, math.random(20, 60) do
-				movement_data[i] = {
-					jump_timing = math.sin(i * 0.1) * math.cos(i * 0.05),
-					ground_check = math.random() > 0.5,
-					type = "bhop",
-				}
-			end
-		elseif movement_type == 3 then -- Air strafe
-			for i = 1, math.random(40, 100) do
-				local vel_length = velocity:Length() or 0
-				movement_data[i] = {
-					air_accel = math.random() * 10,
-					turn_rate = math.random() * 180,
-					velocity_prediction = math.abs(vel_length) * math.random(),
-					type = "airstrafe",
-				}
-			end
-		else -- Advanced movement
-			for i = 1, math.random(50, 120) do
-				local tan_val = math.tan(i / 4)
-				-- Clamp tan value to prevent infinity
-				if tan_val > 1000 then
-					tan_val = 1000
-				end
-				if tan_val < -1000 then
-					tan_val = -1000
-				end
-				if tan_val ~= tan_val then
-					tan_val = 0
-				end -- Check for NaN
-
-				movement_data[i] = {
-					advanced_calc = math.sin(i) * math.cos(i / 2) * tan_val,
-					momentum = math.random() * 500,
-					optimal_angle = math.random() * 360,
-					type = "advanced",
-				}
-			end
-		end
+	local localPlayer = entities.GetLocalPlayer()
+	if not localPlayer then
+		return
 	end
 
-	-- Random additional physics calculations with memory allocation
-	local physics_load = math.random(1, 3)
-	local physics_cache = {}
-	local physics_history = {}
+	-- These function calls are automatically profiled
+	local victim = entities.GetByUserID(event:GetInt("userid"))
+	local attacker = entities.GetByUserID(event:GetInt("attacker"))
 
-	for i = 1, physics_load * 5 do
-		local physics_calc = math.sqrt(i) * math.log(i + 1)
-		local physics_id = string.format("physics_%d_%d", i, globals.FrameCount())
+	if attacker and localPlayer:GetIndex() == attacker:GetIndex() then
+		local damage = event:GetInt("damageamount")
+		local health = event:GetInt("health")
 
-		physics_cache[physics_id] = {
-			calculation = physics_calc,
-			iteration = i,
-			load_factor = physics_load,
+		-- Store damage data (with some processing)
+		local damage_data = {
+			victim_name = victim:GetName(),
+			damage = damage,
+			health = health,
 			timestamp = globals.RealTime(),
-			debug_string = string.format("phys_calc_%.4f_at_%d", physics_calc, i),
-		}
-
-		physics_history[i] = {
-			previous_calc = physics_calc - math.random(),
-			current_calc = physics_calc,
-			delta = (math.random() - 0.5),
-			interpolated = physics_calc + (math.random() - 0.5) * 0.2,
-		}
-
-		movement_data[#movement_data + 1] = {
-			physics = physics_calc,
 			frame = globals.FrameCount(),
-			type = "physics",
-			cache_id = physics_id,
-			memory_debug = "physics_calculation_" .. tostring(i) .. "_" .. tostring(physics_calc),
 		}
-	end
 
-	-- Create velocity prediction tables
-	local velocity_predictions = {}
-	for frame = 1, math.random(10, 25) do
-		velocity_predictions[frame] = {
-			predicted_x = math.random(-500, 500),
-			predicted_y = math.random(-500, 500),
-			predicted_z = math.random(-100, 100),
-			confidence = math.random(),
-			frame_offset = frame,
-			prediction_string = string.format(
-				"vel_pred_%d_%.2f_%.2f_%.2f",
-				frame,
-				math.random(-500, 500),
-				math.random(-500, 500),
-				math.random(-100, 100)
-			),
-		}
-	end
+		table.insert(damage_events, damage_data)
 
-	Profiler.End()
+		-- Keep only recent events
+		if #damage_events > 10 then
+			table.remove(damage_events, 1)
+		end
+
+		print(string.format("Hit %s for %d damage (health: %d)", victim:GetName(), damage, health))
+	end
 end
 
--- Register callbacks
-callbacks.Unregister("CreateMove", "profiled_createmove")
-callbacks.Unregister("Draw", "profiled_draw")
-callbacks.Unregister("FireGameEvent", "profiled_events")
-callbacks.Unregister("Unload", "profiled_unload")
-
-callbacks.Register("CreateMove", "profiled_createmove", function(cmd)
-	Profiler.BeginSystem("oncreatemove")
-	ProfiledAimbot(cmd)
-	ProfiledMovement(cmd)
-	Profiler.EndSystem()
-end)
-
-callbacks.Register("Draw", "profiled_draw", function()
-	Profiler.BeginSystem("ondraw")
-	ProfiledFPSCounter()
-	ProfiledPlayerESP()
-	Profiler.Draw()
-	Profiler.EndSystem()
-end)
-
-callbacks.Register("FireGameEvent", "profiled_events", function(event)
-	Profiler.BeginSystem("onevent")
-	ProfiledDamageLogger(event)
-	Profiler.EndSystem()
-end)
-
-callbacks.Register("Unload", "profiled_unload", function()
-	Profiler.BeginSystem("onunload")
-	Profiler.Begin("cleanup")
-	local cleanup_tasks = math.random(10, 30)
-	local cleanup_data = {}
-	for i = 1, cleanup_tasks do
-		cleanup_data[i] = {
-			task = "cleanup_task_" .. i,
-			memory_freed = math.random(1000, 50000),
-			status = "completed",
-			timestamp = globals.RealTime(),
-		}
+-- Movement Helper (automatically profiled, simplified)
+local function MovementHelper(cmd)
+	local localPlayer = entities.GetLocalPlayer()
+	if not localPlayer then
+		return
 	end
-	Profiler.End()
 
-	Profiler.Begin("shutdown")
-	local shutdown_operations = math.random(5, 15)
-	for i = 1, shutdown_operations do
-		local operation = string.format("shutdown_%d_%x", i, math.random(100000, 999999))
+	-- Simplified velocity calculations
+	local velocity = localPlayer:EstimateAbsVelocity()
+	if velocity then
+		local vel_length = velocity:Length()
+
+		-- Simple movement calculations without storing results
+		local calc_count = math.random(5, 15) -- Much smaller
+
+		for i = 1, calc_count do
+			-- Simple calculations without memory allocation
+			local strafe_angle = math.atan(vel_length / math.max(i, 0.001))
+			local acceleration = math.sqrt(vel_length + i)
+			local _ = math.sin(i * 0.1) * vel_length + strafe_angle + acceleration
+		end
 	end
-	Profiler.End()
-	Profiler.EndSystem()
+end
+
+-- Register callbacks (functions will be automatically profiled!)
+callbacks.Unregister("CreateMove", "microprofiler_demo")
+callbacks.Unregister("Draw", "microprofiler_demo")
+callbacks.Unregister("FireGameEvent", "microprofiler_demo")
+callbacks.Unregister("Unload", "microprofiler_demo")
+
+-- CreateMove callback
+callbacks.Register("CreateMove", "microprofiler_demo", function(cmd)
+	-- All these function calls are automatically profiled!
+	SimplifiedAimbotLogic(cmd)
+	MovementHelper(cmd)
+	ManualProfilingExample() -- Only manual profiling example
+
+	-- Add our continuous work functions EVERY FRAME
+	ContinuousWork()
+	MoreWork()
+	ExpensiveTableWork() -- NEW heavy function
+
+	-- Add some random manual profiling every 30 frames (more frequent)
+	if globals.FrameCount() % 30 == 0 then
+		TestManualProfiling()
+	end
+
+	-- Even more frequent manual profiling with different names
+	if globals.FrameCount() % 45 == 0 then
+		Profiler.Begin("CREATEMOCE_HEAVY_CALC")
+		for i = 1, 100 do
+			local calc = math.sin(i) + math.cos(i) + math.sqrt(i)
+		end
+		Profiler.End("CREATEMOCE_HEAVY_CALC")
+	end
 end)
+
+-- Draw callback
+callbacks.Register("Draw", "microprofiler_demo", function()
+	-- All these function calls are automatically profiled!
+	SimpleFPSCounter()
+	SimplePlayerESP()
+
+	-- Add heavy work EVERY draw frame
+	ContinuousWork()
+	MoreWork()
+
+	-- Manual profiling in Draw callback too
+	if globals.FrameCount() % 20 == 0 then
+		Profiler.Begin("DRAW_HEAVY_WORK")
+		ExpensiveTableWork()
+		for i = 1, 50 do
+			local text = string.format("draw_calc_%d", i)
+			local data = { frame = globals.FrameCount(), text = text }
+		end
+		Profiler.End("DRAW_HEAVY_WORK")
+	end
+
+	-- DON'T call Profiler.Draw() here - let the main profiler handle it
+	-- This prevents double drawing
+	-- Profiler.Draw()
+end)
+
+-- Event callback
+callbacks.Register("FireGameEvent", "microprofiler_demo", function(event)
+	-- This function call is automatically profiled!
+	DamageEventHandler(event)
+end)
+
+-- Cleanup callback
+callbacks.Register("Unload", "microprofiler_demo", function()
+	-- Clean shutdown
+	print("🔄 Microprofiler demo unloading...")
+
+	-- Manual profiling for cleanup operations
+	Profiler.Begin("cleanup_operations")
+
+	local cleanup_tasks = {
+		"callbacks_cleanup",
+		"memory_cleanup",
+		"state_reset",
+		"profiler_shutdown",
+	}
+
+	for i, task in ipairs(cleanup_tasks) do
+		-- Simulate cleanup work
+		local task_data = string.format("cleanup_%s_%d", task, globals.FrameCount())
+		local task_result = math.random(1000, 5000) -- Simulate memory freed
+	end
+
+	Profiler.End("cleanup_operations")
+
+	-- Clear demo loaded flag to allow reload
+	_G.MICROPROFILER_DEMO_LOADED = false
+
+	print("✅ Microprofiler demo unloaded cleanly!")
+end)
+
+print("🚀 Microprofiler demo loaded!")
+print("💡 Notice: Most functions are automatically profiled now!")
+print("📊 Check the profiler UI - you should see detailed timing for all functions")
+print("🔧 Only 'custom_expensive_operation' uses manual profiling as an API demo")
+print("")
+print("🔄 RELOAD TESTING:")
+print("   • Run 'lua_load example.lua' again to test auto-reload")
+print("   • Or call 'Profiler.Reload()' to manually reload profiler")
+print("   • All packages will be cleared and reloaded fresh!")

@@ -1,7 +1,19 @@
 {
+    "diagnostics": {
+      "globals": [
+        "Vector3",
+        "CONTENTS_EMPTY",
+        "MASK_SHOT_HULL",
+        "FL_ONGROUND",
+        "client",
+        "engine"
+      ]
+    },
     "$schema": "https://raw.githubusercontent.com/sumneko/vscode-lua/master/setting/schema.json",
-    "Lua.runtime.version": "Lua 5.4",
-    "Lua.workspace.library": [
-        "${3rd}/lfs/library"
-    ]
-}
+    "workspace": {
+      "library": [
+        "${3rd}/lmaobox/library",
+        "./lmaobox-types.lua"
+      ]
+    }
+  } 

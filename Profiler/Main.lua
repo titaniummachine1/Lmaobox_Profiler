@@ -21,19 +21,56 @@
         Profiler.Draw()
 ]]
 
+-- Global shared table (from globals.lua) – retained mode
+local G = require("Profiler.globals")
+
+-- RELOAD DETECTION: Check if profiler is already loaded
+if G.ProfilerInstance and G.ProfilerLoaded then
+	print("🔄 Microprofiler already loaded - performing full reload...")
+
+	-- Unload existing instance completely
+	if G.ProfilerInstance.Unload then
+		G.ProfilerInstance.Unload()
+	end
+
+	-- Force clear all package cache (improved pattern)
+	local packagesToClear = {
+		"Profiler",
+		"Profiler.profiler",
+		"Profiler.microprofiler",
+		"Profiler.ui_top",
+		"Profiler.ui_body",
+		"Profiler.globals",
+		"Profiler.config",
+		"Profiler.Main",
+	}
+
+	for _, pkg in ipairs(packagesToClear) do
+		if package.loaded[pkg] then
+			package.loaded[pkg] = nil
+		end
+	end
+
+	-- Clear global state
+	G.ProfilerInstance = nil
+	G.ProfilerLoaded = false
+
+	-- Re-require globals to get fresh state
+	G = require("Profiler.globals")
+
+	print("📦 All packages cleared - loading fresh profiler...")
+end
+
 -- Check if an older version of the profiler is already loaded and unload it
 local previouslyLoaded = package.loaded["Profiler"]
 if previouslyLoaded and previouslyLoaded.Unload then
 	previouslyLoaded.Unload()
 end
 
--- Global shared table (from globals.lua) – *not* _G
-local G = require("Profiler.globals")
-
--- Flags stored in G to track profiler state
-G.ProfilerLoaded = false
-G.ProfilerCallbacksRegistered = false
-G.ProfilerEnabled = false
+-- Initialize profiler state flags (now in retained globals)
+ProfilerLoaded = false -- Global variable (not local)
+ProfilerCallbacksRegistered = false -- Global variable
+ProfilerEnabled = false -- Global variable
 
 -- Import core module (does **not** register callbacks on its own)
 local ProfilerCore = require("Profiler.profiler")
@@ -48,6 +85,13 @@ Profiler.StartComponent = ProfilerCore.StartComponent
 Profiler.EndComponent = ProfilerCore.EndComponent
 Profiler.EndSystem = ProfilerCore.EndSystem
 Profiler.Draw = ProfilerCore.Draw
+
+-- New minimalist API for nested scopes
+Profiler.Start = ProfilerCore.Start
+Profiler.Finish = ProfilerCore.Finish
+Profiler.TogglePause = ProfilerCore.TogglePause
+Profiler.IsPaused = ProfilerCore.IsPaused
+Profiler.ToggleVisibility = ProfilerCore.ToggleVisibility
 
 -- Simplified API - explicit systems, Begin for components
 Profiler.BeginSystem = ProfilerCore.BeginSystem
@@ -65,6 +109,7 @@ Profiler.SetSystemMemoryMode = ProfilerCore.SetSystemMemoryMode
 Profiler.SetOverheadCompensation = ProfilerCore.SetOverheadCompensation
 Profiler.Reset = ProfilerCore.Reset
 
+-- Metadata constants (Lua 5.4 compatible)
 Profiler.VERSION = "1.0.0"
 Profiler.AUTHOR = "titaniummachine1"
 
@@ -124,47 +169,84 @@ function Profiler.Time(systemName, componentName, func)
 	return result
 end
 
+-- Manual reload helper for development
+function Profiler.Reload()
+	print("🔄 Manual reload requested...")
+	Profiler.Unload()
+	print("🚀 Run 'lua_load example.lua' again to get fresh profiler!")
+end
+
 -- Remove safeRegisterCallback function and use direct callbacks.Register
 -- Automatic Draw callback (retained-mode) ------------------------------------
 -------------------------------------------------------------------------------
 
-local DRAW_CB_ID = "profiler_auto_draw"
-if not G.ProfilerCallbacksRegistered and callbacks and callbacks.Register then
-	if callbacks.Unregister then
-		callbacks.Unregister("Draw", DRAW_CB_ID)
+local DRAW_CB_ID = "microprofiler_singleton_draw"
+local cb = (_G and _G.callbacks) or nil
+if not ProfilerCallbacksRegistered and cb and cb.Register then
+	if cb.Unregister then
+		cb.Unregister("Draw", DRAW_CB_ID)
 	end
 
-	callbacks.Register("Draw", DRAW_CB_ID, function()
+	cb.Register("Draw", DRAW_CB_ID, function()
 		-- Draw only when visible to avoid wasting time
 		Profiler.Draw()
 	end)
 
-	G.ProfilerCallbacksRegistered = true
+	ProfilerCallbacksRegistered = true
 end
 
--- Cleanup helper -------------------------------------------------------------
+-- Cleanup helper (enhanced for complete reloading) -------------------------
 function Profiler.Unload()
+	print("🧹 Unloading Microprofiler...")
+
 	-- Unregister draw callback
-	if callbacks and callbacks.Unregister then
-		callbacks.Unregister("Draw", DRAW_CB_ID)
+	if cb and cb.Unregister then
+		cb.Unregister("Draw", DRAW_CB_ID)
+		print("   ✓ Draw callback unregistered")
 	end
-	G.ProfilerCallbacksRegistered = false
+	ProfilerCallbacksRegistered = false
 
 	-- Reset internal state so a fresh load starts clean
-	Profiler.Reset()
+	if Profiler.Reset then
+		Profiler.Reset()
+		print("   ✓ Internal state reset")
+	end
 
-	-- Remove from package cache
-	package.loaded["Profiler"] = nil
-	package.loaded["Profiler.profiler"] = nil
-	package.loaded["Profiler.globals"] = nil
-	package.loaded["Profiler.config"] = nil
-	package.loaded["Profiler.Main"] = nil
+	-- Clear global instance
+	G.ProfilerInstance = nil
+	G.ProfilerLoaded = false
+	ProfilerLoaded = false
+	print("   ✓ Global state cleared")
 
-	print("✅ Profiler unloaded. Ready for reload.")
+	-- Remove ALL profiler packages from cache (improved pattern)
+	local packages = {
+		"Profiler",
+		"Profiler.profiler",
+		"Profiler.microprofiler",
+		"Profiler.ui_top",
+		"Profiler.ui_body",
+		"Profiler.globals",
+		"Profiler.config",
+		"Profiler.Main",
+	}
+
+	for _, pkg in ipairs(packages) do
+		if package.loaded[pkg] then
+			package.loaded[pkg] = nil
+			print(string.format("   ✓ Unloaded package: %s", pkg))
+		end
+	end
+	print("   ✓ Package cache cleared")
+
+	print("✅ Microprofiler completely unloaded. Ready for fresh reload.")
 end
 
--- Mark library as loaded
+-- Mark library as loaded (global retained mode)
+ProfilerLoaded = true
 G.ProfilerLoaded = true
+G.ProfilerInstance = Profiler
 
--- Return shared instance -----------------------------------------------------
+print("🚀 Microprofiler singleton initialized!")
+
+-- Return shared instance (store in global for retention) --------------------
 return Profiler

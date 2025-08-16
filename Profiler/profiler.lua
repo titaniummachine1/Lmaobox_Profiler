@@ -1,1082 +1,298 @@
 --[[
-    Simple Performance Profiler Library for Lmaobox
-    Author: titaniummachine1
-    
-    Usage:
-    local Profiler = require("profiler")
-    
-    -- Control visibility
-    Profiler.SetVisible(true)
-    
-    -- Measure systems with arbitrary tags
-    Profiler.StartSystem("ontick")
-        Profiler.StartComponent("UpdateTargets")
-        -- ... your code ...
-        Profiler.EndComponent("UpdateTargets")
-        
-        Profiler.StartComponent("SimulateMovement")
-        -- ... your code ...
-        Profiler.EndComponent("SimulateMovement")
-    Profiler.EndSystem("ontick")
-    
-    -- In draw callback
-    Profiler.Draw()
+    Core Profiler Module - Simplified Microprofiler
+    Coordinates the microprofiler and UI modules
+    Used by: Main.lua
 ]]
 
-local Profiler = {}
+-- Imports
+local G = require("Profiler.globals") --[[ Imported by: Main ]]
+local config = require("Profiler.config")
+local MicroProfiler = require("Profiler.microprofiler") --[[ Imported by: profiler ]]
+local UITop = require("Profiler.ui_top") --[[ Imported by: profiler ]]
+local UIBody = require("Profiler.ui_body") --[[ Imported by: profiler ]]
 
--- Configuration (can be modified at runtime or loaded from file)
-local Config = {
-	visible = false,
-	windowSize = 60, -- frames to average over
-	sortMode = "size", -- "size" (biggest to smallest), "static" (measurement order), "reverse" (smallest to biggest)
-	systemHeight = 48, -- height of each system bar (enough for name + memory + time)
-	fontSize = 12,
-	maxSystems = 20, -- max systems before we stop drawing more
-	textPadding = 6, -- padding around text in components
-	smoothingSpeed = 2.5, -- Percentage of width to move per frame towards target (higher = less smooth, more responsive)
-	smoothingDecay = 1.5, -- Percentage of width to move per frame when decaying (lower = slower decay, peaks stay longer)
-	textUpdateInterval = 20, -- Update text every N frames (20 frames = 333ms at 60fps, 3 times per second max)
-	systemMemoryMode = "system", -- "system" (actual system memory usage) or "components" (sum of component memory)
-	compensateOverhead = true, -- Subtract profiler's own memory usage from measurements
-}
+-- Module declaration
+local ProfilerCore = {}
 
--- Active measurements
-local Systems = {} -- [systemName] = { components = {}, totalTime = 0, totalMemory = 0, lastActive = frameNum, order = num }
-local SystemOrder = {} -- Track order systems were first measured
-local SystemStack = {} -- Stack for nested system calls
-local ComponentStack = {} -- Stack for nested component calls within current system
+-- Local constants / utilities -------- (Lua 5.4 compatible)
+local TOP_BAR_HEIGHT = 60 -- Increased to match ui_top.lua
 
--- Profiler overhead compensation
-local ProfilerOverhead = {
-	isTracking = false, -- Prevent recursive profiling
-	baselineMemory = 0, -- Memory usage when profiler started
-	lastMeasurement = 0, -- Last overhead measurement
-	averageOverhead = 0, -- Rolling average of profiler overhead
-	measurementCount = 0, -- Number of overhead measurements taken
-}
+-- Local variables
+local isVisible = config.visible or false
+local isInitialized = false
 
--- Rolling history for smooth averaging
-local History = {} -- [systemName][componentName] = circular buffer
-local HistoryIndex = 1
-local HistoryCount = 0
+-- Private helpers --------------------
 
--- Display state for smooth transitions
-local DisplayState = {} -- [systemName][componentName] = { width = current_width, targetWidth = target_width }
-
--- Current frame tracking
-local CurrentSystem = nil
-local CurrentFrame = 0
-
--- Font (create once)
-local ProfilerFont = nil
-
--- Helper function to validate numeric values
-local function ValidateNumber(value, fallback)
-	if type(value) ~= "number" or value ~= value or value == math.huge or value == -math.huge then
-		return fallback or 0
+local function initialize()
+	if isInitialized then
+		return
 	end
-	return value
+
+	-- Initialize UI modules
+	UITop.Initialize()
+	UIBody.Initialize()
+
+	isInitialized = true
 end
 
--- Smooth interpolation using fixed percentage-based movement per frame
-local function SmoothLerp(current, target, speed, decaySpeed)
-	if math.abs(target - current) < 0.1 then
-		return target -- Snap to target if very close
+-- Public API -------------------------
+
+function ProfilerCore.SetVisible(visible)
+	if not isInitialized then
+		initialize()
 	end
 
-	-- Convert speed to percentage per frame (speed is now percentage of total width to move per frame)
-	-- Higher speed = more movement per frame = less smooth but more responsive
-	local speedPercentage = speed / 100.0 -- Convert to 0-1 range
+	isVisible = visible
+	G.ProfilerEnabled = visible
 
-	-- Use faster speed for increases (catching spikes), slower for decreases (showing peaks longer)
-	local actualSpeed = target > current and speedPercentage
-		or (decaySpeed and decaySpeed / 100.0 or speedPercentage * 0.6)
-
-	-- Calculate the movement amount as a percentage of the difference
-	local movement = (target - current) * actualSpeed
-
-	-- Apply exponential smoothing filter to reduce jitter
-	local smoothedMovement = movement * 0.8 + (target - current) * 0.2 * actualSpeed
-
-	return current + smoothedMovement
-end
-
--- Initialize profiler font
-local function InitializeFont()
-	if not ProfilerFont then
-		ProfilerFont = draw.CreateFont("Arial", Config.fontSize, 400)
-	end
-end
-
--- Load configuration from file (optional)
-local function LoadConfig()
-	local success, configFile = pcall(require, "Profiler.config")
-	if success and type(configFile) == "table" then
-		for key, value in pairs(configFile) do
-			if Config[key] ~= nil then
-				Config[key] = value
-			end
-		end
-	end
-end
-
--- Get current frame number using globals API
-local function GetFrameNumber()
-	if globals and globals.FrameCount then
-		return globals.FrameCount()
-	else
-		-- Fallback if globals.FrameCount() doesn't exist
-		CurrentFrame = CurrentFrame + 1
-		return CurrentFrame
-	end
-end
-
--- Initialize system if it doesn't exist
-local function InitializeSystem(systemName)
-	if not Systems[systemName] then
-		Systems[systemName] = {
-			components = {},
-			totalTime = 0,
-			totalMemory = 0,
-			lastActive = 0,
-			order = #SystemOrder + 1,
-		}
-		table.insert(SystemOrder, systemName)
-
-		-- Initialize history
-		History[systemName] = {}
-
-		-- Initialize display state
-		DisplayState[systemName] = {}
-
-		-- Initialize system-level display state for rate limiting
-		DisplayState[systemName]["__system__"] = {
-			lastTextUpdate = 0,
-			displayMemory = 0,
-		}
-	end
-end
-
--- Initialize component display state
-local function InitializeComponentDisplay(systemName, componentName)
-	if not DisplayState[systemName] then
-		DisplayState[systemName] = {}
-	end
-
-	if not DisplayState[systemName][componentName] then
-		DisplayState[systemName][componentName] = {
-			width = 0,
-			targetWidth = 0,
-			lastTextUpdate = 0,
-			displayMemory = 0,
-			displayTime = 0,
-			smoothingHistory = {}, -- For additional smoothing filter
-		}
-	end
-end
-
--- Measure profiler's own memory overhead
-local function MeasureProfilerOverhead()
-	if not Config.compensateOverhead or ProfilerOverhead.isTracking then
-		return 0
-	end
-
-	ProfilerOverhead.isTracking = true
-	local beforeMeasurement = collectgarbage("count")
-
-	-- Simulate typical profiler operations to measure overhead
-	local testSystem = "overhead_test"
-	local testComponent = "test_component"
-
-	-- Measure memory used by profiler data structures
-	local tempHistory = {}
-	for i = 1, Config.windowSize do
-		tempHistory[i] = { time = 0, memory = 0 }
-	end
-
-	local tempDisplayState = {
-		width = 0,
-		targetWidth = 0,
-		lastTextUpdate = 0,
-		displayMemory = 0,
-		displayTime = 0,
-	}
-
-	local tempComponentData = {
-		avgTime = 0,
-		avgMemory = 0,
-		frameTime = 0,
-		frameMemory = 0,
-		order = 0,
-	}
-
-	-- Clean up test data
-	tempHistory = nil
-	tempDisplayState = nil
-	tempComponentData = nil
-
-	local afterMeasurement = collectgarbage("count")
-	local overhead = math.max(0, afterMeasurement - beforeMeasurement)
-
-	-- Update rolling average
-	ProfilerOverhead.measurementCount = ProfilerOverhead.measurementCount + 1
-	local alpha = math.min(0.1, 1.0 / ProfilerOverhead.measurementCount)
-	ProfilerOverhead.averageOverhead = ProfilerOverhead.averageOverhead * (1 - alpha) + overhead * alpha
-	ProfilerOverhead.lastMeasurement = overhead
-
-	ProfilerOverhead.isTracking = false
-	return ProfilerOverhead.averageOverhead
-end
-
--- Compensate for profiler overhead in memory measurements
-local function CompensateMemoryOverhead(rawMemoryDelta)
-	if not Config.compensateOverhead or ProfilerOverhead.isTracking then
-		return rawMemoryDelta
-	end
-
-	-- Subtract estimated profiler overhead
-	local compensatedDelta = rawMemoryDelta - ProfilerOverhead.averageOverhead
-
-	-- Don't return negative values unless there's significant overhead
-	if compensatedDelta < 0 and ProfilerOverhead.averageOverhead < 0.1 then
-		return 0
-	end
-
-	return math.max(0, compensatedDelta)
-end
-
--- Public API
-function Profiler.SetVisible(visible)
-	Config.visible = visible
 	if visible then
-		InitializeFont()
+		MicroProfiler.Enable()
+	else
+		MicroProfiler.Disable()
 	end
+
+	UIBody.SetVisible(visible)
 end
 
-function Profiler.StartSystem(systemName)
-	if not Config.visible then
+function ProfilerCore.ToggleVisibility()
+	ProfilerCore.SetVisible(not isVisible)
+	return isVisible
+end
+
+function ProfilerCore.IsVisible()
+	return isVisible
+end
+
+-- Manual profiling API (for custom threads)
+function ProfilerCore.Begin(name)
+	if not isVisible then
 		return
 	end
+	-- Check if paused via UITop module
+	if not isInitialized then
+		initialize()
+	end
+	if UITop.IsPaused() then
+		return -- Don't start manual profiling when paused
+	end
+	MicroProfiler.BeginCustomThread(name)
+end
 
-	-- Error handling: Check if a system is already active (idiot-proofing)
-	if CurrentSystem and #SystemStack > 0 then
-		print(
-			"WARNING: Starting system '"
-				.. systemName
-				.. "' while system '"
-				.. CurrentSystem
-				.. "' is still active. Ignoring duplicate BeginSystem call."
-		)
+function ProfilerCore.End()
+	if not isVisible then
 		return
 	end
+	-- Check if paused via UITop module
+	if not isInitialized then
+		initialize()
+	end
+	if UITop.IsPaused() then
+		return -- Don't end manual profiling when paused
+	end
+	MicroProfiler.EndCustomThread()
+end
 
-	InitializeSystem(systemName)
+-- Legacy API support (keeping for compatibility)
+function ProfilerCore.StartSystem(name)
+	ProfilerCore.Begin("System: " .. name)
+end
 
-	-- Measure profiler overhead periodically (every 30 frames to avoid performance impact)
-	if (GetFrameNumber() % 30) == 0 then
-		MeasureProfilerOverhead()
+function ProfilerCore.EndSystem(name)
+	ProfilerCore.End()
+end
+
+function ProfilerCore.StartComponent(name)
+	ProfilerCore.Begin(name)
+end
+
+function ProfilerCore.EndComponent(name)
+	ProfilerCore.End()
+end
+
+-- Simplified system API
+function ProfilerCore.BeginSystem(name)
+	ProfilerCore.Begin("System: " .. name)
+end
+
+function ProfilerCore.StopSystem()
+	ProfilerCore.End()
+end
+
+-- New minimalist API
+function ProfilerCore.Start(name)
+	ProfilerCore.Begin(name)
+end
+
+function ProfilerCore.Finish()
+	ProfilerCore.End()
+end
+
+-- Pause/Resume controls
+function ProfilerCore.TogglePause()
+	if not isInitialized then
+		initialize()
 	end
 
-	-- Use high-precision timing for real-time profiling
-	local currentTime = globals.RealTime()
-	local currentMemory = collectgarbage("count")
+	local wasPaused = UITop.IsPaused()
+	UITop.SetPaused(not wasPaused)
+	return not wasPaused
+end
 
-	table.insert(SystemStack, {
-		name = systemName,
-		startTime = currentTime,
-		startMemory = currentMemory,
-		-- Cache baseline for better accuracy
-		baselineTime = currentTime,
-		baselineMemory = currentMemory,
-	})
+function ProfilerCore.IsPaused()
+	if not isInitialized then
+		return false
+	end
+	return UITop.IsPaused()
+end
 
-	CurrentSystem = systemName
-	Systems[systemName].lastActive = GetFrameNumber()
+-- Body visibility controls
+function ProfilerCore.ToggleBody()
+	if not isInitialized then
+		initialize()
+	end
+	return UIBody.ToggleVisible()
+end
 
-	-- Reset components for this frame
-	for componentName, component in pairs(Systems[systemName].components) do
-		component.frameTime = 0
-		component.frameMemory = 0
+function ProfilerCore.SetBodyVisible(visible)
+	if not isInitialized then
+		initialize()
+	end
+	UIBody.SetVisible(visible)
+end
+
+function ProfilerCore.IsBodyVisible()
+	if not isInitialized then
+		return false
+	end
+	return UIBody.IsVisible()
+end
+
+-- Config helpers (simplified)
+function ProfilerCore.SetSortMode(mode)
+	config.sortMode = mode
+end
+
+function ProfilerCore.SetWindowSize(size)
+	config.windowSize = math.max(1, math.min(300, size))
+end
+
+function ProfilerCore.SetSmoothingSpeed(speed)
+	config.smoothingSpeed = math.max(1, math.min(50, speed))
+end
+
+function ProfilerCore.SetSmoothingDecay(decay)
+	config.smoothingDecay = math.max(1, math.min(50, decay))
+end
+
+function ProfilerCore.SetTextUpdateInterval(interval)
+	config.textUpdateInterval = math.max(1, interval)
+end
+
+function ProfilerCore.SetSystemMemoryMode(mode)
+	config.systemMemoryMode = mode
+end
+
+function ProfilerCore.SetOverheadCompensation(enabled)
+	-- Placeholder for future implementation
+end
+
+-- Reset profiler state
+function ProfilerCore.Reset()
+	MicroProfiler.Reset()
+	if isInitialized then
+		UITop.Initialize()
+		UIBody.Initialize()
 	end
 end
 
-function Profiler.StartComponent(componentName)
-	if not Config.visible then
+-- Main draw function
+function ProfilerCore.Draw()
+	if not isVisible then
 		return
 	end
-
-	-- If no current system, automatically start a default "misc" system
-	if not CurrentSystem then
-		Profiler.StartSystem("misc")
+	if not isInitialized then
+		initialize()
 	end
 
-	-- Minimize measurement overhead for real-time profiling
-	local startTime = globals.RealTime()
-	local startMemory = nil
+	-- Update frame counter
+	G.CurrentFrame = G.CurrentFrame + 1
 
-	-- Only measure memory every few calls to reduce overhead
-	-- This gives representative samples without constant GC calls
-	local shouldMeasureMemory = (GetFrameNumber() % 5) == 0
-	if shouldMeasureMemory then
-		startMemory = collectgarbage("count")
+	-- Check for body toggle request from UI
+	if G.BodyToggleRequested then
+		ProfilerCore.ToggleBody()
+		G.BodyToggleRequested = false
 	end
 
-	table.insert(ComponentStack, {
-		name = componentName,
-		startTime = startTime,
-		startMemory = startMemory,
-		measureMemory = shouldMeasureMemory,
-	})
+	-- Update and draw top bar
+	UITop.Update()
+	UITop.Draw()
+
+	-- Draw body only when visible; when paused it's interactive/frozen, when running it follows realtime
+	if UIBody.IsVisible() then
+		local profilerData = MicroProfiler.GetProfilerData()
+		UIBody.Draw(profilerData, TOP_BAR_HEIGHT)
+	end
+
+	-- Store last draw time
+	G.LastDrawTime = ((_G and _G.globals) and _G.globals.RealTime and _G.globals.RealTime()) or 0
 end
 
-function Profiler.EndComponent(componentName)
-	if not Config.visible or not CurrentSystem or #ComponentStack == 0 then
-		return
-	end
-
-	local component = table.remove(ComponentStack)
-	if component.name ~= componentName then
-		-- Mismatched component calls - clear stack and return
-		ComponentStack = {}
-		return
-	end
-
-	-- High-precision timing measurement
-	local endTime = globals.RealTime()
-	local duration = ValidateNumber(endTime - component.startTime, 0)
-
-	-- Smart memory measurement to reduce overhead
-	local memoryDelta = 0
-	if component.measureMemory and component.startMemory then
-		local endMemory = collectgarbage("count")
-		-- Only count positive memory growth (actual allocations)
-		-- Negative values usually mean GC ran, which isn't our function's fault
-		local rawDelta = endMemory - component.startMemory
-		if rawDelta > 0.01 then -- Only count meaningful memory increases (>0.01KB)
-			memoryDelta = ValidateNumber(CompensateMemoryOverhead(rawDelta), 0)
-		end
-	end
-
-	local system = Systems[CurrentSystem]
-	if not system.components[componentName] then
-		system.components[componentName] = {
-			avgTime = 0,
-			avgMemory = 0,
-			frameTime = 0,
-			frameMemory = 0,
-			order = 0,
-		}
-
-		-- Set order based on when first measured
-		local componentCount = 0
-		for _ in pairs(system.components) do
-			componentCount = componentCount + 1
-		end
-		system.components[componentName].order = componentCount
-
-		-- Initialize component history
-		History[CurrentSystem][componentName] = {}
-		for i = 1, Config.windowSize do
-			History[CurrentSystem][componentName][i] = { time = 0, memory = 0 }
-		end
-
-		-- Initialize display state
-		InitializeComponentDisplay(CurrentSystem, componentName)
-	end
-
-	system.components[componentName].frameTime = system.components[componentName].frameTime + duration
-	system.components[componentName].frameMemory = system.components[componentName].frameMemory + memoryDelta
+-- Get profiler data for external use
+function ProfilerCore.GetMainTimeline()
+	return MicroProfiler.GetMainTimeline()
 end
 
-function Profiler.EndSystem(systemName)
-	if not Config.visible or #SystemStack == 0 then
-		return
-	end
-
-	local systemData = table.remove(SystemStack)
-	if systemData.name ~= systemName then
-		-- Mismatched system calls - clear stacks and return
-		SystemStack = {}
-		ComponentStack = {}
-		return
-	end
-
-	local system = Systems[systemName]
-	if system then
-		system.totalTime = ValidateNumber(globals.RealTime() - systemData.startTime, 0)
-
-		-- Store both system-level and component-sum memory measurements
-		local rawSystemMemory = math.abs(collectgarbage("count") - systemData.startMemory)
-		local systemLevelMemory = ValidateNumber(CompensateMemoryOverhead(rawSystemMemory), 0)
-		local componentSumMemory = 0
-		for componentName, component in pairs(system.components) do
-			componentSumMemory = componentSumMemory + component.frameMemory
-		end
-
-		-- Choose which measurement to use based on config
-		if Config.systemMemoryMode == "components" then
-			system.totalMemory = ValidateNumber(componentSumMemory, 0)
-		else
-			system.totalMemory = ValidateNumber(systemLevelMemory, 0)
-		end
-
-		-- Store both values for potential future use
-		system.systemLevelMemory = systemLevelMemory
-		system.componentSumMemory = componentSumMemory
-
-		-- Update rolling averages for all components
-		for componentName, component in pairs(system.components) do
-			if not History[systemName][componentName] then
-				History[systemName][componentName] = {}
-				for i = 1, Config.windowSize do
-					History[systemName][componentName][i] = { time = 0, memory = 0 }
-				end
-			end
-
-			-- Store current frame data into circular history buffer
-			History[systemName][componentName][HistoryIndex] = {
-				time = component.frameTime,
-				memory = component.frameMemory,
-			}
-
-			-- Compute rolling average over the last windowSize frames (~1 second)
-			local totalTime, totalMemory = 0, 0
-			local frames = math.min(HistoryCount, Config.windowSize)
-			for i = 1, frames do
-				local h = History[systemName][componentName][i]
-				totalTime = totalTime + ValidateNumber(h.time, 0)
-				totalMemory = totalMemory + ValidateNumber(h.memory, 0)
-			end
-			component.avgTime = ValidateNumber(frames > 0 and totalTime / frames or 0, 0)
-			component.avgMemory = ValidateNumber(frames > 0 and totalMemory / frames or 0, 0)
-		end
-	end
-
-	CurrentSystem = #SystemStack > 0 and SystemStack[#SystemStack].name or nil
-
-	-- Advance circular history index once per frame when we end the outermost system
-	if CurrentSystem == nil then
-		HistoryIndex = HistoryIndex + 1
-		if HistoryIndex > Config.windowSize then
-			HistoryIndex = 1
-		end
-		if HistoryCount < Config.windowSize then
-			HistoryCount = HistoryCount + 1
-		end
-	end
+function ProfilerCore.GetCustomThreads()
+	return MicroProfiler.GetCustomThreads()
 end
 
--- Simplified API - No need to specify names when ending
--- Uses the last started item from the stack
-
-function Profiler.BeginSystem(systemName)
-	if not Config.visible then
-		return
-	end
-
-	-- Error handling: Check if a system is already active (idiot-proofing)
-	if CurrentSystem and #SystemStack > 0 then
-		print(
-			"WARNING: Starting system '"
-				.. systemName
-				.. "' while system '"
-				.. CurrentSystem
-				.. "' is still active. Ignoring duplicate BeginSystem call."
-		)
-		return
-	end
-
-	return Profiler.StartSystem(systemName)
+function ProfilerCore.GetCallStack()
+	return MicroProfiler.GetCallStack()
 end
 
-function Profiler.StopSystem()
-	if not Config.visible or #SystemStack == 0 then
-		return
-	end
-
-	local systemData = table.remove(SystemStack)
-	local systemName = systemData.name
-
-	local system = Systems[systemName]
-	if system then
-		system.totalTime = ValidateNumber(globals.RealTime() - systemData.startTime, 0)
-
-		-- Store both system-level and component-sum memory measurements
-		local rawSystemMemory = math.abs(collectgarbage("count") - systemData.startMemory)
-		local systemLevelMemory = ValidateNumber(CompensateMemoryOverhead(rawSystemMemory), 0)
-		local componentSumMemory = 0
-		for componentName, component in pairs(system.components) do
-			componentSumMemory = componentSumMemory + component.frameMemory
-		end
-
-		-- Choose which measurement to use based on config
-		if Config.systemMemoryMode == "components" then
-			system.totalMemory = ValidateNumber(componentSumMemory, 0)
-		else
-			system.totalMemory = ValidateNumber(systemLevelMemory, 0)
-		end
-
-		-- Store both values for potential future use
-		system.systemLevelMemory = systemLevelMemory
-		system.componentSumMemory = componentSumMemory
-
-		-- Update rolling averages for all components
-		for componentName, component in pairs(system.components) do
-			if not History[systemName][componentName] then
-				History[systemName][componentName] = {}
-				for i = 1, Config.windowSize do
-					History[systemName][componentName][i] = { time = 0, memory = 0 }
-				end
-			end
-
-			-- Store current frame data into circular history buffer
-			History[systemName][componentName][HistoryIndex] = {
-				time = component.frameTime,
-				memory = component.frameMemory,
-			}
-
-			-- Compute rolling average over the last windowSize frames (~1 second)
-			local totalTime, totalMemory = 0, 0
-			local frames = math.min(HistoryCount, Config.windowSize)
-			for i = 1, frames do
-				local h = History[systemName][componentName][i]
-				totalTime = totalTime + ValidateNumber(h.time, 0)
-				totalMemory = totalMemory + ValidateNumber(h.memory, 0)
-			end
-			component.avgTime = ValidateNumber(frames > 0 and totalTime / frames or 0, 0)
-			component.avgMemory = ValidateNumber(frames > 0 and totalMemory / frames or 0, 0)
-		end
-	end
-
-	CurrentSystem = #SystemStack > 0 and SystemStack[#SystemStack].name or nil
-
-	-- Advance circular history index once per frame when we end the outermost system
-	if CurrentSystem == nil then
-		HistoryIndex = HistoryIndex + 1
-		if HistoryIndex > Config.windowSize then
-			HistoryIndex = 1
-		end
-		if HistoryCount < Config.windowSize then
-			HistoryCount = HistoryCount + 1
-		end
-	end
+function ProfilerCore.GetProfilerData()
+	return MicroProfiler.GetProfilerData()
 end
 
-function Profiler.BeginComponent(componentName)
-	return Profiler.StartComponent(componentName)
+function ProfilerCore.GetStats()
+	return MicroProfiler.GetStats()
 end
 
-function Profiler.StopComponent()
-	if not Config.visible or not CurrentSystem or #ComponentStack == 0 then
-		return
-	end
-
-	local component = table.remove(ComponentStack)
-	local componentName = component.name
-
-	-- High-precision timing measurement
-	local endTime = globals.RealTime()
-	local duration = ValidateNumber(endTime - component.startTime, 0)
-
-	-- Smart memory measurement to reduce overhead
-	local memoryDelta = 0
-	if component.measureMemory and component.startMemory then
-		local endMemory = collectgarbage("count")
-		-- Only count positive memory growth (actual allocations)
-		-- Negative values usually mean GC ran, which isn't our function's fault
-		local rawDelta = endMemory - component.startMemory
-		if rawDelta > 0.01 then -- Only count meaningful memory increases (>0.01KB)
-			memoryDelta = ValidateNumber(CompensateMemoryOverhead(rawDelta), 0)
-		end
-	end
-
-	local system = Systems[CurrentSystem]
-	if not system.components[componentName] then
-		system.components[componentName] = {
-			avgTime = 0,
-			avgMemory = 0,
-			frameTime = 0,
-			frameMemory = 0,
-			order = 0,
-		}
-
-		-- Set order based on when first measured
-		local componentCount = 0
-		for _ in pairs(system.components) do
-			componentCount = componentCount + 1
-		end
-		system.components[componentName].order = componentCount
-
-		-- Initialize component history
-		History[CurrentSystem][componentName] = {}
-		for i = 1, Config.windowSize do
-			History[CurrentSystem][componentName][i] = { time = 0, memory = 0 }
-		end
-
-		-- Initialize display state
-		InitializeComponentDisplay(CurrentSystem, componentName)
-	end
-
-	system.components[componentName].frameTime = system.components[componentName].frameTime + duration
-	system.components[componentName].frameMemory = system.components[componentName].frameMemory + memoryDelta
+-- Debug functions
+function ProfilerCore.PrintStats()
+	MicroProfiler.PrintStats()
 end
 
--- Simplified API - Explicit system calls, Begin for components
--- BeginSystem/EndSystem for top-level systems
--- Begin/End for components (used most frequently)
-
-function Profiler.Begin(name)
-	-- Begin is always for components
-	return Profiler.BeginComponent(name)
+function ProfilerCore.PrintTimeline(maxDepth)
+	MicroProfiler.PrintTimeline(maxDepth)
 end
 
-function Profiler.End()
-	-- End is always for components
-	return Profiler.StopComponent()
+-- Camera controls for body
+function ProfilerCore.ResetCamera()
+	if not isInitialized then
+		initialize()
+	end
+	UIBody.ResetCamera()
 end
 
--- Get sorted components based on sort mode (FIXED: use memory for 'size' mode)
-local function GetSortedComponents(system)
-	local components = {}
-
-	for name, data in pairs(system.components) do
-		table.insert(components, { name = name, data = data })
+function ProfilerCore.SetZoom(zoom)
+	if not isInitialized then
+		initialize()
 	end
-
-	if Config.sortMode == "size" then
-		-- FIXED: Sort by memory usage (avgMemory) instead of time (avgTime)
-		table.sort(components, function(a, b)
-			return a.data.avgMemory > b.data.avgMemory
-		end)
-	elseif Config.sortMode == "reverse" then
-		-- FIXED: Sort by memory usage (avgMemory) instead of time (avgTime)
-		table.sort(components, function(a, b)
-			return a.data.avgMemory < b.data.avgMemory
-		end)
-	elseif Config.sortMode == "static" then
-		table.sort(components, function(a, b)
-			return a.data.order < b.data.order
-		end)
-	end
-
-	return components
+	UIBody.SetZoom(zoom)
 end
 
--- Get sorted systems based on sort mode (NEW: real-time system sorting)
-local function GetSortedSystems(activeSystems)
-	local systemsWithData = {}
-
-	for _, systemName in ipairs(activeSystems) do
-		local system = Systems[systemName]
-		if system then
-			table.insert(systemsWithData, { name = systemName, data = system })
-		end
+function ProfilerCore.GetZoom()
+	if not isInitialized then
+		return 1.0
 	end
-
-	if Config.sortMode == "size" then
-		-- Sort systems by memory usage (totalMemory) - most memory intensive first
-		table.sort(systemsWithData, function(a, b)
-			return a.data.totalMemory > b.data.totalMemory
-		end)
-	elseif Config.sortMode == "reverse" then
-		-- Sort systems by memory usage (totalMemory) - least memory intensive first
-		table.sort(systemsWithData, function(a, b)
-			return a.data.totalMemory < b.data.totalMemory
-		end)
-	elseif Config.sortMode == "static" then
-		-- Keep original order
-		table.sort(systemsWithData, function(a, b)
-			return a.data.order < b.data.order
-		end)
-	end
-
-	-- Extract system names in sorted order
-	local sortedSystems = {}
-	for _, systemEntry in ipairs(systemsWithData) do
-		table.insert(sortedSystems, systemEntry.name)
-	end
-
-	return sortedSystems
+	return UIBody.GetZoom()
 end
 
--- Draw the profiler (FIXED: overflow handling and real-time sorting)
-function Profiler.Draw()
-	if not Config.visible then
-		return
-	end
-
-	InitializeFont()
-	draw.SetFont(ProfilerFont)
-
-	local screenW, screenH = draw.GetScreenSize()
-	local currentFrame = GetFrameNumber()
-
-	-- Filter active systems (only show systems used recently)
-	local activeSystems = {}
-	for _, systemName in ipairs(SystemOrder) do
-		local system = Systems[systemName]
-		if system and (currentFrame - system.lastActive) < Config.windowSize then
-			table.insert(activeSystems, systemName)
-		end
-	end
-
-	-- FIXED: Sort systems by memory usage in real-time
-	local sortedActiveSystems = GetSortedSystems(activeSystems)
-
-	-- FIXED: Filter out systems with 0.0 memory when we need space (overflow handling)
-	local meaningfulSystems = {}
-	local zeroSystems = {}
-
-	for _, systemName in ipairs(sortedActiveSystems) do
-		local system = Systems[systemName]
-		if system.totalMemory > 0.001 then -- Systems with meaningful memory usage
-			table.insert(meaningfulSystems, systemName)
-		else -- Systems with essentially 0.0 memory
-			table.insert(zeroSystems, systemName)
-		end
-	end
-
-	-- Calculate how many systems we can fit
-	local maxSystemsOnScreen = math.floor(screenH / Config.systemHeight)
-	local systemsToShow = math.min(maxSystemsOnScreen, Config.maxSystems)
-
-	-- FIXED: Prioritize meaningful systems, only show 0.0 systems if we have space
-	local finalSystemsToShow = {}
-	local systemCount = 0
-
-	-- First, add all meaningful systems (up to limit)
-	for _, systemName in ipairs(meaningfulSystems) do
-		if systemCount < systemsToShow then
-			table.insert(finalSystemsToShow, systemName)
-			systemCount = systemCount + 1
-		end
-	end
-
-	-- Then add 0.0 systems only if we have remaining space
-	for _, systemName in ipairs(zeroSystems) do
-		if systemCount < systemsToShow then
-			table.insert(finalSystemsToShow, systemName)
-			systemCount = systemCount + 1
-		end
-	end
-
-	local totalHeight = systemCount * Config.systemHeight
-	local startY = screenH - totalHeight
-
-	-- Draw each system
-	for i = 1, systemCount do
-		local systemName = finalSystemsToShow[i]
-		local system = Systems[systemName]
-		local systemY = startY + (i - 1) * Config.systemHeight
-
-		-- Get sorted components
-		local sortedComponents = GetSortedComponents(system)
-
-		-- Calculate total memory for scaling (focus on memory, not time)
-		local totalSystemMemory = math.max(system.totalMemory, 0.001) -- Prevent division by zero
-
-		-- Draw system background (spans full width)
-		draw.Color(20, 20, 20, 180)
-		draw.FilledRect(0, math.floor(systemY), screenW, math.floor(systemY + Config.systemHeight))
-
-		-- Draw system border
-		draw.Color(80, 80, 80, 255)
-		draw.OutlinedRect(0, math.floor(systemY), screenW, math.floor(systemY + Config.systemHeight))
-
-		-- Draw system totals at the beginning (left side)
-		local systemLabelWidth = 200 -- Reserve space for system label
-		draw.Color(255, 255, 255, 255)
-		local systemText = systemName
-
-		-- Apply rate limiting to system memory display
-		local systemDisplayState = DisplayState[systemName] and DisplayState[systemName]["__system__"]
-		if not systemDisplayState then
-			-- Initialize system display state if missing
-			if not DisplayState[systemName] then
-				DisplayState[systemName] = {}
-			end
-			DisplayState[systemName]["__system__"] = {
-				lastTextUpdate = currentFrame - Config.textUpdateInterval, -- Force immediate update
-				displayMemory = 0,
-			}
-			systemDisplayState = DisplayState[systemName]["__system__"]
-		end
-
-		if currentFrame - systemDisplayState.lastTextUpdate >= Config.textUpdateInterval then
-			systemDisplayState.displayMemory = system.totalMemory
-			systemDisplayState.lastTextUpdate = currentFrame
-		end
-
-		local memoryText = string.format("%.1fKB", systemDisplayState.displayMemory)
-
-		-- Draw system name (fixed position for stable text)
-		draw.Text(5, math.floor(systemY + 2), systemText)
-
-		-- Draw system memory total below name (fixed position for stable text)
-		draw.Color(200, 200, 200, 255)
-		draw.Text(5, math.floor(systemY + 16), memoryText)
-
-		-- Draw components (starting after system label area)
-		local componentStartX = systemLabelWidth
-		local componentAreaWidth = screenW - systemLabelWidth
-		local currentX = componentStartX
-
-		-- FIXED: Filter out 0.0 components when we're running out of screen space
-		local meaningfulComponents = {}
-		local zeroComponents = {}
-
-		for _, comp in ipairs(sortedComponents) do
-			if comp.data.avgMemory > 0.001 then -- Components with meaningful memory usage
-				table.insert(meaningfulComponents, comp)
-			else -- Components with essentially 0.0 memory
-				table.insert(zeroComponents, comp)
-			end
-		end
-
-		-- Determine available screen width for components
-		local availableWidth = screenW - componentStartX
-		local estimatedComponentWidth = 100 -- Rough estimate for space calculation
-		local maxComponentsOnScreen = math.floor(availableWidth / estimatedComponentWidth)
-
-		-- Prioritize meaningful components, add 0.0 components only if space allows
-		local finalComponents = {}
-		local componentCount = 0
-
-		for _, comp in ipairs(meaningfulComponents) do
-			table.insert(finalComponents, comp)
-			componentCount = componentCount + 1
-		end
-
-		-- Only add 0.0 components if we have estimated space
-		if componentCount < maxComponentsOnScreen then
-			for _, comp in ipairs(zeroComponents) do
-				if componentCount < maxComponentsOnScreen then
-					table.insert(finalComponents, comp)
-					componentCount = componentCount + 1
-				end
-			end
-		end
-
-		for _, comp in ipairs(finalComponents) do
-			local componentName = comp.name
-			local componentData = comp.data
-
-			-- Initialize display state if needed
-			InitializeComponentDisplay(systemName, componentName)
-			local displayState = DisplayState[systemName][componentName]
-
-			-- Get current real-time values
-			local timeMs = componentData.avgTime * 1000
-			local memKB = componentData.avgMemory
-			local hasTime = timeMs >= 0.01
-
-			-- Update text values only every textUpdateInterval frames (4 times per second max)
-			if currentFrame - displayState.lastTextUpdate >= Config.textUpdateInterval then
-				displayState.displayMemory = memKB
-				displayState.displayTime = timeMs
-				displayState.lastTextUpdate = currentFrame
-			end
-
-			-- Use throttled display values for consistent text width calculation
-			local displayMemKB = displayState.displayMemory
-			local displayTimeMs = displayState.displayTime
-			local displayHasTime = displayTimeMs >= 0.01
-
-			-- Measure text widths for stable minimum sizing using throttled values
-			local nameWidth = draw.GetTextSize(componentName)
-			local memText = string.format("%.1fKB", displayMemKB)
-			local memWidth = draw.GetTextSize(memText)
-
-			local timeWidth = 0
-			if displayHasTime then
-				local timeText = string.format("%.2fms", displayTimeMs)
-				timeWidth = draw.GetTextSize(timeText)
-			end
-
-			-- Use the widest text as absolute minimum width (plus padding)
-			local minComponentWidth = math.max(nameWidth, memWidth, timeWidth) + Config.textPadding
-
-			-- Calculate target component width proportional to memory usage (use real-time for responsiveness)
-			local targetWidth = minComponentWidth
-			if totalSystemMemory > 0 and componentData.avgMemory > 0 then
-				local memoryProportion = componentData.avgMemory / totalSystemMemory
-				local proportionalWidth = componentAreaWidth * memoryProportion
-				targetWidth = math.max(minComponentWidth, proportionalWidth)
-			end
-
-			-- Ensure we don't exceed available component area
-			local remainingWidth = screenW - currentX
-			targetWidth = math.min(targetWidth, remainingWidth)
-
-			-- But always ensure we're at least wide enough for the text (prevents text truncation)
-			targetWidth = math.max(targetWidth, minComponentWidth)
-
-			-- Update display state with smooth interpolation
-			displayState.targetWidth = targetWidth
-			local newWidth =
-				SmoothLerp(displayState.width, displayState.targetWidth, Config.smoothingSpeed, Config.smoothingDecay)
-
-			-- Apply additional smoothing filter to reduce jitter
-			local smoothingHistory = displayState.smoothingHistory
-			table.insert(smoothingHistory, newWidth)
-
-			-- Keep only last 3 frames for smoothing
-			if #smoothingHistory > 3 then
-				table.remove(smoothingHistory, 1)
-			end
-
-			-- Use weighted average of recent values for final smoothing
-			local smoothedWidth = 0
-			local totalWeight = 0
-			for i, width in ipairs(smoothingHistory) do
-				local weight = i / #smoothingHistory -- More weight to recent values
-				smoothedWidth = smoothedWidth + width * weight
-				totalWeight = totalWeight + weight
-			end
-
-			displayState.width = smoothedWidth / totalWeight
-
-			-- Use the smoothed width for rendering, but never smaller than minimum text width
-			local componentWidth = math.max(displayState.width, minComponentWidth)
-
-			if componentWidth > 10 and currentX < screenW - 10 then -- Only draw if meaningful size
-				-- Generate color based on component name hash
-				local hash = 0
-				for j = 1, #componentName do
-					hash = hash + string.byte(componentName, j)
-				end
-				local r = (hash * 73) % 255
-				local g = (hash * 151) % 255
-				local b = (hash * 211) % 255
-
-				-- Draw component background (inset within system bar to show hierarchy)
-				local insetY = systemY + 2
-				local insetHeight = Config.systemHeight - 4
-
-				draw.Color(r, g, b, 200)
-				draw.FilledRect(
-					math.floor(currentX),
-					math.floor(insetY),
-					math.floor(currentX + componentWidth),
-					math.floor(insetY + insetHeight)
-				)
-
-				-- Draw component border
-				draw.Color(255, 255, 255, 150)
-				draw.OutlinedRect(
-					math.floor(currentX),
-					math.floor(insetY),
-					math.floor(currentX + componentWidth),
-					math.floor(insetY + insetHeight)
-				)
-
-				-- Draw component text with stable positioning
-				local textX = currentX + 3
-				local textY = insetY + 2
-
-				draw.Color(255, 255, 255, 255)
-
-				-- Component name (full name - width is calculated to fit)
-				local nameText = componentName
-				local nameWidth, nameHeight = draw.GetTextSize(nameText)
-				draw.Text(math.floor(textX), math.floor(textY), nameText)
-
-				-- Memory amount (always visible, fixed position) - use throttled display value
-				local infoY = textY + nameHeight + 3
-				local displayMemText = string.format("%.1fKB", displayState.displayMemory)
-				draw.Color(220, 220, 220, 255)
-				draw.Text(math.floor(textX), math.floor(infoY), displayMemText)
-
-				-- Time display with red background if measurable - use throttled display value
-				local displayHasTime = displayState.displayTime >= 0.01
-				if displayHasTime then
-					local displayTimeText = string.format("%.2fms", displayState.displayTime)
-					local timeWidth, timeHeight = draw.GetTextSize(displayTimeText)
-					local timeY = infoY + 14 -- Fixed position below memory
-
-					-- Check if there's vertical space for time display
-					if timeY + timeHeight <= insetY + insetHeight - 2 then
-						-- Draw red background for time highlighting
-						draw.Color(150, 50, 50, 180)
-						draw.FilledRect(
-							math.floor(textX - 1),
-							math.floor(timeY - 1),
-							math.floor(textX + timeWidth + 2),
-							math.floor(timeY + timeHeight + 1)
-						)
-
-						-- Draw time text
-						draw.Color(255, 255, 255, 255)
-						draw.Text(math.floor(textX), math.floor(timeY), displayTimeText)
-					end
-				end
-
-				-- Use the smoothed width for positioning next component
-				currentX = currentX + componentWidth
-			end
-		end
-	end
+-- Initialize if visible by default
+if isVisible then
+	initialize()
+	MicroProfiler.Enable()
 end
 
--- Configuration functions
-function Profiler.SetSortMode(mode)
-	if mode == "size" or mode == "static" or mode == "reverse" then
-		Config.sortMode = mode
-	end
-end
-
-function Profiler.SetWindowSize(frames)
-	Config.windowSize = math.max(1, math.min(frames, 300))
-end
-
-function Profiler.SetSmoothingSpeed(speed)
-	Config.smoothingSpeed = math.max(1.0, math.min(speed, 50.0)) -- 1-50% per frame
-end
-
-function Profiler.SetSmoothingDecay(decay)
-	Config.smoothingDecay = math.max(1.0, math.min(decay, 50.0)) -- 1-50% per frame
-end
-
-function Profiler.SetTextUpdateInterval(interval)
-	Config.textUpdateInterval = math.max(1, math.min(interval, 120)) -- 1-120 frames (1-2 seconds max)
-end
-
-function Profiler.SetSystemMemoryMode(mode)
-	if mode == "system" or mode == "components" then
-		Config.systemMemoryMode = mode
-	end
-end
-
-function Profiler.SetOverheadCompensation(enabled)
-	Config.compensateOverhead = enabled
-	if enabled then
-		-- Reset overhead measurements when re-enabling
-		ProfilerOverhead.averageOverhead = 0
-		ProfilerOverhead.measurementCount = 0
-	end
-end
-
-function Profiler.Reset()
-	Systems = {}
-	SystemOrder = {}
-	History = {}
-	DisplayState = {}
-	SystemStack = {}
-	ComponentStack = {}
-	CurrentSystem = nil
-	HistoryIndex = 1
-	HistoryCount = 0
-
-	-- Reset profiler overhead measurements
-	ProfilerOverhead.isTracking = false
-	ProfilerOverhead.baselineMemory = 0
-	ProfilerOverhead.lastMeasurement = 0
-	ProfilerOverhead.averageOverhead = 0
-	ProfilerOverhead.measurementCount = 0
-end
-
--- Load configuration on startup
-LoadConfig()
-
-return Profiler
+return ProfilerCore

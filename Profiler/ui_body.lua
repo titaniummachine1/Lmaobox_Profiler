@@ -133,6 +133,10 @@ local function timeToScreen(time, startTime, timeRange, screenWidth)
 	end
 
 	local result = (normalizedTime * screenWidth * zoom) - viewportX
+	-- Guard against extreme values multiplying into huge doubles
+	if result ~= result or result > 1e9 or result < -1e9 then
+		return 0
+	end
 
 	-- Final safety check before returning
 	if result ~= result or result == math.huge or result == -math.huge then
@@ -159,7 +163,11 @@ local function screenToTime(screenX, startTime, timeRange, screenWidth)
 	end
 
 	-- Safe division and bounds checking
-	local normalizedX = (screenX + viewportX) / (screenWidth * zoom)
+	local denom = (screenWidth * zoom)
+	if denom == 0 or denom ~= denom or denom == math.huge or denom == -math.huge then
+		return startTime
+	end
+	local normalizedX = (screenX + viewportX) / denom
 	if normalizedX ~= normalizedX then -- Check for NaN
 		return startTime
 	end
@@ -214,10 +222,20 @@ local function drawFunctionBar(func, y, depth, startTime, timeRange, screenWidth
 	local x1 = timeToScreen(func.startTime, startTime, timeRange, screenWidth)
 	local x2 = timeToScreen(func.endTime, startTime, timeRange, screenWidth)
 	local calculatedWidth = x2 - x1
-	local width = math.max(50, calculatedWidth) -- Minimum 50px width for visibility
+	-- Show exact time usage, no artificial minimum width
+	local width = calculatedWidth
 
-	-- Skip if completely out of view
+	-- Skip if completely out of view (but debug why)
 	if x2 < 0 or x1 > screenWidth then
+		print(
+			string.format(
+				"⚠️ Function %s SKIPPED: x1=%.0f, x2=%.0f, screenWidth=%d (out of view)",
+				func.name or "unnamed",
+				x1,
+				x2,
+				screenWidth
+			)
+		)
 		return
 	end
 
@@ -263,23 +281,39 @@ local function drawFunctionBar(func, y, depth, startTime, timeRange, screenWidth
 
 		-- Script name is already shown in the green header, no need to repeat it on each function
 
-		-- Draw text if bar is wide enough (LARGE READABLE TEXT)
-		if width > 50 then -- Increase minimum width due to larger font
-			local name = func.name or func.key or "unknown"
-			if #name > 12 then -- Shorter names due to larger font
-				name = string.sub(name, 1, 9) .. "..."
-			end
+		-- Draw text if bar is wide enough (check actual text width)
+		local name = func.name or func.key or "unknown"
+		local nameWidth = 0
+		if draw.GetTextSize then
+			nameWidth = draw.GetTextSize(name)[1] or 0
+		else
+			-- Fallback estimate: ~8 pixels per character
+			nameWidth = #name * 8
+		end
 
+		if width > (nameWidth + 16) then -- Need space for text + padding
 			draw.Color(255, 255, 255, 255)
 			draw.Text(math.floor(x1 + 8), math.floor(indentedY + 4), name)
 
-			-- Show duration (more compact)
-			if width > 100 then -- Increase width requirement for duration
-				local durationMs = duration * 1000
-				local timeText = string.format("%.1fms", durationMs)
+			-- Show duration if there's additional space
+			local durationMs = duration * 1000
+			local timeText = string.format("%.1fms", durationMs)
+			local timeWidth = 0
+			if draw.GetTextSize then
+				timeWidth = draw.GetTextSize(timeText)[1] or 0
+			else
+				timeWidth = #timeText * 8
+			end
+
+			if width > (nameWidth + timeWidth + 24) then -- Space for both texts
 				draw.Color(255, 255, 100, 255) -- Yellow for visibility
 				draw.Text(math.floor(x1 + 8), math.floor(indentedY + 22), timeText)
 			end
+		elseif width > 20 then
+			-- Very narrow bar - just show first few characters
+			local shortName = string.sub(name, 1, math.max(1, math.floor(width / 8) - 1))
+			draw.Color(255, 255, 255, 200)
+			draw.Text(math.floor(x1 + 2), math.floor(indentedY + 4), shortName)
 		end
 	end
 
@@ -291,19 +325,37 @@ local function functionsOverlap(func1, func2)
 	if not func1.startTime or not func1.endTime or not func2.startTime or not func2.endTime then
 		return false
 	end
-	return not (func1.endTime <= func2.startTime or func2.endTime <= func1.startTime)
+	local overlap = not (func1.endTime <= func2.startTime or func2.endTime <= func1.startTime)
+	if overlap then
+		print(
+			string.format(
+				"⚠️ OVERLAP: %s (%.3f-%.3f) vs %s (%.3f-%.3f)",
+				func1.name or "unnamed",
+				func1.startTime,
+				func1.endTime,
+				func2.name or "unnamed",
+				func2.startTime,
+				func2.endTime
+			)
+		)
+	end
+	return overlap
 end
 
 -- Draw function hierarchy with proper stacking for overlapping functions
 local function drawFunctionHierarchy(functions, baseY, startTime, timeRange, screenWidth, threadType)
 	local currentY = baseY
 	local stackLevels = {} -- Track which Y levels are occupied by time ranges
-	
-	for _, func in ipairs(functions) do
+
+	print(
+		string.format("🎨 Drawing hierarchy: %d functions, baseY=%.0f, timeRange=%.3f", #functions, baseY, timeRange)
+	)
+
+	for i, func in ipairs(functions) do
 		-- Find the appropriate Y level for this function
 		local level = 0
 		local foundLevel = false
-		
+
 		-- Check existing stack levels for conflicts
 		while not foundLevel do
 			local conflictFound = false
@@ -313,7 +365,7 @@ local function drawFunctionHierarchy(functions, baseY, startTime, timeRange, scr
 					break
 				end
 			end
-			
+
 			if not conflictFound then
 				-- This level is free, use it
 				if not stackLevels[level] then
@@ -326,17 +378,21 @@ local function drawFunctionHierarchy(functions, baseY, startTime, timeRange, scr
 				level = level + 1
 			end
 		end
-		
+
 		-- Draw this function at the determined level
 		local functionY = baseY + (level * (THREAD_HEIGHT + THREAD_SPACING))
+		print(
+			string.format("  Drawing function %d: %s at level %d, Y=%.0f", i, func.name or "unnamed", level, functionY)
+		)
 		local newY = drawFunctionBar(func, functionY, 0, startTime, timeRange, screenWidth, threadType)
-		
+
 		-- Update currentY to track the maximum used Y
 		currentY = math.max(currentY, functionY + THREAD_HEIGHT + THREAD_SPACING)
-		
+
 		-- Draw children with indentation (children get their own stacking context)
 		if func.children and #func.children > 0 then
-			local childrenY = drawFunctionHierarchy(func.children, currentY, startTime, timeRange, screenWidth, threadType)
+			local childrenY =
+				drawFunctionHierarchy(func.children, currentY, startTime, timeRange, screenWidth, threadType)
 			currentY = math.max(currentY, childrenY)
 		end
 	end
@@ -389,13 +445,14 @@ local function drawThread(thread, y, startTime, timeRange, screenWidth)
 	return contentY + THREAD_SPACING * 2
 end
 
--- Handle input
+-- Handle input (ALWAYS active when body is visible and paused)
 local function handleInput(screenWidth, screenHeight, topBarHeight)
-	if not input or not input.GetMousePos then
+	-- FORCE input to work - don't check for input existence
+	if not _G.input or not _G.input.GetMousePos then
 		return
 	end
 
-	local pos = input.GetMousePos()
+	local pos = _G.input.GetMousePos()
 	local mx, my = pos[1] or 0, pos[2] or 0
 
 	-- Only handle input in body area (below top bar)
@@ -406,27 +463,28 @@ local function handleInput(screenWidth, screenHeight, topBarHeight)
 	-- Adjust mouse position for body area
 	local bodyMy = my - topBarHeight
 
-	-- Handle dragging (smart detection)
-	local currentlyDragging = input.IsButtonDown and input.IsButtonDown(MOUSE_LEFT)
+	-- Handle dragging - FORCE detection
+	local currentlyDragging = _G.input.IsButtonDown and _G.input.IsButtonDown(MOUSE_LEFT)
 	local wasDragging = clickState["drag_active"] or false
 
 	if currentlyDragging and not wasDragging then
-		-- Start drag (either click or sudden hold)
+		-- Start drag
 		clickState["drag_active"] = true
 		isDragging = true
 		dragStartX = mx
 		dragStartY = bodyMy
 		lastMouseX = mx
 		lastMouseY = bodyMy
+		print(string.format("🎯 DRAG START: mx=%d, my=%d", mx, bodyMy))
 	elseif currentlyDragging and isDragging then
 		-- Continue drag - apply both X and Y movement
 		local deltaX = mx - lastMouseX
 		local deltaY = bodyMy - lastMouseY
 
-		if math.abs(deltaX) > 0 or math.abs(deltaY) > 0 then
+		if math.abs(deltaX) > 1 or math.abs(deltaY) > 1 then -- Require minimum movement
 			viewportX = viewportX - deltaX * PAN_SPEED
-			-- Correct vertical movement: dragging down should scroll down (negative viewportY)
 			viewportY = viewportY - deltaY * PAN_SPEED
+			print(string.format("🎯 DRAGGING: deltaX=%d, deltaY=%d, viewportX=%.1f, viewportY=%.1f", deltaX, deltaY, viewportX, viewportY))
 		end
 
 		lastMouseX = mx
@@ -435,27 +493,29 @@ local function handleInput(screenWidth, screenHeight, topBarHeight)
 		-- Release drag
 		clickState["drag_active"] = false
 		isDragging = false
+		print("🎯 DRAG END")
 	end
 
-	-- Handle zoom with MOUSE WHEEL (112=up, 113=down)
-	if input.IsButtonDown then
-		-- Zoom in (scroll up = 112)
-		local wheelUpNow = input.IsButtonDown(112)
-		local wheelUpWas = clickState["wheel_up"] or false
-		if wheelUpNow and not wheelUpWas then
-			zoom = clamp(zoom * 1.5, MIN_ZOOM, MAX_ZOOM)
+	-- Handle zoom with MOUSE WHEEL - FORCE detection
+	if _G.input.IsButtonDown then
+		local wheelUpNow = _G.input.IsButtonDown(112)
+		local wheelDownNow = _G.input.IsButtonDown(113)
+		
+		if wheelUpNow and not clickState["wheel_up"] then
+			local oldZoom = zoom
+			zoom = clamp(zoom * 1.2, MIN_ZOOM, MAX_ZOOM)
 			clickState["wheel_up"] = true
-		elseif not wheelUpNow and wheelUpWas then
+			print(string.format("🎯 ZOOM IN: %.3f -> %.3f", oldZoom, zoom))
+		elseif not wheelUpNow and clickState["wheel_up"] then
 			clickState["wheel_up"] = false
 		end
 
-		-- Zoom out (scroll down = 113)
-		local wheelDownNow = input.IsButtonDown(113)
-		local wheelDownWas = clickState["wheel_down"] or false
-		if wheelDownNow and not wheelDownWas then
-			zoom = clamp(zoom / 1.5, MIN_ZOOM, MAX_ZOOM)
+		if wheelDownNow and not clickState["wheel_down"] then
+			local oldZoom = zoom
+			zoom = clamp(zoom / 1.2, MIN_ZOOM, MAX_ZOOM)
 			clickState["wheel_down"] = true
-		elseif not wheelDownNow and wheelDownWas then
+			print(string.format("🎯 ZOOM OUT: %.3f -> %.3f", oldZoom, zoom))
+		elseif not wheelDownNow and clickState["wheel_down"] then
 			clickState["wheel_down"] = false
 		end
 	end
@@ -510,7 +570,27 @@ function UIBody.Draw(profilerData, topBarHeight)
 
 	-- FIXED TIMELINE: Don't move when paused!
 	local currentTime = getTime()
-	local timeWindow = 10.0 / zoom -- Time window controlled by zoom
+	-- Calculate appropriate time window based on actual data
+	local dataTimeRange = 0
+	if profilerData and profilerData.scriptTimelines then
+		local earliest, latest = math.huge, -math.huge
+		for _, scriptData in pairs(profilerData.scriptTimelines) do
+			if scriptData.functions then
+				for _, func in ipairs(scriptData.functions) do
+					if func.startTime and func.endTime then
+						earliest = math.min(earliest, func.startTime)
+						latest = math.max(latest, func.endTime)
+					end
+				end
+			end
+		end
+		if earliest ~= math.huge and latest ~= -math.huge then
+			dataTimeRange = latest - earliest
+		end
+	end
+
+	-- Use a reasonable time window: either the data range or a default
+	local timeWindow = math.max(dataTimeRange * 1.2, 1.0) / zoom -- Add 20% padding or minimum 1s
 
 	-- When paused, freeze the timeline scope
 	if not frozenTimeScope then
@@ -533,22 +613,27 @@ function UIBody.Draw(profilerData, topBarHeight)
 	if isPaused then
 		-- PAUSED: Use frozen scope + user navigation
 		if not frozenTimeScope.center then
-			-- Auto-center on most recent recorded data
-			local latestTime = currentTime
+			-- Auto-center on middle of all recorded data (not just latest)
+			local earliest, latest = math.huge, -math.huge
 			if profilerData.scriptTimelines then
 				for _, scriptData in pairs(profilerData.scriptTimelines) do
 					if scriptData.functions then
 						for _, func in ipairs(scriptData.functions) do
-							if func.endTime and func.endTime > latestTime then
-								latestTime = func.endTime
+							if func.startTime and func.endTime then
+								earliest = math.min(earliest, func.startTime)
+								latest = math.max(latest, func.endTime)
 							end
 						end
 					end
 				end
 			end
-			frozenTimeScope.center = latestTime -- Start at latest recorded data
+			if earliest ~= math.huge and latest ~= -math.huge then
+				frozenTimeScope.center = (earliest + latest) / 2 -- Center on middle of data
+			else
+				frozenTimeScope.center = currentTime -- Fallback
+			end
 		end
-		-- If a frame is selected in top bar, jump to that time
+		-- If a frame is selected in top bar, center on frozen scope; horizontal navigation handled by viewportX in timeToScreen
 		local centerTime = frozenTimeScope.center
 		local halfWindow = timeWindow / 2
 		startTime = centerTime - halfWindow
@@ -632,24 +717,15 @@ function UIBody.Draw(profilerData, topBarHeight)
 	-- Track pause state for next frame
 	_wasPaused = isPaused
 
-	-- DEBUG: Show time window info - ONLY when not paused to prevent spam
-	if (G and G.DEBUG) and not isPaused then
-		if not _timeWindowDebugCount then
-			_timeWindowDebugCount = 0
-		end
-		_timeWindowDebugCount = _timeWindowDebugCount + 1
-
-		if _timeWindowDebugCount == 60 then -- Show every 60 frames (once per second at 60fps)
-			_timeWindowDebugCount = 0
-			print(
-				string.format(
-					"🕒 Time window: %.3fs - %.3fs (%.3fs range, zoom: %.2fx)",
-					startTime,
-					endTime,
-					timeRange,
-					zoom
-				)
-			)
+	-- Reduced debug spam
+	if isPaused and not _timeDebugCount then
+		_timeDebugCount = 0
+	end
+	if isPaused then
+		_timeDebugCount = _timeDebugCount + 1
+		if _timeDebugCount > 120 then -- Show every 2 seconds
+			_timeDebugCount = 0
+			print(string.format("🕒 Time window: %.3fs - %.3fs (%.3fs range, zoom: %.2fx)", startTime, endTime, timeRange, zoom))
 		end
 	end
 
@@ -664,7 +740,7 @@ function UIBody.Draw(profilerData, topBarHeight)
 	-- Calculate actual rendered content height (match the drawing logic)
 	local simulatedY = topBarHeight + 10 - viewportY -- Same as currentY calculation
 	local actualContentBottom = simulatedY
-	
+
 	-- Simulate drawing to find actual bottom
 	if profilerData.scriptTimelines then
 		for scriptName, scriptData in pairs(profilerData.scriptTimelines) do
@@ -676,17 +752,23 @@ function UIBody.Draw(profilerData, topBarHeight)
 			end
 		end
 	end
-	
+
 	-- Add main timeline
 	if profilerData.mainTimeline and #profilerData.mainTimeline > 0 then
-		actualContentBottom = actualContentBottom + HEADER_HEIGHT + (#profilerData.mainTimeline * (THREAD_HEIGHT + THREAD_SPACING)) + 20
+		actualContentBottom = actualContentBottom
+			+ HEADER_HEIGHT
+			+ (#profilerData.mainTimeline * (THREAD_HEIGHT + THREAD_SPACING))
+			+ 20
 	end
-	
+
 	-- Add custom threads
 	if profilerData.customThreads then
 		for _, thread in ipairs(profilerData.customThreads) do
 			if thread.children and #thread.children > 0 then
-				actualContentBottom = actualContentBottom + HEADER_HEIGHT + (#thread.children * (THREAD_HEIGHT + THREAD_SPACING)) + 20
+				actualContentBottom = actualContentBottom
+					+ HEADER_HEIGHT
+					+ (#thread.children * (THREAD_HEIGHT + THREAD_SPACING))
+					+ 20
 			end
 		end
 	end
@@ -745,17 +827,27 @@ function UIBody.Draw(profilerData, topBarHeight)
 					functions = scriptData.functions,
 					duration = timeRange,
 				}
+				-- DEBUG: Always show function count and time ranges
+				print(
+					string.format("📊 Drawing script timeline: %s (%d functions)", scriptName, #scriptData.functions)
+				)
+				for i, func in ipairs(scriptData.functions) do
+					if i <= 3 then -- Show first 3 functions
+						print(
+							string.format(
+								"  Function %d: %s (%.3f-%.3f, duration: %.3fms)",
+								i,
+								func.name or "unnamed",
+								func.startTime or 0,
+								func.endTime or 0,
+								(func.duration or 0) * 1000
+							)
+						)
+					end
+				end
+
 				-- ALWAYS draw the thread header even if no functions yet
 				currentY = drawThread(scriptThread, currentY, startTime, timeRange, screenW)
-				if G and G.DEBUG then
-					print(
-						string.format(
-							"📊 Drawing script timeline: %s (%d functions)",
-							scriptName,
-							#scriptData.functions
-						)
-					)
-				end
 			end
 		end
 	else
@@ -792,16 +884,18 @@ function UIBody.Draw(profilerData, topBarHeight)
 		end
 	end
 
-	-- Draw zoom and pan info (READABLE - integer coordinates)
-	draw.Color(255, 255, 255, 200)
-	draw.Text(
-		10,
-		screenH - 70,
-		string.format("Zoom: %.2fx (Window: %.3fs) %s", zoom, timeWindow, isPaused and "[FROZEN]" or "[LIVE]")
-	)
-	draw.Text(10, screenH - 55, string.format("Pan: X=%.0f Y=%.0f", viewportX, viewportY))
-	draw.Text(10, screenH - 40, string.format("Time: %.3fs - %.3fs", startTime, endTime))
-	draw.Text(10, screenH - 25, "Q/E=Zoom, Drag=Pan, P=Pause")
+	-- ALWAYS draw zoom and pan info (READABLE - integer coordinates)
+	draw.Color(255, 255, 255, 255) -- Bright white
+	draw.Text(10, screenH - 90, string.format("Zoom: %.2fx (Window: %.3fs) %s", zoom, timeWindow, isPaused and "[FROZEN]" or "[LIVE]"))
+	draw.Text(10, screenH - 75, string.format("Pan: X=%.0f Y=%.0f", viewportX, viewportY))
+	draw.Text(10, screenH - 60, string.format("Time: %.3fs - %.3fs", startTime, endTime))
+	draw.Text(10, screenH - 45, "Drag=Pan, Wheel=Zoom, P=Pause")
+	
+	-- Debug input state
+	local mousePos = (_G.input and _G.input.GetMousePos) and _G.input.GetMousePos() or {0, 0}
+	local mouseDown = (_G.input and _G.input.IsButtonDown) and _G.input.IsButtonDown(MOUSE_LEFT) or false
+	draw.Text(10, screenH - 30, string.format("Mouse: %d,%d Down:%s Drag:%s", mousePos[1] or 0, mousePos[2] or 0, tostring(mouseDown), tostring(isDragging)))
+	draw.Text(10, screenH - 15, string.format("Input API: %s", (_G.input and "OK") or "MISSING"))
 
 	-- DEBUG: Show data status
 	local totalFunctions = 0
@@ -853,6 +947,19 @@ end
 
 function UIBody.GetViewport()
 	return viewportX, viewportY
+end
+
+-- Center the timeline on a specific global timestamp (called from top bar)
+function UIBody.CenterOnTimestamp(timestamp)
+	if not timestamp then
+		return
+	end
+	-- Set frozen center and reset pan for precise jump
+	if not frozenTimeScope then
+		frozenTimeScope = {}
+	end
+	frozenTimeScope.center = timestamp
+	viewportX = 0
 end
 
 return UIBody

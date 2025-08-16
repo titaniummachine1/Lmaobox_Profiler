@@ -261,13 +261,7 @@ local function drawFunctionBar(func, y, depth, startTime, timeRange, screenWidth
 			math.floor(indentedY + barHeight)
 		)
 
-		-- Draw script name on the left (always visible, fixed position)
-		if func.scriptName and depth == 0 then
-			local scriptText = "[" .. func.scriptName .. "]"
-			draw.Color(255, 255, 255, 255) -- Bright white for maximum visibility
-			-- Use integer coordinates to prevent sub-pixel rendering blur
-			draw.Text(5, math.floor(indentedY + 6), scriptText)
-		end
+		-- Script name is already shown in the green header, no need to repeat it on each function
 
 		-- Draw text if bar is wide enough (LARGE READABLE TEXT)
 		if width > 50 then -- Increase minimum width due to larger font
@@ -292,23 +286,59 @@ local function drawFunctionBar(func, y, depth, startTime, timeRange, screenWidth
 	return indentedY + barHeight + 2
 end
 
--- Draw function hierarchy recursively
+-- Check if two functions overlap in time
+local function functionsOverlap(func1, func2)
+	if not func1.startTime or not func1.endTime or not func2.startTime or not func2.endTime then
+		return false
+	end
+	return not (func1.endTime <= func2.startTime or func2.endTime <= func1.startTime)
+end
+
+-- Draw function hierarchy with proper stacking for overlapping functions
 local function drawFunctionHierarchy(functions, baseY, startTime, timeRange, screenWidth, threadType)
 	local currentY = baseY
-
+	local stackLevels = {} -- Track which Y levels are occupied by time ranges
+	
 	for _, func in ipairs(functions) do
-		-- Draw this function
-		local newY = drawFunctionBar(func, currentY, 0, startTime, timeRange, screenWidth, threadType)
-		if newY then
-			currentY = newY
+		-- Find the appropriate Y level for this function
+		local level = 0
+		local foundLevel = false
+		
+		-- Check existing stack levels for conflicts
+		while not foundLevel do
+			local conflictFound = false
+			for _, occupiedFunc in ipairs(stackLevels[level] or {}) do
+				if functionsOverlap(func, occupiedFunc) then
+					conflictFound = true
+					break
+				end
+			end
+			
+			if not conflictFound then
+				-- This level is free, use it
+				if not stackLevels[level] then
+					stackLevels[level] = {}
+				end
+				table.insert(stackLevels[level], func)
+				foundLevel = true
+			else
+				-- Try next level
+				level = level + 1
+			end
 		end
-
-		-- Draw children with indentation
+		
+		-- Draw this function at the determined level
+		local functionY = baseY + (level * (THREAD_HEIGHT + THREAD_SPACING))
+		local newY = drawFunctionBar(func, functionY, 0, startTime, timeRange, screenWidth, threadType)
+		
+		-- Update currentY to track the maximum used Y
+		currentY = math.max(currentY, functionY + THREAD_HEIGHT + THREAD_SPACING)
+		
+		-- Draw children with indentation (children get their own stacking context)
 		if func.children and #func.children > 0 then
-			currentY = drawFunctionHierarchy(func.children, currentY, startTime, timeRange, screenWidth, threadType)
+			local childrenY = drawFunctionHierarchy(func.children, currentY, startTime, timeRange, screenWidth, threadType)
+			currentY = math.max(currentY, childrenY)
 		end
-
-		currentY = currentY + THREAD_SPACING
 	end
 
 	return currentY
@@ -395,8 +425,8 @@ local function handleInput(screenWidth, screenHeight, topBarHeight)
 
 		if math.abs(deltaX) > 0 or math.abs(deltaY) > 0 then
 			viewportX = viewportX - deltaX * PAN_SPEED
-			-- Fix inverted vertical movement: dragging down increases viewportY
-			viewportY = viewportY + deltaY * PAN_SPEED
+			-- Correct vertical movement: dragging down should scroll down (negative viewportY)
+			viewportY = viewportY - deltaY * PAN_SPEED
 		end
 
 		lastMouseX = mx
@@ -631,32 +661,40 @@ function UIBody.Draw(profilerData, topBarHeight)
 		viewportY = 0
 	end
 
-	-- Determine vertical bounds dynamically based on content height
-	local contentHeight = 0
-	if profilerData and profilerData.scriptTimelines then
-		local scriptCount = 0
-		for _, scriptData in pairs(profilerData.scriptTimelines) do
-			scriptCount = scriptCount + 1
-			if scriptData.functions and #scriptData.functions > 0 then
-				contentHeight = contentHeight
-					+ HEADER_HEIGHT
-					+ (#scriptData.functions * (THREAD_HEIGHT + THREAD_SPACING))
-					+ 20
-			else
-				contentHeight = contentHeight + HEADER_HEIGHT + 20
+	-- Calculate actual rendered content height (match the drawing logic)
+	local simulatedY = topBarHeight + 10 - viewportY -- Same as currentY calculation
+	local actualContentBottom = simulatedY
+	
+	-- Simulate drawing to find actual bottom
+	if profilerData.scriptTimelines then
+		for scriptName, scriptData in pairs(profilerData.scriptTimelines) do
+			if scriptData.functions then
+				-- Each script adds: header + functions + spacing
+				actualContentBottom = actualContentBottom + HEADER_HEIGHT + 2
+				actualContentBottom = actualContentBottom + (#scriptData.functions * (THREAD_HEIGHT + THREAD_SPACING))
+				actualContentBottom = actualContentBottom + THREAD_SPACING * 2
 			end
 		end
-		if scriptCount == 0 and profilerData.mainTimeline then
-			contentHeight = contentHeight
-				+ HEADER_HEIGHT
-				+ (#profilerData.mainTimeline * (THREAD_HEIGHT + THREAD_SPACING))
-				+ 20
+	end
+	
+	-- Add main timeline
+	if profilerData.mainTimeline and #profilerData.mainTimeline > 0 then
+		actualContentBottom = actualContentBottom + HEADER_HEIGHT + (#profilerData.mainTimeline * (THREAD_HEIGHT + THREAD_SPACING)) + 20
+	end
+	
+	-- Add custom threads
+	if profilerData.customThreads then
+		for _, thread in ipairs(profilerData.customThreads) do
+			if thread.children and #thread.children > 0 then
+				actualContentBottom = actualContentBottom + HEADER_HEIGHT + (#thread.children * (THREAD_HEIGHT + THREAD_SPACING)) + 20
+			end
 		end
 	end
 
-	-- Clamp viewportY to content bounds (fix inverted/overscroll)
+	-- Calculate proper viewportY limits
 	local bodyHeight = screenH - topBarHeight
-	local maxViewportY = math.max(0, contentHeight - bodyHeight)
+	local contentHeight = actualContentBottom - (topBarHeight + 10) -- Remove initial offset
+	local maxViewportY = math.max(0, contentHeight - bodyHeight + 20) -- Add small buffer
 	viewportY = clamp(viewportY, 0, maxViewportY)
 
 	-- Horizontal clamping when paused to data time range

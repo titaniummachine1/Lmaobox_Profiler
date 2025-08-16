@@ -77,51 +77,104 @@ local function TestManualProfiling()
 		local combined = data.text .. data.extra_data.formatted
 	end
 
-	Profiler.End("HEAVY_MANUAL_WORK")
+	Profiler.End()
 end
 
 -- Call test function immediately and repeatedly
 TestManualProfiling()
 print("🧪 Manual profiling test completed")
 
--- Add continuous test functions that should show up
+-- Nested function hierarchy for testing profiler display
+local function InnerCalculation(value)
+	-- Deepest level function
+	local result = 0
+	for i = 1, 50 do
+		result = result + math.sin(value + i) * math.cos(value - i)
+	end
+	return result
+end
+
+local function MiddleProcessor(data)
+	-- Mid-level function that calls InnerCalculation
+	local processed = {}
+	for i = 1, #data do
+		processed[i] = InnerCalculation(data[i]) + data[i] * 2
+	end
+	return processed
+end
+
+local function TopLevelWork()
+	-- Top-level function that orchestrates the work
+	local inputData = {}
+	for i = 1, 100 do
+		inputData[i] = i * 0.1
+	end
+	
+	local result = MiddleProcessor(inputData)
+	
+	-- Additional work at top level
+	local sum = 0
+	for i = 1, #result do
+		sum = sum + result[i]
+	end
+	
+	return sum
+end
+
 local function ContinuousWork()
-	-- HEAVY work that should definitely be profiled
+	-- Call the nested hierarchy
+	local hierarchyResult = TopLevelWork()
+	
+	-- Additional work in this function
 	local total = 0
-	for i = 1, 200 do -- Increased from 50
-		total = total + math.sin(i * 0.1) * math.cos(i * 0.2) + math.log(i + 1)
-		-- Add string operations
+	for i = 1, 100 do
+		total = total + math.sin(i * 0.1) * math.cos(i * 0.2) + hierarchyResult / 1000
 		local temp = string.format("calc_%d_%.3f", i, total)
 	end
 	return total
 end
 
+local function StringManipulation(text)
+	-- Helper for MoreWork
+	local modified = ""
+	for i = 1, 20 do
+		modified = modified .. text .. "_" .. tostring(i)
+	end
+	return modified
+end
+
 local function MoreWork()
-	-- HEAVY string work to profile
+	-- Calls StringManipulation
 	local result = ""
-	for i = 1, 100 do -- Increased from 20
-		result = result .. tostring(i) .. "_heavy_" .. string.rep("x", i % 10)
-		-- Add table operations
+	for i = 1, 50 do
+		local base = string.format("item_%d", i)
+		result = result .. StringManipulation(base)
 		local temp = { id = i, value = result, computed = i * 2 }
 	end
 	return result
 end
 
+local function SortingAlgorithm(table_to_sort)
+	-- Helper for ExpensiveTableWork
+	table.sort(table_to_sort, function(a, b)
+		return a.id > b.id
+	end)
+	return table_to_sort
+end
+
 local function ExpensiveTableWork()
-	-- NEW: Heavy table operations
+	-- Creates table then calls SortingAlgorithm
 	local bigTable = {}
-	for i = 1, 500 do
+	for i = 1, 300 do
 		bigTable[i] = {
 			id = i,
 			data = string.format("entry_%d", i),
 			nested = { value = i * 2, flag = i % 2 == 0 },
 		}
 	end
-	-- Sort the table
-	table.sort(bigTable, function(a, b)
-		return a.id > b.id
-	end)
-	return #bigTable
+	
+	local sorted = SortingAlgorithm(bigTable)
+	return #sorted
 end
 
 -- Create fonts for our example
@@ -229,15 +282,15 @@ local function ManualProfilingExample()
 	for i = 1, 10 do -- Much smaller loop
 		local _ = string.format("proc_%d_%.2f", i, globals.RealTime())
 	end
-	Profiler.End("custom_processing")
+	Profiler.End()
 
 	-- Simple operation
 	Profiler.Begin("custom_math")
 	local result = math.sin(total) * math.cos(globals.RealTime())
 	local _ = result -- Use the result
-	Profiler.End("custom_math")
+	Profiler.End()
 
-	Profiler.End("custom_operation")
+	Profiler.End()
 end
 
 -- Example 5: Event Handler (automatically profiled)
@@ -332,7 +385,7 @@ callbacks.Register("CreateMove", "microprofiler_demo", function(cmd)
 		for i = 1, 100 do
 			local calc = math.sin(i) + math.cos(i) + math.sqrt(i)
 		end
-		Profiler.End("CREATEMOCE_HEAVY_CALC")
+		Profiler.End()
 	end
 end)
 
@@ -354,7 +407,7 @@ callbacks.Register("Draw", "microprofiler_demo", function()
 			local text = string.format("draw_calc_%d", i)
 			local data = { frame = globals.FrameCount(), text = text }
 		end
-		Profiler.End("DRAW_HEAVY_WORK")
+		Profiler.End()
 	end
 
 	-- DON'T call Profiler.Draw() here - let the main profiler handle it
@@ -389,7 +442,7 @@ callbacks.Register("Unload", "microprofiler_demo", function()
 		local task_result = math.random(1000, 5000) -- Simulate memory freed
 	end
 
-	Profiler.End("cleanup_operations")
+	Profiler.End()
 
 	-- Clear demo loaded flag to allow reload
 	_G.MICROPROFILER_DEMO_LOADED = false

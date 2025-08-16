@@ -121,13 +121,13 @@ local function drawScript(scriptName, functions, startY, dataStartTime, dataEndT
 		-- Draw script name and info only if header is visible and tall enough
 		if headerX + headerWidth > 0 and headerX < 2000 and scriptHeaderHeight > 12 then
 			draw.Color(255, 255, 255, 255)
+			-- Script name on left
 			draw.Text(math.floor(headerX + 4), math.floor(currentY + 4), scriptName)
-			if scriptHeaderHeight > 20 then
-				draw.Text(
-					math.floor(headerX + 4),
-					math.floor(currentY + scriptHeaderHeight - 12),
-					string.format("(%d functions)", #functions)
-				)
+			-- Function count on right edge of header
+			local countText = string.format("(%d functions)", #functions)
+			local textWidth = 80 -- Estimate text width
+			if headerWidth > textWidth + 8 then -- Ensure it fits
+				draw.Text(math.floor(headerX + headerWidth - textWidth), math.floor(currentY + 4), countText)
 			end
 		end
 	end
@@ -194,25 +194,43 @@ local function handleInput(screenW, screenH, topBarHeight)
 		print("🎯 DRAG END")
 	end
 
-	-- Handle zoom with Q/E keys - simple scaling
-	if input.IsButtonDown then
-		local qPressed = input.IsButtonDown(KEY_Q)
-		local ePressed = input.IsButtonDown(KEY_E)
-
-		if qPressed then
-			timeScale = timeScale * 1.02 -- Zoom in horizontally (slower)
-			verticalScale = verticalScale * 1.02 -- Zoom in vertically
-			print(string.format("🔍 ZOOM IN: timeScale=%.1f, verticalScale=%.2f", timeScale, verticalScale))
-		elseif ePressed then
-			timeScale = timeScale / 1.02 -- Zoom out horizontally (slower)
-			verticalScale = verticalScale / 1.02 -- Zoom out vertically
-			print(string.format("🔍 ZOOM OUT: timeScale=%.1f, verticalScale=%.2f", timeScale, verticalScale))
-		end
-
-		-- Clamp zoom
-		timeScale = math.max(1.0, math.min(10000.0, timeScale))
-		verticalScale = math.max(0.1, math.min(10.0, verticalScale))
-	end
+		    -- Handle zoom with Q/E keys - zoom towards mouse position
+    if input.IsButtonDown then
+        local qPressed = input.IsButtonDown(KEY_Q)
+        local ePressed = input.IsButtonDown(KEY_E)
+        
+        if qPressed or ePressed then
+            -- Store old scales
+            local oldTimeScale = timeScale
+            local oldVerticalScale = verticalScale
+            
+            if qPressed then
+                timeScale = timeScale * 1.02 -- Zoom in horizontally (slower)
+                verticalScale = verticalScale * 1.02 -- Zoom in vertically
+                print(string.format("🔍 ZOOM IN: timeScale=%.1f, verticalScale=%.2f", timeScale, verticalScale))
+            elseif ePressed then
+                timeScale = timeScale / 1.02 -- Zoom out horizontally (slower)
+                verticalScale = verticalScale / 1.02 -- Zoom out vertically
+                print(string.format("🔍 ZOOM OUT: timeScale=%.1f, verticalScale=%.2f", timeScale, verticalScale))
+            end
+            
+            -- Clamp zoom
+            timeScale = math.max(1.0, math.min(10000.0, timeScale))
+            verticalScale = math.max(0.1, math.min(10.0, verticalScale))
+            
+            -- Adjust offset to keep zoom centered on mouse position
+            local scaleChangeX = timeScale / oldTimeScale
+            local scaleChangeY = verticalScale / oldVerticalScale
+            
+            -- Calculate mouse position relative to board
+            local mouseBoardX = mx + offsetX
+            local mouseBoardY = (my - topBarHeight) + offsetY
+            
+            -- Adjust offsets to keep mouse position stable during zoom
+            offsetX = mouseBoardX - (mouseBoardX / scaleChangeX)
+            offsetY = mouseBoardY - (mouseBoardY / scaleChangeY)
+        end
+    end
 end
 
 -- Public API

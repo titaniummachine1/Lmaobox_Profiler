@@ -203,11 +203,15 @@ local function shouldProfile(info)
 	end
 
 	-- STRICT FILTERING: Only allow actual user scripts, block profiler completely
-	if scriptName:find("Profiler", 1, true) or scriptName == "Local" or scriptName == "Unknown" then
-		return false -- Skip profiler-related scripts and unknowns
+	if scriptName:find("Profiler", 1, true) or scriptName == "Local" then
+		return false -- Skip profiler-related scripts
 	end
 
-	-- Allow all user scripts; previously restricted to example.lua which hid data
+	-- Allow ALL user scripts (including unknown ones) for auto-hooking
+	-- Debug: Show what scripts we're profiling
+	if scriptName ~= "Unknown" and (G and G.DEBUG) then
+		print(string.format("🔍 Auto-profiling script: %s (function: %s)", scriptName, name or "unnamed"))
+	end
 
 	-- Skip internal profiler functions by name
 	if

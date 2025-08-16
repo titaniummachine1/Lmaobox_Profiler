@@ -134,28 +134,79 @@ local function drawScript(scriptName, functions, startY, dataStartTime, dataEndT
 
 	currentY = currentY + scriptHeaderHeight + functionSpacing
 
-	-- Draw functions stacked vertically
+	-- Draw functions with proper stacking (like Roblox profiler)
+	local stackLevels = {} -- Track occupied time ranges at each Y level
+	
 	for i, func in ipairs(functions) do
 		if func.startTime and func.endTime then
 			local x = timeToPixel(func.startTime, dataStartTime) - offsetX
 			local width = timeToPixel(func.endTime, dataStartTime) - timeToPixel(func.startTime, dataStartTime)
 
+			-- Find the highest available Y level for this function
+			local level = 0
+			local foundLevel = false
+			
+			while not foundLevel do
+				local conflictFound = false
+				
+				-- Check if this time range conflicts with existing functions at this level
+				if stackLevels[level] then
+					for _, occupiedRange in ipairs(stackLevels[level]) do
+						-- Check for time overlap
+						if not (func.endTime <= occupiedRange.startTime or func.startTime >= occupiedRange.endTime) then
+							conflictFound = true
+							break
+						end
+					end
+				end
+				
+				if not conflictFound then
+					-- This level is free, use it
+					if not stackLevels[level] then
+						stackLevels[level] = {}
+					end
+					table.insert(stackLevels[level], {startTime = func.startTime, endTime = func.endTime})
+					foundLevel = true
+				else
+					-- Try next level down
+					level = level + 1
+				end
+			end
+			
+			-- Calculate Y position based on level
+			local functionY = currentY + (level * (BASE_FUNCTION_HEIGHT * verticalScale + BASE_FUNCTION_SPACING * verticalScale))
+
 			-- Debug info for first few functions
 			if i <= 3 then
-				print(string.format("  Func %d: %s | Time: %.6f-%.6f (%.6fs) | X: %.1f Width: %.1f | Scale: %.1f", 
-					i, func.name or "unnamed", 
-					func.startTime, func.endTime, func.endTime - func.startTime,
-					x, width, timeScale))
+				print(
+					string.format(
+						"  Func %d: %s | Time: %.6f-%.6f (%.6fs) | X: %.1f Width: %.1f | Level: %d Y: %.1f",
+						i,
+						func.name or "unnamed",
+						func.startTime,
+						func.endTime,
+						func.endTime - func.startTime,
+						x,
+						width,
+						level,
+						functionY
+					)
+				)
 			end
 
 			-- Only draw if visible on screen
 			if x + width > 0 and x < 2000 then -- Assume 2000px max screen width
-				drawFunction(func, x, currentY - offsetY, width)
+				drawFunction(func, x, functionY - offsetY, width)
 			end
 		end
-
-		currentY = currentY + (BASE_FUNCTION_HEIGHT * verticalScale) + (BASE_FUNCTION_SPACING * verticalScale)
 	end
+	
+	-- Calculate new Y position after all levels
+	local maxLevel = 0
+	for level, _ in pairs(stackLevels) do
+		maxLevel = math.max(maxLevel, level)
+	end
+	currentY = currentY + ((maxLevel + 1) * (BASE_FUNCTION_HEIGHT * verticalScale + BASE_FUNCTION_SPACING * verticalScale))
 
 	return currentY + (BASE_SCRIPT_SPACING * verticalScale)
 end

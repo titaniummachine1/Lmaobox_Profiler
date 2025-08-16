@@ -135,7 +135,7 @@ local function timeToScreen(time, startTime, timeRange, screenWidth)
 	-- Apply zoom and viewport - viewport shifts the view horizontally
 	local basePosition = normalizedTime * screenWidth * zoom
 	local result = basePosition - viewportX
-	
+
 	-- Guard against extreme values
 	if result ~= result or result > 1e9 or result < -1e9 then
 		return 0
@@ -793,41 +793,7 @@ function UIBody.Draw(profilerData, topBarHeight)
 	local maxViewportY = math.max(0, contentHeight - bodyHeight + 20) -- Add small buffer
 	viewportY = clamp(viewportY, 0, maxViewportY)
 
-	-- Horizontal clamping when paused to data time range
-	if isPaused then
-		local earliest, latest = math.huge, -math.huge
-		local function consider(node)
-			if node.startTime and node.endTime then
-				earliest = math.min(earliest, node.startTime)
-				latest = math.max(latest, node.endTime)
-			end
-		end
-		if profilerData.scriptTimelines then
-			for _, scriptData in pairs(profilerData.scriptTimelines) do
-				if scriptData.functions then
-					for _, f in ipairs(scriptData.functions) do
-						consider(f)
-					end
-				end
-			end
-		end
-		if profilerData.mainTimeline then
-			for _, f in ipairs(profilerData.mainTimeline) do
-				consider(f)
-			end
-		end
-
-		if earliest ~= math.huge and latest ~= -math.huge then
-			-- Compute allowable viewportX range so the visible window [startTime,endTime] stays within [earliest,latest]
-			local pixelsPerWindow = (screenW * zoom)
-			local minViewportX = ((earliest - startTime) / timeRange) * pixelsPerWindow
-			local maxViewportX = ((latest - endTime) / timeRange) * pixelsPerWindow
-			if minViewportX > maxViewportX then
-				minViewportX, maxViewportX = maxViewportX, minViewportX
-			end
-			viewportX = clamp(viewportX, minViewportX, maxViewportX)
-		end
-	end
+	-- Horizontal clamping is disabled when paused so panning remains free
 
 	local currentY = topBarHeight + 10 - viewportY
 

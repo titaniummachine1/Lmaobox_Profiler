@@ -4,14 +4,20 @@
 -- Load the profiler
 local Profiler = require("Profiler")
 Profiler.SetVisible(true)
--- Ensure body is visible and pause to show data
-Profiler.SetBodyVisible(true)
-Profiler.TogglePause() -- This should pause and show the body with data
+-- Don't pause immediately - let it collect data first
 
 print("✅ Simple profiler test loaded!")
 print("🔧 Profiler visible:", Profiler.IsVisible())
 print("🔧 Profiler paused:", Profiler.IsPaused())
-print("🔧 Body visible:", Profiler.IsBodyVisible())
+-- Check body visibility after a delay to ensure profiler is initialized
+callbacks.Register("CreateMove", "check_status", function(cmd)
+	if globals.FrameCount() == 5 then
+		print("🔧 Body visible:", Profiler.IsBodyVisible())
+		Profiler.SetBodyVisible(true)
+		print("🔧 Body set to visible")
+		callbacks.Unregister("CreateMove", "check_status")
+	end
+end)
 
 -- Simple test function that should be easily detected (reduced for every-frame)
 local function SimpleTestFunction()

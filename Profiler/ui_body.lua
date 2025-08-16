@@ -110,7 +110,7 @@ local function clamp(value, min, max)
 	return value
 end
 
--- Convert time to screen position (Lua 5.4 enhanced with safety)
+-- Convert time to screen position with proper viewport handling
 local function timeToScreen(time, startTime, timeRange, screenWidth)
 	-- Safety checks for division by zero and invalid inputs
 	if not time or not startTime or not timeRange or not screenWidth then
@@ -126,20 +126,18 @@ local function timeToScreen(time, startTime, timeRange, screenWidth)
 		return 0
 	end
 
-	-- Safe division and bounds checking
+	-- Calculate time position with zoom and viewport offset
 	local normalizedTime = (time - startTime) / timeRange
 	if normalizedTime ~= normalizedTime then -- Check for NaN
 		return 0
 	end
 
-	local result = (normalizedTime * screenWidth * zoom) - viewportX
-	-- Guard against extreme values multiplying into huge doubles
+	-- Apply zoom and viewport - viewport shifts the view horizontally
+	local basePosition = normalizedTime * screenWidth * zoom
+	local result = basePosition - viewportX
+	
+	-- Guard against extreme values
 	if result ~= result or result > 1e9 or result < -1e9 then
-		return 0
-	end
-
-	-- Final safety check before returning
-	if result ~= result or result == math.huge or result == -math.huge then
 		return 0
 	end
 
@@ -484,7 +482,15 @@ local function handleInput(screenWidth, screenHeight, topBarHeight)
 		if math.abs(deltaX) > 1 or math.abs(deltaY) > 1 then -- Require minimum movement
 			viewportX = viewportX - deltaX * PAN_SPEED
 			viewportY = viewportY - deltaY * PAN_SPEED
-			print(string.format("🎯 DRAGGING: deltaX=%d, deltaY=%d, viewportX=%.1f, viewportY=%.1f", deltaX, deltaY, viewportX, viewportY))
+			print(
+				string.format(
+					"🎯 DRAGGING: deltaX=%d, deltaY=%d, viewportX=%.1f, viewportY=%.1f",
+					deltaX,
+					deltaY,
+					viewportX,
+					viewportY
+				)
+			)
 		end
 
 		lastMouseX = mx
@@ -500,7 +506,7 @@ local function handleInput(screenWidth, screenHeight, topBarHeight)
 	if _G.input.IsButtonDown then
 		local wheelUpNow = _G.input.IsButtonDown(112)
 		local wheelDownNow = _G.input.IsButtonDown(113)
-		
+
 		if wheelUpNow and not clickState["wheel_up"] then
 			local oldZoom = zoom
 			zoom = clamp(zoom * 1.2, MIN_ZOOM, MAX_ZOOM)
@@ -725,7 +731,15 @@ function UIBody.Draw(profilerData, topBarHeight)
 		_timeDebugCount = _timeDebugCount + 1
 		if _timeDebugCount > 120 then -- Show every 2 seconds
 			_timeDebugCount = 0
-			print(string.format("🕒 Time window: %.3fs - %.3fs (%.3fs range, zoom: %.2fx)", startTime, endTime, timeRange, zoom))
+			print(
+				string.format(
+					"🕒 Time window: %.3fs - %.3fs (%.3fs range, zoom: %.2fx)",
+					startTime,
+					endTime,
+					timeRange,
+					zoom
+				)
+			)
 		end
 	end
 
@@ -886,15 +900,29 @@ function UIBody.Draw(profilerData, topBarHeight)
 
 	-- ALWAYS draw zoom and pan info (READABLE - integer coordinates)
 	draw.Color(255, 255, 255, 255) -- Bright white
-	draw.Text(10, screenH - 90, string.format("Zoom: %.2fx (Window: %.3fs) %s", zoom, timeWindow, isPaused and "[FROZEN]" or "[LIVE]"))
+	draw.Text(
+		10,
+		screenH - 90,
+		string.format("Zoom: %.2fx (Window: %.3fs) %s", zoom, timeWindow, isPaused and "[FROZEN]" or "[LIVE]")
+	)
 	draw.Text(10, screenH - 75, string.format("Pan: X=%.0f Y=%.0f", viewportX, viewportY))
 	draw.Text(10, screenH - 60, string.format("Time: %.3fs - %.3fs", startTime, endTime))
 	draw.Text(10, screenH - 45, "Drag=Pan, Wheel=Zoom, P=Pause")
-	
+
 	-- Debug input state
-	local mousePos = (_G.input and _G.input.GetMousePos) and _G.input.GetMousePos() or {0, 0}
+	local mousePos = (_G.input and _G.input.GetMousePos) and _G.input.GetMousePos() or { 0, 0 }
 	local mouseDown = (_G.input and _G.input.IsButtonDown) and _G.input.IsButtonDown(MOUSE_LEFT) or false
-	draw.Text(10, screenH - 30, string.format("Mouse: %d,%d Down:%s Drag:%s", mousePos[1] or 0, mousePos[2] or 0, tostring(mouseDown), tostring(isDragging)))
+	draw.Text(
+		10,
+		screenH - 30,
+		string.format(
+			"Mouse: %d,%d Down:%s Drag:%s",
+			mousePos[1] or 0,
+			mousePos[2] or 0,
+			tostring(mouseDown),
+			tostring(isDragging)
+		)
+	)
 	draw.Text(10, screenH - 15, string.format("Input API: %s", (_G.input and "OK") or "MISSING"))
 
 	-- DEBUG: Show data status

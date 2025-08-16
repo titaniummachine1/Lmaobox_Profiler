@@ -194,43 +194,48 @@ local function handleInput(screenW, screenH, topBarHeight)
 		print("🎯 DRAG END")
 	end
 
-		    -- Handle zoom with Q/E keys - zoom towards mouse position
-    if input.IsButtonDown then
-        local qPressed = input.IsButtonDown(KEY_Q)
-        local ePressed = input.IsButtonDown(KEY_E)
-        
-        if qPressed or ePressed then
-            -- Store old scales
-            local oldTimeScale = timeScale
-            local oldVerticalScale = verticalScale
-            
-            if qPressed then
-                timeScale = timeScale * 1.02 -- Zoom in horizontally (slower)
-                verticalScale = verticalScale * 1.02 -- Zoom in vertically
-                print(string.format("🔍 ZOOM IN: timeScale=%.1f, verticalScale=%.2f", timeScale, verticalScale))
-            elseif ePressed then
-                timeScale = timeScale / 1.02 -- Zoom out horizontally (slower)
-                verticalScale = verticalScale / 1.02 -- Zoom out vertically
-                print(string.format("🔍 ZOOM OUT: timeScale=%.1f, verticalScale=%.2f", timeScale, verticalScale))
-            end
-            
-            -- Clamp zoom
-            timeScale = math.max(1.0, math.min(10000.0, timeScale))
-            verticalScale = math.max(0.1, math.min(10.0, verticalScale))
-            
-            -- Adjust offset to keep zoom centered on mouse position
+	-- Handle zoom with Q/E keys - zoom towards mouse position
+	if input.IsButtonDown then
+		local qPressed = input.IsButtonDown(KEY_Q)
+		local ePressed = input.IsButtonDown(KEY_E)
+
+		if qPressed or ePressed then
+			-- Store old scales
+			local oldTimeScale = timeScale
+			local oldVerticalScale = verticalScale
+
+			if qPressed then
+				timeScale = timeScale * 1.02 -- Zoom in horizontally (slower)
+				verticalScale = verticalScale * 1.02 -- Zoom in vertically
+				print(string.format("🔍 ZOOM IN: timeScale=%.1f, verticalScale=%.2f", timeScale, verticalScale))
+			elseif ePressed then
+				timeScale = timeScale / 1.02 -- Zoom out horizontally (slower)
+				verticalScale = verticalScale / 1.02 -- Zoom out vertically
+				print(string.format("🔍 ZOOM OUT: timeScale=%.1f, verticalScale=%.2f", timeScale, verticalScale))
+			end
+
+			-- Clamp zoom
+			timeScale = math.max(1.0, math.min(10000.0, timeScale))
+			verticalScale = math.max(0.1, math.min(10.0, verticalScale))
+
+			            -- Adjust offset to keep zoom centered on mouse position
             local scaleChangeX = timeScale / oldTimeScale
             local scaleChangeY = verticalScale / oldVerticalScale
             
-            -- Calculate mouse position relative to board
+            -- Calculate mouse position on the board (where mouse points on the content)
             local mouseBoardX = mx + offsetX
             local mouseBoardY = (my - topBarHeight) + offsetY
             
-            -- Adjust offsets to keep mouse position stable during zoom
-            offsetX = mouseBoardX - (mouseBoardX / scaleChangeX)
-            offsetY = mouseBoardY - (mouseBoardY / scaleChangeY)
-        end
-    end
+            -- After scaling, the board content expands/contracts
+            -- We need to move the board to keep the mouse pointing at the same content position
+            local newMouseBoardX = mouseBoardX * scaleChangeX
+            local newMouseBoardY = mouseBoardY * scaleChangeY
+            
+            -- Adjust offsets to compensate for the scale-induced movement
+            offsetX = offsetX + (newMouseBoardX - mouseBoardX)
+            offsetY = offsetY + (newMouseBoardY - mouseBoardY)
+		end
+	end
 end
 
 -- Public API

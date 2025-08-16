@@ -44,34 +44,34 @@ local function pixelToTime(pixel, startTime)
 end
 
 local function drawFunction(func, x, y, width)
-    if not func.startTime or not func.endTime or not draw then
-        return
-    end
-    
-    local functionHeight = BASE_FUNCTION_HEIGHT * verticalScale
-    
-    -- Draw function bar
-    draw.Color(100, 150, 200, 180)
-    draw.FilledRect(math.floor(x), math.floor(y), math.floor(x + width), math.floor(y + functionHeight))
-    
-    -- Draw border
-    draw.Color(255, 255, 255, 100)
-    draw.OutlinedRect(math.floor(x), math.floor(y), math.floor(x + width), math.floor(y + functionHeight))
-    
-    -- Draw function name if it fits
-    local name = func.name or "unknown"
-    if width > 50 and functionHeight > 12 then
-        draw.Color(255, 255, 255, 255)
-        draw.Text(math.floor(x + 4), math.floor(y + 2), name)
-    end
-    
-    -- Draw duration if there's space
-    if width > 120 and functionHeight > 24 then
-        local duration = (func.endTime - func.startTime) * 1000 -- ms
-        local durationText = string.format("%.3fms", duration)
-        draw.Color(255, 255, 100, 255)
-        draw.Text(math.floor(x + 4), math.floor(y + functionHeight - 12), durationText)
-    end
+	if not func.startTime or not func.endTime or not draw then
+		return
+	end
+
+	local functionHeight = BASE_FUNCTION_HEIGHT * verticalScale
+
+	-- Draw function bar
+	draw.Color(100, 150, 200, 180)
+	draw.FilledRect(math.floor(x), math.floor(y), math.floor(x + width), math.floor(y + functionHeight))
+
+	-- Draw border
+	draw.Color(255, 255, 255, 100)
+	draw.OutlinedRect(math.floor(x), math.floor(y), math.floor(x + width), math.floor(y + functionHeight))
+
+	-- Draw function name if it fits
+	local name = func.name or "unknown"
+	if width > 50 and functionHeight > 12 then
+		draw.Color(255, 255, 255, 255)
+		draw.Text(math.floor(x + 4), math.floor(y + 2), name)
+	end
+
+	-- Draw duration if there's space
+	if width > 120 and functionHeight > 24 then
+		local duration = (func.endTime - func.startTime) * 1000 -- ms
+		local durationText = string.format("%.3fms", duration)
+		draw.Color(255, 255, 100, 255)
+		draw.Text(math.floor(x + 4), math.floor(y + functionHeight - 12), durationText)
+	end
 end
 
 local function drawScript(scriptName, functions, startY, dataStartTime, dataEndTime)
@@ -123,7 +123,11 @@ local function drawScript(scriptName, functions, startY, dataStartTime, dataEndT
 			draw.Color(255, 255, 255, 255)
 			draw.Text(math.floor(headerX + 4), math.floor(currentY + 4), scriptName)
 			if scriptHeaderHeight > 20 then
-				draw.Text(math.floor(headerX + 4), math.floor(currentY + scriptHeaderHeight - 12), string.format("(%d functions)", #functions))
+				draw.Text(
+					math.floor(headerX + 4),
+					math.floor(currentY + scriptHeaderHeight - 12),
+					string.format("(%d functions)", #functions)
+				)
 			end
 		end
 	end
@@ -190,25 +194,25 @@ local function handleInput(screenW, screenH, topBarHeight)
 		print("🎯 DRAG END")
 	end
 
-	    -- Handle zoom with Q/E keys - simple scaling
-    if input.IsButtonDown then
-        local qPressed = input.IsButtonDown(KEY_Q)
-        local ePressed = input.IsButtonDown(KEY_E)
-        
-        if qPressed then
-            timeScale = timeScale * 1.02 -- Zoom in horizontally (slower)
-            verticalScale = verticalScale * 1.02 -- Zoom in vertically
-            print(string.format("🔍 ZOOM IN: timeScale=%.1f, verticalScale=%.2f", timeScale, verticalScale))
-        elseif ePressed then
-            timeScale = timeScale / 1.02 -- Zoom out horizontally (slower)
-            verticalScale = verticalScale / 1.02 -- Zoom out vertically
-            print(string.format("🔍 ZOOM OUT: timeScale=%.1f, verticalScale=%.2f", timeScale, verticalScale))
-        end
-        
-        -- Clamp zoom
-        timeScale = math.max(1.0, math.min(10000.0, timeScale))
-        verticalScale = math.max(0.1, math.min(10.0, verticalScale))
-    end
+	-- Handle zoom with Q/E keys - simple scaling
+	if input.IsButtonDown then
+		local qPressed = input.IsButtonDown(KEY_Q)
+		local ePressed = input.IsButtonDown(KEY_E)
+
+		if qPressed then
+			timeScale = timeScale * 1.02 -- Zoom in horizontally (slower)
+			verticalScale = verticalScale * 1.02 -- Zoom in vertically
+			print(string.format("🔍 ZOOM IN: timeScale=%.1f, verticalScale=%.2f", timeScale, verticalScale))
+		elseif ePressed then
+			timeScale = timeScale / 1.02 -- Zoom out horizontally (slower)
+			verticalScale = verticalScale / 1.02 -- Zoom out vertically
+			print(string.format("🔍 ZOOM OUT: timeScale=%.1f, verticalScale=%.2f", timeScale, verticalScale))
+		end
+
+		-- Clamp zoom
+		timeScale = math.max(1.0, math.min(10000.0, timeScale))
+		verticalScale = math.max(0.1, math.min(10.0, verticalScale))
+	end
 end
 
 -- Public API

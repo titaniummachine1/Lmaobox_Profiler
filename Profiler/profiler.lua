@@ -9,7 +9,7 @@ local G = require("Profiler.globals") --[[ Imported by: Main ]]
 local config = require("Profiler.config")
 local MicroProfiler = require("Profiler.microprofiler") --[[ Imported by: profiler ]]
 local UITop = require("Profiler.ui_top") --[[ Imported by: profiler ]]
-local UIBody = require("Profiler.ui_body") --[[ Imported by: profiler ]]
+local UIBody = require("Profiler.ui_body_simple") --[[ Imported by: profiler ]]
 
 -- Module declaration
 local ProfilerCore = {}
@@ -227,8 +227,8 @@ function ProfilerCore.Draw()
 	UITop.Update()
 	UITop.Draw()
 
-	-- Draw body only when paused and visible (navigation while paused only)
-	if UITop.IsPaused() and UIBody.IsVisible() then
+	-- Draw body whenever there's data (simple system)
+	if UIBody.IsVisible() then
 		local profilerData = MicroProfiler.GetProfilerData()
 		UIBody.Draw(profilerData, TOP_BAR_HEIGHT)
 	end

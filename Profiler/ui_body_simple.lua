@@ -78,12 +78,37 @@ local function drawScript(scriptName, functions, startY, dataStartTime, dataEndT
     
     local currentY = startY
     
-    -- Draw script header
-    draw.Color(50, 150, 50, 200)
-    draw.FilledRect(0, math.floor(currentY), 200, math.floor(currentY + SCRIPT_HEADER_HEIGHT))
-    draw.Color(255, 255, 255, 255)
-    draw.Text(4, math.floor(currentY + 4), "Script: " .. scriptName)
-    draw.Text(4, math.floor(currentY + 14), string.format("(%d functions)", #functions))
+    -- Calculate script width by finding earliest and latest function times
+    local scriptStartTime = math.huge
+    local scriptEndTime = -math.huge
+    
+    for _, func in ipairs(functions) do
+        if func.startTime and func.endTime then
+            scriptStartTime = math.min(scriptStartTime, func.startTime)
+            scriptEndTime = math.max(scriptEndTime, func.endTime)
+        end
+    end
+    
+    -- Draw script header spanning the entire script duration
+    if scriptStartTime ~= math.huge and scriptEndTime ~= -math.huge then
+        local headerX = timeToPixel(scriptStartTime, dataStartTime) - offsetX
+        local headerWidth = timeToPixel(scriptEndTime, dataStartTime) - timeToPixel(scriptStartTime, dataStartTime)
+        
+        -- Draw header background spanning script duration
+        draw.Color(50, 150, 50, 200)
+        draw.FilledRect(math.floor(headerX), math.floor(currentY), math.floor(headerX + headerWidth), math.floor(currentY + SCRIPT_HEADER_HEIGHT))
+        
+        -- Draw header border
+        draw.Color(255, 255, 255, 150)
+        draw.OutlinedRect(math.floor(headerX), math.floor(currentY), math.floor(headerX + headerWidth), math.floor(currentY + SCRIPT_HEADER_HEIGHT))
+        
+        -- Draw script name and info only if header is visible
+        if headerX + headerWidth > 0 and headerX < 2000 then
+            draw.Color(255, 255, 255, 255)
+            draw.Text(math.floor(headerX + 4), math.floor(currentY + 4), "Script: " .. scriptName)
+            draw.Text(math.floor(headerX + 4), math.floor(currentY + 14), string.format("(%d functions)", #functions))
+        end
+    end
     
     currentY = currentY + SCRIPT_HEADER_HEIGHT + FUNCTION_SPACING
     
@@ -147,21 +172,31 @@ local function handleInput(screenW, screenH, topBarHeight)
         print("🎯 DRAG END")
     end
     
-    -- Handle zoom with Q/E keys
+    -- Handle zoom with Q/E keys - zoom towards mouse position
     if input.IsButtonDown then
         local qPressed = input.IsButtonDown(KEY_Q)
         local ePressed = input.IsButtonDown(KEY_E)
         
-        if qPressed then
-            timeScale = timeScale * 1.05 -- Zoom in
-            print(string.format("🔍 ZOOM IN: timeScale=%.1f", timeScale))
-        elseif ePressed then
-            timeScale = timeScale / 1.05 -- Zoom out
-            print(string.format("🔍 ZOOM OUT: timeScale=%.1f", timeScale))
+        if qPressed or ePressed then
+            -- Get mouse position for zoom center
+            local zoomCenterX = mx
+            local oldTimeScale = timeScale
+            
+            if qPressed then
+                timeScale = timeScale * 1.05 -- Zoom in
+                print(string.format("🔍 ZOOM IN: timeScale=%.1f", timeScale))
+            elseif ePressed then
+                timeScale = timeScale / 1.05 -- Zoom out
+                print(string.format("🔍 ZOOM OUT: timeScale=%.1f", timeScale))
+            end
+            
+            -- Clamp zoom
+            timeScale = math.max(1.0, math.min(10000.0, timeScale))
+            
+            -- Adjust offset to keep zoom centered on mouse
+            local scaleChange = timeScale / oldTimeScale
+            offsetX = zoomCenterX + (offsetX - zoomCenterX) * scaleChange
         end
-        
-        -- Clamp zoom
-        timeScale = math.max(1.0, math.min(10000.0, timeScale))
     end
 end
 

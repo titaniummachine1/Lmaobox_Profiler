@@ -4,17 +4,17 @@
 -- Load the profiler
 local Profiler = require("Profiler")
 Profiler.SetVisible(true)
-Profiler.SetBodyVisible(true)  -- Ensure body is visible
+Profiler.SetBodyVisible(true) -- Ensure body is visible
 
 print("✅ Simple profiler test loaded!")
 print("🔧 Profiler visible:", Profiler.IsVisible())
 print("🔧 Profiler paused:", Profiler.IsPaused())
 
--- Simple test function that should be easily detected
+		-- Simple test function that should be easily detected (reduced for every-frame)
 local function SimpleTestFunction()
 	local result = 0
-	for i = 1, 1000 do
-		result = result + math.sin(i) * math.cos(i)
+	for i = 1, 200 do
+		result = result + math.sin(i) * math.cos(i) + math.sqrt(i)
 	end
 	return result
 end
@@ -48,11 +48,11 @@ local function PerformTraceTests()
 		local destination = source + direction * 1000
 		local trace = engine.TraceLine(source, destination, MASK_SHOT_HULL)
 
-		-- Heavy math work after each trace to make timing measurable
+		-- Medium math work (reduced since running every frame from 2 callbacks)
 		local result = 0
-		for j = 1, 300 do
+		for j = 1, 100 do
 			result = result + math.sin(angleOffset + j * 0.1) * math.cos(angleOffset - j * 0.1) + math.sqrt(j)
-			local heavy = math.tan(j * 0.01) + math.log(j + 1) + math.exp(j * 0.001)
+			local heavy = math.tan(j * 0.01) + math.log(j + 1)
 			result = result + heavy
 		end
 
@@ -172,19 +172,19 @@ local function ManualTest()
 	return hitCount, #entities, #math_results
 end
 
--- Register callbacks to run work every frame (lighter workload)
+-- Register callbacks to run work EVERY SINGLE FRAME
 callbacks.Register("CreateMove", "simple_test", function(cmd)
+	-- Debug print occasionally to confirm it's running
 	if globals.FrameCount() % 60 == 0 then
 		print("🎯 CreateMove callback running - Frame:", globals.FrameCount())
 	end
 	
-	-- Call simple test function first
+	-- Call functions EVERY FRAME for continuous profiling
 	SimpleTestFunction()
-	
 	PerformTraceTests()
-	EntityScanning() -- Every frame now
+	EntityScanning()
 
-	-- Manual test occasionally
+	-- Manual test occasionally (but still every frame work above)
 	if globals.FrameCount() % 120 == 0 then
 		print("🎯 Running ManualTest() - Frame:", globals.FrameCount())
 		ManualTest()
@@ -194,13 +194,12 @@ end)
 callbacks.Register("Draw", "simple_test", function()
 	-- Simple FPS display
 	draw.Color(255, 255, 255, 255)
-	draw.Text(10, 10, string.format("FPS: %d | Light Work Every Frame", math.floor(1 / globals.FrameTime())))
+	draw.Text(10, 10, string.format("FPS: %d | Heavy Work EVERY Frame", math.floor(1 / globals.FrameTime())))
 
-	-- Math work every frame
+	-- Heavy work EVERY SINGLE FRAME in Draw callback too
 	MathWork()
-
-	-- More traces every frame
 	PerformTraceTests()
+	SimpleTestFunction()  -- Also call here for even more frequent execution
 end)
 
 callbacks.Register("Unload", "simple_test", function()

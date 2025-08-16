@@ -1,0 +1,5 @@
+[33mc772811[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mfeat/profiler-ui-fixes[m[33m)[m fix(ui): correct vertical movement, fix bottom scroll limit, remove redundant text, improve stacking, enhance example nested functions
+[33me017d3f[m[33m ([m[1;31morigin/feat/profiler-ui-fixes[m[33m)[m fix(profiler): remove example.lua-only restriction; guard stats prints with DEBUG
+[33mdfc3d14[m chore: guard stats prints behind DEBUG; always draw body in UI; minor cleanup
+[33m36ab735[m fix(ui): correct inverted vertical drag; clamp Y to content; add horizontal clamping and snap-on-pause; guard debug prints
+[33mc82f2e0[m feat(ui): vertical clamp fix, horizontal clamping + snap on pause; rectangles visible; freeze timeline on pause; reduce debug spam

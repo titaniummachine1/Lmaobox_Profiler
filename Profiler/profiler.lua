@@ -227,8 +227,8 @@ function ProfilerCore.Draw()
 	UITop.Update()
 	UITop.Draw()
 
-	-- Draw body only when visible; when paused it's interactive/frozen, when running it follows realtime
-	if UIBody.IsVisible() then
+	-- Draw body only when paused and visible (navigation while paused only)
+	if UITop.IsPaused() and UIBody.IsVisible() then
 		local profilerData = MicroProfiler.GetProfilerData()
 		UIBody.Draw(profilerData, TOP_BAR_HEIGHT)
 	end

@@ -389,7 +389,7 @@ local function handleInput(screenW, buttonX, pauseY, bindY)
 	-- Frame selection (only when paused and not clicking buttons)
 	if isPaused and my >= 0 and my <= TIMELINE_HEIGHT and not hoveredPause and not hoveredBind then
 		if consumeClick("frame_select", true) then
-			-- Find clicked frame
+			-- Find clicked frame and center body on its time
 			for i, frame in ipairs(frames) do
 				if frame._clickRegion then
 					local region = frame._clickRegion
@@ -400,6 +400,11 @@ local function handleInput(screenW, buttonX, pauseY, bindY)
 						and my <= region.y + region.h
 					then
 						selectedFrameIndex = i
+						-- Center body timeline on this frame timestamp
+						local UIBody = require("Profiler.ui_body")
+						if UIBody and UIBody.CenterOnTimestamp then
+							UIBody.CenterOnTimestamp(frame.timestamp)
+						end
 						break
 					end
 				end

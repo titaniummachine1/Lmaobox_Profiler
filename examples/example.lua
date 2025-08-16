@@ -109,22 +109,22 @@ local function TopLevelWork()
 	for i = 1, 100 do
 		inputData[i] = i * 0.1
 	end
-	
+
 	local result = MiddleProcessor(inputData)
-	
+
 	-- Additional work at top level
 	local sum = 0
 	for i = 1, #result do
 		sum = sum + result[i]
 	end
-	
+
 	return sum
 end
 
 local function ContinuousWork()
 	-- Call the nested hierarchy
 	local hierarchyResult = TopLevelWork()
-	
+
 	-- Additional work in this function
 	local total = 0
 	for i = 1, 100 do
@@ -172,7 +172,7 @@ local function ExpensiveTableWork()
 			nested = { value = i * 2, flag = i % 2 == 0 },
 		}
 	end
-	
+
 	local sorted = SortingAlgorithm(bigTable)
 	return #sorted
 end

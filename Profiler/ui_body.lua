@@ -574,29 +574,9 @@ function UIBody.Draw(profilerData, topBarHeight)
 	draw.Color(25, 25, 25, 220)
 	safeFilledRect(0, topBarHeight, screenW, screenH)
 
-	-- FIXED TIMELINE: Don't move when paused!
+	-- FIXED TIME WINDOW: constant 5 seconds for body navigation
 	local currentTime = getTime()
-	-- Calculate appropriate time window based on actual data
-	local dataTimeRange = 0
-	if profilerData and profilerData.scriptTimelines then
-		local earliest, latest = math.huge, -math.huge
-		for _, scriptData in pairs(profilerData.scriptTimelines) do
-			if scriptData.functions then
-				for _, func in ipairs(scriptData.functions) do
-					if func.startTime and func.endTime then
-						earliest = math.min(earliest, func.startTime)
-						latest = math.max(latest, func.endTime)
-					end
-				end
-			end
-		end
-		if earliest ~= math.huge and latest ~= -math.huge then
-			dataTimeRange = latest - earliest
-		end
-	end
-
-	-- Use a reasonable time window: either the data range or a default
-	local timeWindow = math.max(dataTimeRange * 1.2, 1.0) / zoom -- Add 20% padding or minimum 1s
+	local timeWindow = 5.0 / zoom -- 5-second window scaled by zoom
 
 	-- When paused, freeze the timeline scope
 	if not frozenTimeScope then

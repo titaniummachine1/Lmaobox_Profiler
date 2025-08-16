@@ -181,13 +181,13 @@ callbacks.Register("CreateMove", "simple_test", function(cmd)
 	if globals.FrameCount() % 60 == 0 then
 		print("🎯 CreateMove callback running - Frame:", globals.FrameCount())
 	end
-	
+
 	-- Auto-pause after 3 seconds to show collected data
 	if globals.FrameCount() == 180 and not Profiler.IsPaused() then
 		print("🎯 Auto-pausing to show collected data...")
 		Profiler.TogglePause()
 	end
-	
+
 	-- Call functions EVERY FRAME for continuous profiling
 	SimpleTestFunction()
 	PerformTraceTests()

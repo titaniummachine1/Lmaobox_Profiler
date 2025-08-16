@@ -208,13 +208,7 @@ local function shouldProfile(info)
 		return false -- Skip profiler-related scripts and unknowns
 	end
 
-	-- Additionally check if it's actually from example.lua specifically
-	if _G.GetScriptName then
-		local fullPath = _G.GetScriptName()
-		if fullPath and not fullPath:find("example%.lua", 1, true) then
-			return false -- Only allow example.lua functions
-		end
-	end
+    -- Allow all user scripts; previously restricted to example.lua which hid data
 
 	-- Skip internal profiler functions by name
 	if

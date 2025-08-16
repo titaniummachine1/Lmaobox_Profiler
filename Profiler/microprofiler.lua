@@ -50,6 +50,9 @@ local globals = (_G and _G.globals) or nil
 
 -- Private helpers --------------------
 
+-- Forward declaration so later calls see the local, not a global
+local autoDisableIfIdle
+
 -- Get high precision time
 local function getTime()
 	return (globals and globals.RealTime) and globals.RealTime() or 0
@@ -297,6 +300,7 @@ local function profileHook(event)
 	local currentTime = getTime()
 	if currentTime - lastCleanupTime > CLEANUP_INTERVAL then
 		cleanupOldRecords()
+		autoDisableIfIdle()
 	end
 
 	-- MINIMAL info gathering for performance
@@ -471,6 +475,23 @@ end
 function MicroProfiler.Disable()
 	isEnabled = false
 	disableHook()
+end
+
+-- Auto-disable when idle (no data and not paused) - to avoid lingering hooks
+function autoDisableIfIdle()
+	if not isEnabled or isPaused then
+		return
+	end
+	local hasData = (#mainTimeline > 0) or (#customThreads > 0)
+	if not hasData then
+		for _ in pairs(scriptTimelines) do
+			hasData = true
+			break
+		end
+	end
+	if not hasData then
+		disableHook()
+	end
 end
 
 function MicroProfiler.IsEnabled()

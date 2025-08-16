@@ -767,11 +767,13 @@ function UIBody.Draw(profilerData, topBarHeight)
 		end
 	end
 
-	-- Calculate proper viewportY limits
+	-- Calculate proper viewportY limits (only clamp when running)
 	local bodyHeight = screenH - topBarHeight
 	local contentHeight = actualContentBottom - (topBarHeight + 10) -- Remove initial offset
 	local maxViewportY = math.max(0, contentHeight - bodyHeight + 20) -- Add small buffer
-	viewportY = clamp(viewportY, 0, maxViewportY)
+	if not isPaused then
+		viewportY = clamp(viewportY, 0, maxViewportY)
+	end
 
 	-- Horizontal clamping is disabled when paused so panning remains free
 

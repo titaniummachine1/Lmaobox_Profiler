@@ -309,11 +309,17 @@ function UIBody.Initialize()
 end
 
 function UIBody.SetVisible(visible)
-	-- Simple visibility toggle
+	_G.UIBodyVisible = visible
 end
 
 function UIBody.IsVisible()
-	return true -- Always visible when called
+	return _G.UIBodyVisible or false
+end
+
+function UIBody.ToggleVisible()
+	local newVisibility = not (_G.UIBodyVisible or false)
+	UIBody.SetVisible(newVisibility)
+	return newVisibility
 end
 
 function UIBody.Draw(profilerData, topBarHeight)
@@ -387,6 +393,16 @@ end
 
 function UIBody.GetZoom()
 	return timeScale
+end
+
+function UIBody.CenterOnTimestamp(timestamp)
+	-- Center the view on the given timestamp
+	if timestamp then
+		-- Calculate how many pixels from start this timestamp should be
+		local targetPixel = timestamp * timeScale
+		-- Center it on screen (assuming screen width of ~1920)
+		offsetX = targetPixel - 960
+	end
 end
 
 return UIBody

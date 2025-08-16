@@ -135,10 +135,18 @@ local function drawScript(scriptName, functions, startY, dataStartTime, dataEndT
 	currentY = currentY + scriptHeaderHeight + functionSpacing
 
 	-- Draw functions stacked vertically
-	for _, func in ipairs(functions) do
+	for i, func in ipairs(functions) do
 		if func.startTime and func.endTime then
 			local x = timeToPixel(func.startTime, dataStartTime) - offsetX
 			local width = timeToPixel(func.endTime, dataStartTime) - timeToPixel(func.startTime, dataStartTime)
+
+			-- Debug info for first few functions
+			if i <= 3 then
+				print(string.format("  Func %d: %s | Time: %.6f-%.6f (%.6fs) | X: %.1f Width: %.1f | Scale: %.1f", 
+					i, func.name or "unnamed", 
+					func.startTime, func.endTime, func.endTime - func.startTime,
+					x, width, timeScale))
+			end
 
 			-- Only draw if visible on screen
 			if x + width > 0 and x < 2000 then -- Assume 2000px max screen width
@@ -218,22 +226,22 @@ local function handleInput(screenW, screenH, topBarHeight)
 			timeScale = math.max(1.0, math.min(10000.0, timeScale))
 			verticalScale = math.max(0.1, math.min(10.0, verticalScale))
 
-			            -- Adjust offset to keep zoom centered on mouse position
-            local scaleChangeX = timeScale / oldTimeScale
-            local scaleChangeY = verticalScale / oldVerticalScale
-            
-            -- Calculate mouse position on the board (where mouse points on the content)
-            local mouseBoardX = mx + offsetX
-            local mouseBoardY = (my - topBarHeight) + offsetY
-            
-            -- After scaling, the board content expands/contracts
-            -- We need to move the board to keep the mouse pointing at the same content position
-            local newMouseBoardX = mouseBoardX * scaleChangeX
-            local newMouseBoardY = mouseBoardY * scaleChangeY
-            
-            -- Adjust offsets to compensate for the scale-induced movement
-            offsetX = offsetX + (newMouseBoardX - mouseBoardX)
-            offsetY = offsetY + (newMouseBoardY - mouseBoardY)
+			-- Adjust offset to keep zoom centered on mouse position
+			local scaleChangeX = timeScale / oldTimeScale
+			local scaleChangeY = verticalScale / oldVerticalScale
+
+			-- Calculate mouse position on the board (where mouse points on the content)
+			local mouseBoardX = mx + offsetX
+			local mouseBoardY = (my - topBarHeight) + offsetY
+
+			-- After scaling, the board content expands/contracts
+			-- We need to move the board to keep the mouse pointing at the same content position
+			local newMouseBoardX = mouseBoardX * scaleChangeX
+			local newMouseBoardY = mouseBoardY * scaleChangeY
+
+			-- Adjust offsets to compensate for the scale-induced movement
+			offsetX = offsetX + (newMouseBoardX - mouseBoardX)
+			offsetY = offsetY + (newMouseBoardY - mouseBoardY)
 		end
 	end
 end

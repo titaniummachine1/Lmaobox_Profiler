@@ -21,7 +21,7 @@ local DEFAULT_ZOOM = 1.0
 local MIN_ZOOM = 0.01 -- Much more zoom out
 local MAX_ZOOM = 100.0 -- Much more zoom in for precision
 local PAN_SPEED = 1.0
-local SNAP_ON_PAUSE = true -- Snap camera when pausing
+local SNAP_ON_PAUSE = false -- Snap camera when pausing (disabled for free panning)
 
 -- Global variables for retained mode (not local)
 isVisible = isVisible or true

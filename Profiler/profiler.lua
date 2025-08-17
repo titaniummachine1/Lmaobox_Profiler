@@ -5,7 +5,7 @@
 ]]
 
 -- Imports
-local G = require("Profiler.globals") --[[ Imported by: Main ]]
+local Shared = require("Profiler.Shared") --[[ Imported by: Main ]]
 local config = require("Profiler.config")
 local MicroProfiler = require("Profiler.microprofiler") --[[ Imported by: profiler ]]
 local UITop = require("Profiler.ui_top") --[[ Imported by: profiler ]]
@@ -43,7 +43,7 @@ function ProfilerCore.SetVisible(visible)
 	end
 
 	isVisible = visible
-	G.ProfilerEnabled = visible
+	Shared.ProfilerEnabled = visible
 
 	if visible then
 		MicroProfiler.Enable()
@@ -215,12 +215,12 @@ function ProfilerCore.Draw()
 	end
 
 	-- Update frame counter
-	G.CurrentFrame = G.CurrentFrame + 1
+	Shared.CurrentFrame = Shared.CurrentFrame + 1
 
 	-- Check for body toggle request from UI
-	if G.BodyToggleRequested then
+	if Shared.BodyToggleRequested then
 		ProfilerCore.ToggleBody()
-		G.BodyToggleRequested = false
+		Shared.BodyToggleRequested = false
 	end
 
 	-- Update and draw top bar
@@ -234,7 +234,7 @@ function ProfilerCore.Draw()
 	end
 
 	-- Store last draw time
-	G.LastDrawTime = globals.RealTime()
+	Shared.LastDrawTime = globals.RealTime()
 end
 
 -- Get profiler data for external use

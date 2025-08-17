@@ -5,6 +5,8 @@
     This module provides shared retained state to prevent multiple instances.
     NOTE: This is NOT the external 'globals' library that provides RealTime() and FrameTime().
     That external library is safely required in each module that needs it.
+    
+    File renamed from globals.lua to Shared.lua to avoid naming conflicts.
 ]]
 
 -- Module declaration

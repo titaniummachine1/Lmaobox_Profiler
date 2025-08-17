@@ -21,16 +21,16 @@
         Profiler.Draw()
 ]]
 
--- Global shared table (from globals.lua) – retained mode
-local G = require("Profiler.globals")
+-- Global shared table (from Shared.lua) – retained mode
+local Shared = require("Profiler.Shared")
 
 -- RELOAD DETECTION: Check if profiler is already loaded
-if G.ProfilerInstance and G.ProfilerLoaded then
+if Shared.ProfilerInstance and Shared.ProfilerLoaded then
 	print("🔄 Microprofiler already loaded - performing full reload...")
 
 	-- Unload existing instance completely
-	if G.ProfilerInstance.Unload then
-		G.ProfilerInstance.Unload()
+	if Shared.ProfilerInstance.Unload then
+		Shared.ProfilerInstance.Unload()
 	end
 
 	-- Force clear all package cache (improved pattern)
@@ -40,7 +40,7 @@ if G.ProfilerInstance and G.ProfilerLoaded then
 		"Profiler.microprofiler",
 		"Profiler.ui_top",
 		"Profiler.ui_body",
-		"Profiler.globals",
+		"Profiler.Shared",
 		"Profiler.config",
 		"Profiler.Main",
 	}
@@ -52,11 +52,11 @@ if G.ProfilerInstance and G.ProfilerLoaded then
 	end
 
 	-- Clear global state
-	G.ProfilerInstance = nil
-	G.ProfilerLoaded = false
+	Shared.ProfilerInstance = nil
+	Shared.ProfilerLoaded = false
 
-	-- Re-require globals to get fresh state
-	G = require("Profiler.globals")
+	-- Re-require Shared to get fresh state
+	Shared = require("Profiler.Shared")
 
 	print("📦 All packages cleared - loading fresh profiler...")
 end
@@ -213,8 +213,8 @@ function Profiler.Unload()
 	end
 
 	-- Clear global instance
-	G.ProfilerInstance = nil
-	G.ProfilerLoaded = false
+	Shared.ProfilerInstance = nil
+	Shared.ProfilerLoaded = false
 	ProfilerLoaded = false
 	print("   ✓ Global state cleared")
 
@@ -225,7 +225,7 @@ function Profiler.Unload()
 		"Profiler.microprofiler",
 		"Profiler.ui_top",
 		"Profiler.ui_body",
-		"Profiler.globals",
+		"Profiler.Shared",
 		"Profiler.config",
 		"Profiler.Main",
 	}
@@ -243,8 +243,8 @@ end
 
 -- Mark library as loaded (global retained mode)
 ProfilerLoaded = true
-G.ProfilerLoaded = true
-G.ProfilerInstance = Profiler
+Shared.ProfilerLoaded = true
+Shared.ProfilerInstance = Profiler
 
 print("🚀 Microprofiler singleton initialized!")
 

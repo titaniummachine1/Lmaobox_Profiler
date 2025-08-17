@@ -5,8 +5,15 @@
 ]]
 
 -- Imports
-local G = require("Profiler.globals") --[[ Imported by: profiler ]]
+local Shared = require("Profiler.Shared") --[[ Imported by: profiler ]]
 local config = require("Profiler.config")
+
+-- Safely require external globals library (provides RealTime, FrameTime)
+local globals = nil -- External globals library (RealTime, FrameTime)
+local ok, globalsModule = pcall(require, "globals")
+if ok then
+	globals = globalsModule
+end
 
 -- Module declaration
 local UITop = {}
@@ -178,8 +185,16 @@ local function updateFrameRecording()
 		return
 	end
 
-	local dt = globals.FrameTime()
-	local timestamp = globals.RealTime()
+	local dt = 0
+	local timestamp = 0
+	if globals then
+		if globals.FrameTime then
+			dt = globals.FrameTime()
+		end
+		if globals.RealTime then
+			timestamp = globals.RealTime()
+		end
+	end
 
 	-- Add new frame
 	table.insert(frames, {
@@ -429,7 +444,7 @@ local function handleKeys()
 	-- Body visibility shortcut
 	if bodyKey and consumeKeyPress(bodyKey) then
 		-- This will be handled by the main profiler
-		G.BodyToggleRequested = true
+		Shared.BodyToggleRequested = true
 	end
 end
 
@@ -468,7 +483,10 @@ function UITop.Draw()
 	draw.OutlinedRect(0, 0, screenW, TIMELINE_HEIGHT)
 
 	-- Draw left side info (integer coordinates for crisp text, larger font spacing)
-	local dt = globals.FrameTime()
+	local dt = 0
+	if globals and globals.FrameTime then
+		dt = globals.FrameTime()
+	end
 	local fps = dt > 0 and math.floor(1 / dt + 0.5) or 0
 	draw.Color(230, 230, 230, 255)
 	draw.Text(8, 6, "FPS: " .. tostring(fps))

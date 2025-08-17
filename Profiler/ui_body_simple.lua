@@ -1,25 +1,27 @@
 --[[
-    Simple UI Body Module - Rewritten for consistency
-    Fixed coordinate system with time-based horizontal scaling
+    Simple UI Body Module - Virtual Profiler Board
+    All elements positioned on fixed coordinate system, then board is transformed
 ]]
 
 -- Imports
-local G = require("Profiler.globals") --[[ Imported by: profiler ]]
+local Shared = require("Profiler.Shared") --[[ Imported by: profiler ]]
 
 -- Module declaration
 local UIBody = {}
 
 -- Constants
-local BASE_FUNCTION_HEIGHT = 20
-local BASE_FUNCTION_SPACING = 2
-local BASE_SCRIPT_HEADER_HEIGHT = 25
-local BASE_SCRIPT_SPACING = 10
+local BOARD_WIDTH = 2000 -- Virtual board width in pixels
+local BOARD_HEIGHT = 2000 -- Virtual board height in pixels
+local FUNCTION_HEIGHT = 20 -- Height of each function bar
+local FUNCTION_SPACING = 2 -- Spacing between function levels
+local SCRIPT_HEADER_HEIGHT = 25 -- Height of script headers
+local SCRIPT_SPACING = 10 -- Spacing between scripts
+local TIME_SCALE = 100 -- Pixels per second (horizontal scale)
 
 -- Global state (retained mode)
-local offsetX = 0 -- Horizontal offset of the profiler board
-local offsetY = 0 -- Vertical offset of the profiler board
-local timeScale = 100.0 -- Pixels per second (horizontal zoom)
-local verticalScale = 1.0 -- Vertical scaling factor
+local boardOffsetX = 0 -- Camera position on virtual board
+local boardOffsetY = 0 -- Camera position on virtual board
+local boardZoom = 1.0 -- Zoom level of the board
 local isDragging = false
 local lastMouseX, lastMouseY = 0, 0
 
@@ -30,56 +32,101 @@ local MOUSE_LEFT = MOUSE_LEFT or 107
 local KEY_Q = KEY_Q or 18
 local KEY_E = KEY_E or 20
 
+-- Safely require external globals library (provides RealTime, FrameTime)
+local globals = nil -- External globals library (RealTime, FrameTime)
+local ok, globalsModule = pcall(require, "globals")
+if ok then
+	globals = globalsModule
+end
+
 -- Helper functions
 -- Use globals.RealTime() directly
 
-local function timeToPixel(time, startTime)
-	return (time - startTime) * timeScale
+-- Convert time to board X coordinate
+local function timeToBoardX(time, startTime)
+	return (time - startTime) * TIME_SCALE
 end
 
-local function pixelToTime(pixel, startTime)
-	return startTime + (pixel / timeScale)
+-- Convert board coordinates to screen coordinates
+local function boardToScreen(boardX, boardY)
+	local screenX = (boardX - boardOffsetX) * boardZoom
+	local screenY = (boardY - boardOffsetY) * boardZoom
+	return screenX, screenY
 end
 
-local function drawFunction(func, x, y, width)
+-- Convert screen coordinates to board coordinates
+local function screenToBoard(screenX, screenY)
+	local boardX = (screenX / boardZoom) + boardOffsetX
+	local boardY = (screenY / boardZoom) + boardOffsetY
+	return boardX, boardY
+end
+
+-- Draw a function bar on the virtual board
+local function drawFunctionOnBoard(func, boardX, boardY, boardWidth)
 	if not func.startTime or not func.endTime or not draw then
 		return
 	end
 
-	local functionHeight = BASE_FUNCTION_HEIGHT * verticalScale
+	-- Convert board coordinates to screen coordinates
+	local screenX, screenY = boardToScreen(boardX, boardY)
+	local screenWidth = boardWidth * boardZoom
+	local screenHeight = FUNCTION_HEIGHT * boardZoom
 
-	-- Draw function bar
-	draw.Color(100, 150, 200, 180)
-	draw.FilledRect(math.floor(x), math.floor(y), math.floor(x + width), math.floor(y + functionHeight))
+	-- Only draw if visible on screen
+	if screenX + screenWidth > 0 and screenX < 2000 and screenY + screenHeight > 0 and screenY < 2000 then
+		-- Draw function bar
+		draw.Color(100, 150, 200, 180)
+		draw.FilledRect(
+			math.floor(screenX),
+			math.floor(screenY),
+			math.floor(screenX + screenWidth),
+			math.floor(screenY + screenHeight)
+		)
 
-	-- Draw border
-	draw.Color(255, 255, 255, 100)
-	draw.OutlinedRect(math.floor(x), math.floor(y), math.floor(x + width), math.floor(y + functionHeight))
+		-- Draw border
+		draw.Color(255, 255, 255, 100)
+		draw.OutlinedRect(
+			math.floor(screenX),
+			math.floor(screenY),
+			math.floor(screenX + screenWidth),
+			math.floor(screenY + screenHeight)
+		)
 
-	-- Draw function name if it fits
-	local name = func.name or "unknown"
-	if width > 50 and functionHeight > 12 then
-		draw.Color(255, 255, 255, 255)
-		draw.Text(math.floor(x + 4), math.floor(y + 2), name)
-	end
+		-- Draw function name if it fits (positioned on board, then transformed)
+		local name = func.name or "unknown"
+		if screenWidth > 50 and screenHeight > 12 then
+			-- Position text on board, then transform to screen
+			local textBoardX = boardX + 4
+			local textBoardY = boardY + 2
+			local textScreenX, textScreenY = boardToScreen(textBoardX, textBoardY)
 
-	-- Draw duration if there's space
-	if width > 120 and functionHeight > 24 then
-		local duration = (func.endTime - func.startTime) * 1000 -- ms
-		local durationText = string.format("%.3fms", duration)
-		draw.Color(255, 255, 100, 255)
-		draw.Text(math.floor(x + 4), math.floor(y + functionHeight - 12), durationText)
+			draw.Color(255, 255, 255, 255)
+			draw.Text(math.floor(textScreenX), math.floor(textScreenY), name)
+		end
+
+		-- Draw duration if there's space (positioned on board, then transformed)
+		if screenWidth > 120 and screenHeight > 24 then
+			local duration = (func.endTime - func.startTime) * 1000 -- ms
+			local durationText = string.format("%.3fms", duration)
+
+			-- Position duration text on board, then transform to screen
+			local durationBoardX = boardX + 4
+			local durationBoardY = boardY + FUNCTION_HEIGHT - 12
+			local durationScreenX, durationScreenY = boardToScreen(durationBoardX, durationBoardY)
+
+			draw.Color(255, 255, 100, 255)
+			draw.Text(math.floor(durationScreenX), math.floor(durationScreenY), durationText)
+		end
 	end
 end
 
-local function drawScript(scriptName, functions, startY, dataStartTime, dataEndTime)
+-- Draw a script section on the virtual board
+local function drawScriptOnBoard(scriptName, functions, boardY, dataStartTime, dataEndTime)
 	if not draw then
-		return startY
+		return boardY
 	end
 
-	local currentY = startY
-
-	-- Calculate script width by finding earliest and latest function times
+	-- Calculate script bounds
 	local scriptStartTime = math.huge
 	local scriptEndTime = -math.huge
 
@@ -90,67 +137,83 @@ local function drawScript(scriptName, functions, startY, dataStartTime, dataEndT
 		end
 	end
 
-	local scriptHeaderHeight = BASE_SCRIPT_HEADER_HEIGHT * verticalScale
-	local functionSpacing = BASE_FUNCTION_SPACING * verticalScale
-
-	-- Draw script header spanning the entire script duration
+	-- Draw script header (ALL positioned on board, then transformed)
 	if scriptStartTime ~= math.huge and scriptEndTime ~= -math.huge then
-		local headerX = timeToPixel(scriptStartTime, dataStartTime) - offsetX
-		local headerWidth = timeToPixel(scriptEndTime, dataStartTime) - timeToPixel(scriptStartTime, dataStartTime)
+		local headerBoardX = timeToBoardX(scriptStartTime, dataStartTime)
+		local headerBoardWidth = timeToBoardX(scriptEndTime, dataStartTime) - headerBoardX
+		local headerBoardY = boardY
+		local headerBoardHeight = SCRIPT_HEADER_HEIGHT
 
-		-- Draw header background spanning script duration
-		draw.Color(60, 120, 60, 200)
-		draw.FilledRect(
-			math.floor(headerX),
-			math.floor(currentY),
-			math.floor(headerX + headerWidth),
-			math.floor(currentY + scriptHeaderHeight)
-		)
+		-- Convert ALL header coordinates to screen coordinates
+		local headerScreenX, headerScreenY = boardToScreen(headerBoardX, headerBoardY)
+		local headerScreenWidth = headerBoardWidth * boardZoom
+		local headerScreenHeight = headerBoardHeight * boardZoom
 
-		-- Draw header border
-		draw.Color(255, 255, 255, 200)
-		draw.OutlinedRect(
-			math.floor(headerX),
-			math.floor(currentY),
-			math.floor(headerX + headerWidth),
-			math.floor(currentY + scriptHeaderHeight)
-		)
+		-- Only draw if visible (check both horizontal and vertical bounds)
+		if
+			headerScreenX + headerScreenWidth > 0
+			and headerScreenX < 2000
+			and headerScreenY + headerScreenHeight > 0
+			and headerScreenY < 2000
+		then
+			-- Draw header background (all coordinates from board transform)
+			draw.Color(60, 120, 60, 200)
+			draw.FilledRect(
+				math.floor(headerScreenX),
+				math.floor(headerScreenY),
+				math.floor(headerScreenX + headerScreenWidth),
+				math.floor(headerScreenY + headerScreenHeight)
+			)
 
-		-- Draw script name and info only if header is visible and tall enough
-		if headerX + headerWidth > 0 and headerX < 2000 and scriptHeaderHeight > 12 then
-			draw.Color(255, 255, 255, 255)
-			-- Script name on left
-			draw.Text(math.floor(headerX + 4), math.floor(currentY + 4), scriptName)
-			-- Function count on right edge of header
-			local countText = string.format("(%d functions)", #functions)
-			local textWidth = 80 -- Estimate text width
-			if headerWidth > textWidth + 8 then -- Ensure it fits
-				draw.Text(math.floor(headerX + headerWidth - textWidth), math.floor(currentY + 4), countText)
+			-- Draw header border (all coordinates from board transform)
+			draw.Color(255, 255, 255, 200)
+			draw.OutlinedRect(
+				math.floor(headerScreenX),
+				math.floor(headerScreenY),
+				math.floor(headerScreenX + headerScreenWidth),
+				math.floor(headerScreenY + headerScreenHeight)
+			)
+
+			-- Draw script name (positioned on board, then transformed)
+			if headerScreenHeight > 12 then
+				-- Position script name on board, then transform to screen
+				local nameBoardX = headerBoardX + 4
+				local nameBoardY = headerBoardY + 4
+				local nameScreenX, nameScreenY = boardToScreen(nameBoardX, nameBoardY)
+
+				draw.Color(255, 255, 255, 255)
+				draw.Text(math.floor(nameScreenX), math.floor(nameScreenY), scriptName)
+
+				-- Function count (positioned on board, then transformed)
+				local countText = string.format("(%d functions)", #functions)
+				local countBoardX = headerBoardX + headerBoardWidth - 80
+				local countBoardY = headerBoardY + 4
+				local countScreenX, countScreenY = boardToScreen(countBoardX, countBoardY)
+
+				draw.Text(math.floor(countScreenX), math.floor(countScreenY), countText)
 			end
 		end
 	end
 
-	currentY = currentY + scriptHeaderHeight + functionSpacing
+	boardY = boardY + SCRIPT_HEADER_HEIGHT + FUNCTION_SPACING
 
-	-- Draw functions with proper stacking (like Roblox profiler)
+	-- Draw functions with stacking
 	local stackLevels = {} -- Track occupied time ranges at each Y level
 
 	for i, func in ipairs(functions) do
 		if func.startTime and func.endTime then
-			local x = timeToPixel(func.startTime, dataStartTime) - offsetX
-			local width = timeToPixel(func.endTime, dataStartTime) - timeToPixel(func.startTime, dataStartTime)
+			local boardX = timeToBoardX(func.startTime, dataStartTime)
+			local boardWidth = timeToBoardX(func.endTime, dataStartTime) - boardX
 
-			-- Find the highest available Y level for this function
+			-- Find available Y level
 			local level = 0
 			local foundLevel = false
 
 			while not foundLevel do
 				local conflictFound = false
 
-				-- Check if this time range conflicts with existing functions at this level
 				if stackLevels[level] then
 					for _, occupiedRange in ipairs(stackLevels[level]) do
-						-- Check for time overlap
 						if not (func.endTime <= occupiedRange.startTime or func.startTime >= occupiedRange.endTime) then
 							conflictFound = true
 							break
@@ -159,44 +222,36 @@ local function drawScript(scriptName, functions, startY, dataStartTime, dataEndT
 				end
 
 				if not conflictFound then
-					-- This level is free, use it
 					if not stackLevels[level] then
 						stackLevels[level] = {}
 					end
 					table.insert(stackLevels[level], { startTime = func.startTime, endTime = func.endTime })
 					foundLevel = true
 				else
-					-- Try next level down
 					level = level + 1
 				end
 			end
 
-			-- Calculate Y position based on level
-			local functionY = currentY
-				+ (level * (BASE_FUNCTION_HEIGHT * verticalScale + BASE_FUNCTION_SPACING * verticalScale))
+			-- Calculate Y position on board
+			local functionBoardY = boardY + (level * (FUNCTION_HEIGHT + FUNCTION_SPACING))
 
-			-- Debug info for first few functions with more precision
+			-- Debug info for first few functions
 			if i <= 5 then
 				print(
 					string.format(
-						"  Func %d: %s | Time: %.9f-%.9f (%.9fs = %.3fms) | X: %.1f Width: %.1f | Level: %d",
+						"  Func %d: %s | Board: X=%.1f Y=%.1f Width=%.1f | Level: %d",
 						i,
 						func.name or "unnamed",
-						func.startTime,
-						func.endTime,
-						func.endTime - func.startTime,
-						(func.endTime - func.startTime) * 1000,
-						x,
-						width,
+						boardX,
+						functionBoardY,
+						boardWidth,
 						level
 					)
 				)
 			end
 
-			-- Only draw if visible on screen
-			if x + width > 0 and x < 2000 then -- Assume 2000px max screen width
-				drawFunction(func, x, functionY - offsetY, width)
-			end
+			-- Draw function on board
+			drawFunctionOnBoard(func, boardX, functionBoardY, boardWidth)
 		end
 	end
 
@@ -205,13 +260,13 @@ local function drawScript(scriptName, functions, startY, dataStartTime, dataEndT
 	for level, _ in pairs(stackLevels) do
 		maxLevel = math.max(maxLevel, level)
 	end
-	currentY = currentY
-		+ ((maxLevel + 1) * (BASE_FUNCTION_HEIGHT * verticalScale + BASE_FUNCTION_SPACING * verticalScale))
+	boardY = boardY + ((maxLevel + 1) * (FUNCTION_HEIGHT + FUNCTION_SPACING))
 
-	return currentY + (BASE_SCRIPT_SPACING * verticalScale)
+	return boardY + SCRIPT_SPACING
 end
 
-local function handleInput(screenW, screenH, topBarHeight)
+-- Handle input for board navigation
+local function handleBoardInput(screenW, screenH, topBarHeight)
 	if not input or not input.GetMousePos then
 		return
 	end
@@ -226,7 +281,7 @@ local function handleInput(screenW, screenH, topBarHeight)
 
 	local bodyMy = my - topBarHeight
 
-	-- Handle dragging
+	-- Handle dragging - move the board
 	local currentlyDragging = input.IsButtonDown and input.IsButtonDown(MOUSE_LEFT)
 
 	if currentlyDragging and not isDragging then
@@ -234,18 +289,26 @@ local function handleInput(screenW, screenH, topBarHeight)
 		isDragging = true
 		lastMouseX = mx
 		lastMouseY = bodyMy
-		print("🎯 DRAG START")
+		print("🎯 BOARD DRAG START")
 	elseif currentlyDragging and isDragging then
-		-- Continue drag - move the profiler board
+		-- Continue drag - move board in opposite direction of mouse
 		local deltaX = mx - lastMouseX
 		local deltaY = bodyMy - lastMouseY
 
-		offsetX = offsetX - deltaX
-		offsetY = offsetY - deltaY
+		-- Move board (same direction as mouse movement)
+		boardOffsetX = boardOffsetX - (deltaX / boardZoom)
+		boardOffsetY = boardOffsetY - (deltaY / boardZoom)
 
 		-- Reduce spam - only print on significant movement
 		if math.abs(deltaX) > 10 or math.abs(deltaY) > 10 then
-			print(string.format("🎯 DRAGGING: offsetX=%.1f, offsetY=%.1f", offsetX, offsetY))
+			print(
+				string.format(
+					"🎯 BOARD DRAGGING: offsetX=%.1f, offsetY=%.1f, zoom=%.2f",
+					boardOffsetX,
+					boardOffsetY,
+					boardZoom
+				)
+			)
 		end
 
 		lastMouseX = mx
@@ -253,7 +316,7 @@ local function handleInput(screenW, screenH, topBarHeight)
 	elseif not currentlyDragging and isDragging then
 		-- End drag
 		isDragging = false
-		print("🎯 DRAG END")
+		print("🎯 BOARD DRAG END")
 	end
 
 	-- Handle zoom with Q/E keys - zoom towards mouse position
@@ -262,72 +325,56 @@ local function handleInput(screenW, screenH, topBarHeight)
 		local ePressed = input.IsButtonDown(KEY_E)
 
 		if qPressed or ePressed then
-			-- Store old scales
-			local oldTimeScale = timeScale
-			local oldVerticalScale = verticalScale
+			local oldZoom = boardZoom
 
 			if qPressed then
-				timeScale = timeScale * 1.02 -- Zoom in horizontally (slower)
-				verticalScale = verticalScale * 1.02 -- Zoom in vertically
-				print(string.format("🔍 ZOOM IN: timeScale=%.1f, verticalScale=%.2f", timeScale, verticalScale))
+				boardZoom = boardZoom * 1.1 -- Zoom in
+				print(string.format("🔍 BOARD ZOOM IN: %.2f -> %.2f", oldZoom, boardZoom))
 			elseif ePressed then
-				timeScale = timeScale / 1.02 -- Zoom out horizontally (slower)
-				verticalScale = verticalScale / 1.02 -- Zoom out vertically
-				print(string.format("🔍 ZOOM OUT: timeScale=%.1f, verticalScale=%.2f", timeScale, verticalScale))
+				boardZoom = boardZoom / 1.1 -- Zoom out
+				print(string.format("🔍 BOARD ZOOM OUT: %.2f -> %.2f", oldZoom, boardZoom))
 			end
 
 			-- Clamp zoom
-			-- Clamp zoom levels: timeScale 1px/s to 5000px/s, verticalScale 0.2x to 5x
-			timeScale = math.max(1.0, math.min(5000.0, timeScale))
-			verticalScale = math.max(0.2, math.min(5.0, verticalScale))
+			boardZoom = math.max(0.1, math.min(10.0, boardZoom))
 
-			-- Adjust offset to keep zoom centered on mouse position
-			local scaleChangeX = timeScale / oldTimeScale
-			local scaleChangeY = verticalScale / oldVerticalScale
+			-- Zoom towards mouse position - keep the point under mouse cursor fixed
+			-- Convert mouse screen position to board position BEFORE zoom change
+			local mouseBoardX = (mx / oldZoom) + boardOffsetX
+			local mouseBoardY = (bodyMy / oldZoom) + boardOffsetY
 
-			-- Calculate mouse position on the board (where mouse points on the content)
-			local mouseBoardX = mx + offsetX
-			local mouseBoardY = (my - topBarHeight) + offsetY
-
-			-- After scaling, the board content expands/contracts
-			-- We need to move the board to keep the mouse pointing at the same content position
-			local newMouseBoardX = mouseBoardX * scaleChangeX
-			local newMouseBoardY = mouseBoardY * scaleChangeY
-
-			-- Adjust offsets to compensate for the scale-induced movement
-			offsetX = offsetX + (newMouseBoardX - mouseBoardX)
-			offsetY = offsetY + (newMouseBoardY - mouseBoardY)
+			-- Adjust offset so the same board point stays under the mouse cursor
+			boardOffsetX = mouseBoardX - (mx / boardZoom)
+			boardOffsetY = mouseBoardY - (bodyMy / boardZoom)
 		end
 	end
 end
 
 -- Public API
 function UIBody.Initialize()
-	offsetX = 0
-	offsetY = 0
-	timeScale = 100.0
-	verticalScale = 1.0
+	boardOffsetX = 0
+	boardOffsetY = 0
+	boardZoom = 1.0
 	isDragging = false
 end
 
 function UIBody.SetVisible(visible)
-	G.UIBodyVisible = visible
+	Shared.UIBodyVisible = visible
 end
 
 function UIBody.IsVisible()
-	local visible = G.UIBodyVisible or false
+	local visible = Shared.UIBodyVisible or false
 	print("🎯 UIBody.IsVisible called - returning:", tostring(visible))
 	return visible
 end
 
 function UIBody.ToggleVisible()
-	local newVisibility = not (G.UIBodyVisible or false)
+	local newVisibility = not (Shared.UIBodyVisible or false)
 	UIBody.SetVisible(newVisibility)
 	return newVisibility
 end
 
 function UIBody.Draw(profilerData, topBarHeight)
-	print("🎯 UIBody.Draw called - draw:", tostring(draw), "profilerData:", tostring(profilerData))
 	if not draw or not profilerData then
 		print("❌ UIBody.Draw returning early - missing draw or profilerData")
 		return
@@ -358,56 +405,62 @@ function UIBody.Draw(profilerData, topBarHeight)
 
 	-- Fallback if no data
 	if dataStartTime == math.huge then
-		dataStartTime = globals.RealTime() - 5
-		dataEndTime = globals.RealTime()
+		if globals and globals.RealTime then
+			dataStartTime = globals.RealTime() - 5
+			dataEndTime = globals.RealTime()
+		else
+			dataStartTime = 0
+			dataEndTime = 5
+		end
 	end
 
-	local currentY = topBarHeight + 10
+	-- Start drawing on virtual board
+	local boardY = 10
 
-	-- Draw each script's functions
+	-- Draw each script's functions on the board
 	if profilerData.scriptTimelines then
 		for scriptName, scriptData in pairs(profilerData.scriptTimelines) do
 			if scriptData.functions and #scriptData.functions > 0 then
-				currentY = drawScript(scriptName, scriptData.functions, currentY, dataStartTime, dataEndTime)
+				boardY = drawScriptOnBoard(scriptName, scriptData.functions, boardY, dataStartTime, dataEndTime)
 			end
 		end
 	end
 
 	-- Draw info overlay
 	draw.Color(255, 255, 255, 255)
-	draw.Text(10, screenH - 95, string.format("Time Scale: %.1f px/s", timeScale))
-	draw.Text(10, screenH - 80, string.format("Vertical Scale: %.2fx", verticalScale))
-	draw.Text(10, screenH - 65, string.format("Offset: X=%.0f Y=%.0f", offsetX, offsetY))
-	draw.Text(10, screenH - 50, string.format("Time Range: %.3fs - %.3fs", dataStartTime, dataEndTime))
-	draw.Text(10, screenH - 35, "Drag=Pan, Q=Zoom In, E=Zoom Out")
+	draw.Text(10, screenH - 95, string.format("Board Zoom: %.2fx", boardZoom))
+	draw.Text(10, screenH - 80, string.format("Board Offset: X=%.0f Y=%.0f", boardOffsetX, boardOffsetY))
+	draw.Text(10, screenH - 65, string.format("Time Range: %.3fs - %.3fs", dataStartTime, dataEndTime))
+	draw.Text(10, screenH - 50, string.format("Time Scale: %.1f px/s", TIME_SCALE))
+	draw.Text(10, screenH - 35, "Drag=Move Board, Q=Zoom In, E=Zoom Out")
 	draw.Text(10, screenH - 20, string.format("Dragging: %s", tostring(isDragging)))
 
 	-- Handle input
-	handleInput(screenW, screenH, topBarHeight)
+	handleBoardInput(screenW, screenH, topBarHeight)
 end
 
 -- Camera controls
 function UIBody.ResetCamera()
-	offsetX = 0
-	offsetY = 0
-	timeScale = 100.0
+	boardOffsetX = 0
+	boardOffsetY = 0
+	boardZoom = 1.0
 end
 
 function UIBody.SetZoom(newZoom)
-	timeScale = math.max(1.0, math.min(5000.0, newZoom))
+	boardZoom = math.max(0.1, math.min(10.0, newZoom))
 end
 
 function UIBody.GetZoom()
-	return timeScale
+	return boardZoom
 end
 
 function UIBody.CenterOnTimestamp(timestamp)
-	-- Center the view on the given timestamp
+	-- Center the board on the given timestamp
 	if timestamp then
-		-- Calculate how many pixels from start this timestamp should be
-		local targetPixel = timestamp * timeScale
+		-- Calculate board X position for this timestamp
+		local boardX = timestamp * TIME_SCALE
 		-- Center it on screen (assuming screen width of ~1920)
-		offsetX = targetPixel - 960
+		boardOffsetX = boardX - (960 / boardZoom)
 	end
 end
 

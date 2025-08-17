@@ -5,7 +5,7 @@
 ]]
 
 -- Imports
-local G = require("Profiler.globals") --[[ Imported by: profiler ]]
+local Shared = require("Profiler.Shared") --[[ Imported by: profiler ]]
 
 -- Module declaration
 local MicroProfiler = {}
@@ -46,7 +46,7 @@ lastCleanupTime = lastCleanupTime or 0
 scriptTimelines = scriptTimelines or {} -- { [scriptName] = { functions = {}, name = scriptName } }
 
 -- External APIs (Lua 5.4 compatible)
--- Use globals directly since it's globally available
+-- Use external globals library (RealTime, FrameTime) directly since it's globally available
 
 -- Private helpers --------------------
 
@@ -722,7 +722,7 @@ function MicroProfiler.GetStats()
 		_lastStatsTime = 0
 	end
 	local currentTime = globals.RealTime()
-	if (G and G.DEBUG) and (currentTime - _lastStatsTime > 5.0) then
+	if (Shared and Shared.DEBUG) and (currentTime - _lastStatsTime > 5.0) then
 		_lastStatsTime = currentTime
 		-- Count script timelines
 		local scriptCount = 0

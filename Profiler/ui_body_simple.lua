@@ -31,9 +31,7 @@ local KEY_Q = KEY_Q or 18
 local KEY_E = KEY_E or 20
 
 -- Helper functions
-local function getTime()
-	return globals.RealTime()
-end
+-- Use globals.RealTime() directly
 
 local function timeToPixel(time, startTime)
 	return (time - startTime) * timeScale
@@ -356,8 +354,8 @@ function UIBody.Draw(profilerData, topBarHeight)
 
 	-- Fallback if no data
 	if dataStartTime == math.huge then
-		dataStartTime = getTime() - 5
-		dataEndTime = getTime()
+		dataStartTime = globals.RealTime() - 5
+		dataEndTime = globals.RealTime()
 	end
 
 	local currentY = topBarHeight + 10

@@ -27,12 +27,6 @@ isCapturingKey = isCapturingKey or false
 bodyKey = bodyKey or nil
 totalRecordedTime = totalRecordedTime or 0
 
--- External APIs with fallbacks (Lua 5.4 compatible)
-local draw = draw
-local globals = require("globals")
-local input = input
-local callbacks = callbacks
-
 -- Key constants with fallbacks (Lua 5.4 compatible)
 local KEY_P = KEY_P or 26
 local MOUSE_LEFT = MOUSE_LEFT or 107
@@ -90,13 +84,7 @@ local function initializeFont()
 	end
 end
 
-local function getTime()
-	return (globals and globals.RealTime) and globals.RealTime() or 0
-end
-
-local function getFrameTime()
-	return (globals and globals.FrameTime) and globals.FrameTime() or 0.016
-end
+-- Remove these functions - use globals.RealTime() and globals.FrameTime() directly
 
 local function clamp(value, min, max)
 	if value < min then
@@ -190,8 +178,8 @@ local function updateFrameRecording()
 		return
 	end
 
-	local dt = getFrameTime()
-	local timestamp = getTime()
+	local dt = globals.FrameTime()
+	local timestamp = globals.RealTime()
 
 	-- Add new frame
 	table.insert(frames, {
@@ -480,7 +468,7 @@ function UITop.Draw()
 	draw.OutlinedRect(0, 0, screenW, TIMELINE_HEIGHT)
 
 	-- Draw left side info (integer coordinates for crisp text, larger font spacing)
-	local dt = getFrameTime()
+	local dt = globals.FrameTime()
 	local fps = dt > 0 and math.floor(1 / dt + 0.5) or 0
 	draw.Color(230, 230, 230, 255)
 	draw.Text(8, 6, "FPS: " .. tostring(fps))

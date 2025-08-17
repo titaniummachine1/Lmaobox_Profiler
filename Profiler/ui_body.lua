@@ -96,9 +96,7 @@ local function initializeFont()
 	end
 end
 
-local function getTime()
-	return (globals and globals.RealTime) and globals.RealTime() or 0
-end
+-- Use globals.RealTime() directly
 
 local function clamp(value, min, max)
 	if value < min then
@@ -575,7 +573,7 @@ function UIBody.Draw(profilerData, topBarHeight)
 	safeFilledRect(0, topBarHeight, screenW, screenH)
 
 	-- FIXED TIME WINDOW: constant 5 seconds for body navigation
-	local currentTime = getTime()
+	local currentTime = globals.RealTime()
 	local timeWindow = 5.0 / zoom -- 5-second window scaled by zoom
 
 	-- When paused, freeze the timeline scope

@@ -53,10 +53,7 @@ local globals = require("globals")
 -- Forward declaration so later calls see the local, not a global
 local autoDisableIfIdle
 
--- Get high precision time
-local function getTime()
-	return (globals and globals.RealTime) and globals.RealTime() or 0
-end
+-- Use globals.RealTime() directly
 
 -- Get memory usage in KB
 local function getMemory()
@@ -73,7 +70,7 @@ local function cleanupOldRecords()
 		return
 	end
 
-	local currentTime = getTime()
+	local currentTime = globals.RealTime()
 
 	-- Skip if not enough time has passed
 	if currentTime - lastCleanupTime < CLEANUP_INTERVAL then
@@ -276,7 +273,7 @@ local function createFunctionRecord(info)
 		source = source,
 		scriptName = scriptName,
 		line = line,
-		startTime = getTime(),
+		startTime = globals.RealTime(),
 		memStart = getMemory(),
 		endTime = nil,
 		memDelta = 0,
@@ -297,7 +294,7 @@ local function profileHook(event)
 	end
 
 	-- Only cleanup when NOT paused to keep data available for navigation
-	local currentTime = getTime()
+	local currentTime = globals.RealTime()
 	if currentTime - lastCleanupTime > CLEANUP_INTERVAL then
 		cleanupOldRecords()
 		autoDisableIfIdle()
@@ -334,7 +331,7 @@ local function profileHook(event)
 		end
 
 		-- Complete the record
-		record.endTime = getTime()
+		record.endTime = globals.RealTime()
 		record.memDelta = getMemory() - record.memStart
 		record.duration = record.endTime - record.startTime
 
@@ -558,7 +555,7 @@ function MicroProfiler.BeginCustomThread(name)
 	local thread = {
 		name = name,
 		scriptName = scriptName,
-		startTime = getTime(),
+		startTime = globals.RealTime(),
 		memStart = getMemory(),
 		endTime = nil,
 		memDelta = 0,
@@ -606,7 +603,7 @@ function MicroProfiler.EndCustomThread()
 		return
 	end
 
-	thread.endTime = getTime()
+	thread.endTime = globals.RealTime()
 	thread.memDelta = getMemory() - thread.memStart
 	thread.duration = thread.endTime - thread.startTime
 
@@ -724,7 +721,7 @@ function MicroProfiler.GetStats()
 	if not _lastStatsTime then
 		_lastStatsTime = 0
 	end
-	local currentTime = getTime()
+	local currentTime = globals.RealTime()
 	if (G and G.DEBUG) and (currentTime - _lastStatsTime > 5.0) then
 		_lastStatsTime = currentTime
 		-- Count script timelines

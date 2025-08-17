@@ -5,7 +5,6 @@
         "require": "require"
     },
     "Lua.diagnostics.globals": [
-        "_G",
         "collectgarbage",
         "debug",
         "string",

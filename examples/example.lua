@@ -8,19 +8,19 @@
 -- 3. Clean, readable code that shows performance characteristics
 
 -- RELOAD SUPPORT: Improved package unloading pattern
-if _G.MICROPROFILER_DEMO_LOADED then
+if MICROPROFILER_DEMO_LOADED then
 	print("🔄 Microprofiler demo already loaded - reloading for fresh updates...")
 
 	-- Unregister existing callbacks first
-	if _G.callbacks then
-		_G.callbacks.Unregister("CreateMove", "microprofiler_demo")
-		_G.callbacks.Unregister("Draw", "microprofiler_demo")
-		_G.callbacks.Unregister("FireGameEvent", "microprofiler_demo")
-		_G.callbacks.Unregister("Unload", "microprofiler_demo")
+	if callbacks then
+		callbacks.Unregister("CreateMove", "microprofiler_demo")
+		callbacks.Unregister("Draw", "microprofiler_demo")
+		callbacks.Unregister("FireGameEvent", "microprofiler_demo")
+		callbacks.Unregister("Unload", "microprofiler_demo")
 	end
 
 	-- Clear demo flag to allow reload
-	_G.MICROPROFILER_DEMO_LOADED = false
+	MICROPROFILER_DEMO_LOADED = false
 	print("   ✓ Demo callbacks cleared")
 end
 
@@ -33,7 +33,7 @@ print(string.format("📜 Loading script: %s (from %s)", scriptFileName, scriptF
 local Profiler = require("Profiler")
 
 -- Mark demo as loaded
-_G.MICROPROFILER_DEMO_LOADED = true
+MICROPROFILER_DEMO_LOADED = true
 
 -- Suppress linter warnings for external APIs
 ---@diagnostic disable: undefined-global
@@ -445,7 +445,7 @@ callbacks.Register("Unload", "microprofiler_demo", function()
 	Profiler.End()
 
 	-- Clear demo loaded flag to allow reload
-	_G.MICROPROFILER_DEMO_LOADED = false
+	MICROPROFILER_DEMO_LOADED = false
 
 	print("✅ Microprofiler demo unloaded cleanly!")
 end)

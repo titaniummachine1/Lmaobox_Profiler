@@ -5,23 +5,21 @@
     This module provides GLOBAL retained state to prevent multiple instances
 ]]
 
--- Use actual globals for retained mode (not local)
-if not _G.MICROPROFILER_GLOBALS then
-	_G.MICROPROFILER_GLOBALS = {
-		-- Profiler shared data
-		ProfilerEnabled = false,
-		CurrentFrame = 0,
-		LastDrawTime = 0,
-		BodyToggleRequested = false,
+-- Module declaration
+local G = {
+	-- Profiler shared data
+	ProfilerEnabled = false,
+	CurrentFrame = 0,
+	LastDrawTime = 0,
+	BodyToggleRequested = false,
 
-		-- Instance control
-		ProfilerInstance = nil,
-		ProfilerLoaded = false,
+	-- Instance control
+	ProfilerInstance = nil,
+	ProfilerLoaded = false,
 
-		-- Debug settings
-		DEBUG = false,
-	}
-end
+	-- Debug settings
+	DEBUG = false,
+}
 
--- Return the global instance
-return _G.MICROPROFILER_GLOBALS
+-- Return the module
+return G

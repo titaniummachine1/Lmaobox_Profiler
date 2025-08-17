@@ -24,15 +24,15 @@ local isDragging = false
 local lastMouseX, lastMouseY = 0, 0
 
 -- External APIs
-local draw = _G.draw
-local input = _G.input
-local MOUSE_LEFT = _G.MOUSE_LEFT or 107
-local KEY_Q = _G.KEY_Q or 18
-local KEY_E = _G.KEY_E or 20
+local draw = draw
+local input = input
+local MOUSE_LEFT = MOUSE_LEFT or 107
+local KEY_Q = KEY_Q or 18
+local KEY_E = KEY_E or 20
 
 -- Helper functions
 local function getTime()
-	return (_G.globals and _G.globals.RealTime and _G.globals.RealTime()) or 0
+	return globals.RealTime()
 end
 
 local function timeToPixel(time, startTime)
@@ -313,15 +313,15 @@ function UIBody.Initialize()
 end
 
 function UIBody.SetVisible(visible)
-	_G.UIBodyVisible = visible
+	G.UIBodyVisible = visible
 end
 
 function UIBody.IsVisible()
-	return _G.UIBodyVisible or false
+	return G.UIBodyVisible or false
 end
 
 function UIBody.ToggleVisible()
-	local newVisibility = not (_G.UIBodyVisible or false)
+	local newVisibility = not (G.UIBodyVisible or false)
 	UIBody.SetVisible(newVisibility)
 	return newVisibility
 end

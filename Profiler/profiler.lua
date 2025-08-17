@@ -234,7 +234,7 @@ function ProfilerCore.Draw()
 	end
 
 	-- Store last draw time
-	G.LastDrawTime = ((_G and _G.globals) and _G.globals.RealTime and _G.globals.RealTime()) or 0
+	G.LastDrawTime = globals.RealTime()
 end
 
 -- Get profiler data for external use

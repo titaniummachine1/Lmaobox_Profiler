@@ -35,14 +35,14 @@ lastMouseX = lastMouseX or 0
 lastMouseY = lastMouseY or 0
 
 -- External APIs with fallbacks (Lua 5.4 compatible)
-local draw = (_G and _G.draw) or nil
-local globals = (_G and _G.globals) or nil
-local input = (_G and _G.input) or nil
+local draw = draw
+local globals = require("globals")
+local input = input
 
 -- Key constants (Lua 5.4 compatible)
-local MOUSE_LEFT = (_G and _G.MOUSE_LEFT) or 107
-local MOUSE_WHEEL_UP = (_G and _G.MOUSE_WHEEL_UP) or 112
-local MOUSE_WHEEL_DOWN = (_G and _G.MOUSE_WHEEL_DOWN) or 113
+local MOUSE_LEFT = MOUSE_LEFT or 107
+local MOUSE_WHEEL_UP = MOUSE_WHEEL_UP or 112
+local MOUSE_WHEEL_DOWN = MOUSE_WHEEL_DOWN or 113
 
 -- Font (global for retained mode)
 bodyFont = bodyFont or nil
@@ -446,11 +446,11 @@ end
 -- Handle input (ALWAYS active when body is visible and paused)
 local function handleInput(screenWidth, screenHeight, topBarHeight)
 	-- FORCE input to work - don't check for input existence
-	if not _G.input or not _G.input.GetMousePos then
+	if not input or not input.GetMousePos then
 		return
 	end
 
-	local pos = _G.input.GetMousePos()
+	local pos = input.GetMousePos()
 	local mx, my = pos[1] or 0, pos[2] or 0
 
 	-- Only handle input in body area (below top bar)
@@ -462,7 +462,7 @@ local function handleInput(screenWidth, screenHeight, topBarHeight)
 	local bodyMy = my - topBarHeight
 
 	-- Handle dragging - FORCE detection
-	local currentlyDragging = _G.input.IsButtonDown and _G.input.IsButtonDown(MOUSE_LEFT)
+	local currentlyDragging = input.IsButtonDown and input.IsButtonDown(MOUSE_LEFT)
 	local wasDragging = clickState["drag_active"] or false
 
 	if currentlyDragging and not wasDragging then
@@ -503,9 +503,9 @@ local function handleInput(screenWidth, screenHeight, topBarHeight)
 	end
 
 	-- Handle zoom with MOUSE WHEEL - FORCE detection
-	if _G.input.IsButtonDown then
-		local wheelUpNow = _G.input.IsButtonDown(112)
-		local wheelDownNow = _G.input.IsButtonDown(113)
+	if input.IsButtonDown then
+		local wheelUpNow = input.IsButtonDown(112)
+		local wheelDownNow = input.IsButtonDown(113)
 
 		if wheelUpNow and not clickState["wheel_up"] then
 			local oldZoom = zoom
@@ -858,8 +858,8 @@ function UIBody.Draw(profilerData, topBarHeight)
 	draw.Text(10, screenH - 45, "Drag=Pan, Wheel=Zoom, P=Pause")
 
 	-- Debug input state
-	local mousePos = (_G.input and _G.input.GetMousePos) and _G.input.GetMousePos() or { 0, 0 }
-	local mouseDown = (_G.input and _G.input.IsButtonDown) and _G.input.IsButtonDown(MOUSE_LEFT) or false
+	local mousePos = (input and input.GetMousePos) and input.GetMousePos() or { 0, 0 }
+	local mouseDown = (input and input.IsButtonDown) and input.IsButtonDown(MOUSE_LEFT) or false
 	draw.Text(
 		10,
 		screenH - 30,
@@ -871,7 +871,7 @@ function UIBody.Draw(profilerData, topBarHeight)
 			tostring(isDragging)
 		)
 	)
-	draw.Text(10, screenH - 15, string.format("Input API: %s", (_G.input and "OK") or "MISSING"))
+	draw.Text(10, screenH - 15, string.format("Input API: %s", (input and "OK") or "MISSING"))
 
 	-- DEBUG: Show data status
 	local totalFunctions = 0

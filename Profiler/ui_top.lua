@@ -28,14 +28,14 @@ bodyKey = bodyKey or nil
 totalRecordedTime = totalRecordedTime or 0
 
 -- External APIs with fallbacks (Lua 5.4 compatible)
-local draw = (_G and _G.draw) or nil
-local globals = (_G and _G.globals) or nil
-local input = (_G and _G.input) or nil
-local callbacks = (_G and _G.callbacks) or nil
+local draw = draw
+local globals = require("globals")
+local input = input
+local callbacks = callbacks
 
 -- Key constants with fallbacks (Lua 5.4 compatible)
-local KEY_P = (_G and _G.KEY_P) or 26
-local MOUSE_LEFT = (_G and _G.MOUSE_LEFT) or 107
+local KEY_P = KEY_P or 26
+local MOUSE_LEFT = MOUSE_LEFT or 107
 
 -- Click state tracking (global for retained mode)
 clickState = clickState or {}

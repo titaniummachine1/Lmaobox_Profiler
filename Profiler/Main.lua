@@ -181,7 +181,7 @@ end
 -------------------------------------------------------------------------------
 
 local DRAW_CB_ID = "microprofiler_singleton_draw"
-local cb = (_G and _G.callbacks) or nil
+local cb = callbacks
 if not ProfilerCallbacksRegistered and cb and cb.Register then
 	if cb.Unregister then
 		cb.Unregister("Draw", DRAW_CB_ID)

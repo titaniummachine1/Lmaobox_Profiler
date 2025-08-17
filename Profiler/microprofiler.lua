@@ -46,7 +46,7 @@ lastCleanupTime = lastCleanupTime or 0
 scriptTimelines = scriptTimelines or {} -- { [scriptName] = { functions = {}, name = scriptName } }
 
 -- External APIs (Lua 5.4 compatible)
-local globals = (_G and _G.globals) or nil
+local globals = require("globals")
 
 -- Private helpers --------------------
 
@@ -192,8 +192,8 @@ local function shouldProfile(info)
 	-- COMPLETELY FILTER OUT "Local//Profiler" functions
 	-- Use GetScriptName to determine real script
 	local scriptName = "Unknown"
-	if _G.GetScriptName then
-		local fullPath = _G.GetScriptName()
+	if GetScriptName then
+		local fullPath = GetScriptName()
 		if fullPath then
 			scriptName = fullPath:match("\\([^\\]-)$") or fullPath:match("/([^/]-)$") or fullPath
 			if scriptName:match("%.lua$") then
@@ -239,8 +239,8 @@ local function createFunctionRecord(info)
 
 	-- Use lmaobox GetScriptName() with proper Windows path handling
 	local scriptName = "Unknown Script"
-	if _G.GetScriptName then
-		local fullPath = _G.GetScriptName()
+	if GetScriptName then
+		local fullPath = GetScriptName()
 		if fullPath then
 			-- Extract filename from Windows path and remove .lua extension for display
 			scriptName = fullPath:match("\\([^\\]-)$") or fullPath:match("/([^/]-)$") or fullPath
@@ -539,8 +539,8 @@ function MicroProfiler.BeginCustomThread(name)
 
 	-- Use lmaobox GetScriptName() with proper Windows path handling
 	local scriptName = "Manual Thread"
-	if _G.GetScriptName then
-		local fullPath = _G.GetScriptName()
+	if GetScriptName then
+		local fullPath = GetScriptName()
 		if fullPath then
 			-- Extract filename from Windows path and remove .lua extension for display
 			scriptName = fullPath:match("\\([^\\]-)$") or fullPath:match("/([^/]-)$") or fullPath

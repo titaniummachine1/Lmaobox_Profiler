@@ -315,7 +315,9 @@ function UIBody.SetVisible(visible)
 end
 
 function UIBody.IsVisible()
-	return G.UIBodyVisible or false
+	local visible = G.UIBodyVisible or false
+	print("🎯 UIBody.IsVisible called - returning:", tostring(visible))
+	return visible
 end
 
 function UIBody.ToggleVisible()
@@ -325,7 +327,9 @@ function UIBody.ToggleVisible()
 end
 
 function UIBody.Draw(profilerData, topBarHeight)
+	print("🎯 UIBody.Draw called - draw:", tostring(draw), "profilerData:", tostring(profilerData))
 	if not draw or not profilerData then
+		print("❌ UIBody.Draw returning early - missing draw or profilerData")
 		return
 	end
 

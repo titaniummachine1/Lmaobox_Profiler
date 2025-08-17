@@ -4,7 +4,7 @@
 ]]
 
 -- Imports
-local G = require("Profiler.globals")
+local G = require("Profiler.globals") --[[ Imported by: profiler ]]
 
 -- Module declaration
 local UIBody = {}

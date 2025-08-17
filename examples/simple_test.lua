@@ -3,7 +3,6 @@
 
 -- Load the profiler
 local Profiler = require("Profiler")
-local globals = require("globals")
 Profiler.SetVisible(true)
 -- Don't pause immediately - let it collect data first
 
@@ -154,14 +153,14 @@ local function ManualTest()
 	-- Do the actual trace work with forced delays
 	local traces = PerformTraceTests()
 
-		-- Forced delay between operations
+	-- Forced delay between operations
 	local delay_start = globals.RealTime()
 	while (globals.RealTime() - delay_start) < 0.001 do
 		-- Busy wait for 1ms
 	end
-	
+
 	local entities = EntityScanning()
-	
+
 	-- Another forced delay
 	delay_start = globals.RealTime()
 	while (globals.RealTime() - delay_start) < 0.002 do

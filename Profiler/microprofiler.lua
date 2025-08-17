@@ -46,7 +46,7 @@ lastCleanupTime = lastCleanupTime or 0
 scriptTimelines = scriptTimelines or {} -- { [scriptName] = { functions = {}, name = scriptName } }
 
 -- External APIs (Lua 5.4 compatible)
-local globals = require("globals")
+-- Use globals directly since it's globally available
 
 -- Private helpers --------------------
 

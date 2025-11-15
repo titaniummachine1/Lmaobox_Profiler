@@ -612,26 +612,11 @@ function MicroProfiler.EndCustomThread()
 		thread.duration = 0
 	end
 
-	print(
-		string.format("✅ Manual profiling completed: %s (%.3fms)", thread.name or "unnamed", thread.duration * 1000)
-	)
-
-	-- IMPORTANT: Add to script timeline so it shows up in UI - FORCE SAME SCRIPT
-	local scriptName = "example" -- FORCE all manual profiling to "example" script to group together
-	if not scriptTimelines[scriptName] then
-		scriptTimelines[scriptName] = {
-			name = scriptName,
-			functions = {},
-			type = "script",
-		}
-	end
-
-	-- Create a function record for the thread
 	local threadRecord = {
 		key = thread.name,
 		name = thread.name,
 		source = "manual",
-		scriptName = scriptName,
+		scriptName = thread.scriptName,
 		line = 0,
 		startTime = thread.startTime,
 		endTime = thread.endTime,
@@ -640,13 +625,16 @@ function MicroProfiler.EndCustomThread()
 		children = thread.children,
 	}
 
-	-- Add to script timeline for UI display (same script as automatic profiling)
-	table.insert(scriptTimelines[scriptName].functions, threadRecord)
-
-	-- Also add to main timeline
-	table.insert(mainTimeline, threadRecord)
-
-	print(string.format("📊 Manual profiling added to script timeline: %s", scriptName))
+	local parentThread = activeCustomStack[#activeCustomStack]
+	if parentThread then
+		parentThread.children = parentThread.children or {}
+		table.insert(parentThread.children, threadRecord)
+	else
+		table.insert(mainTimeline, threadRecord)
+		if #mainTimeline > MAX_TIMELINE_SIZE then
+			table.remove(mainTimeline, 1)
+		end
+	end
 
 	-- Clear API guard
 	inProfilerAPI = false
@@ -677,6 +665,7 @@ function MicroProfiler.GetProfilerData()
 		callStack = callStack,
 		isEnabled = isEnabled,
 		isHooked = isHooked,
+		manualTimeline = mainTimeline,
 	}
 end
 
@@ -694,6 +683,10 @@ function MicroProfiler.Reset()
 	disableHook()
 	MicroProfiler.ClearData()
 	isEnabled = false
+	isHooked = false
+	isPaused = false
+	inProfilerAPI = false
+	lastCleanupTime = 0
 end
 
 -- Get statistics

@@ -5,13 +5,25 @@
 [![GitHub issues](https://img.shields.io/github/issues/titaniummachine1/Lmaobox_Profiler.svg)](https://github.com/titaniummachine1/Lmaobox_Profiler/issues)
 [![GitHub stars](https://img.shields.io/github/stars/titaniummachine1/Lmaobox_Profiler.svg)](https://github.com/titaniummachine1/Lmaobox_Profiler/stargazers)
 
-[![Download Latest](https://img.shields.io/github/downloads/titaniummachine1/Lmaobox_Profiler/total.svg?style=for-the-badge&logo=download&label=Download%20Latest)](https://github.com/titaniummachine1/Lmaobox_Profiler/releases/latest/download/Profiler.lua)
+[![Download Latest](https://img.shields.io/badge/Download%20Latest-Profiler.lua-brightgreen?style=for-the-badge&logo=download)](https://github.com/titaniummachine1/Lmaobox_Profiler/releases/latest/download/Profiler.lua)
 
-A lightweight, real-time performance profiler that shows you exactly what's eating your CPU and memory.
+A lightweight, real-time performance profiler that shows you exactly what's eating your CPU and memory. Features both manual profiling and automatic function hooking for comprehensive performance analysis.
 
 ## 🚀 Quick Start
 
-### New Simplified API (Recommended)
+### Automatic Function Profiling (NEW!)
+
+The profiler now automatically hooks and profiles all user functions, similar to Roblox's microprofiler:
+
+```lua
+local Profiler = require("Profiler")
+Profiler.SetVisible(true)
+
+-- That's it! All your functions are automatically profiled
+-- No need to manually wrap code - just run your scripts normally
+```
+
+### Manual Profiling API
 
 ```lua
 local Profiler = require("Profiler")
@@ -29,7 +41,7 @@ Profiler.EndSystem() -- Ends system
 
 ```lua
 local Profiler = require("Profiler")
---Profiler.SetVisible(true)
+Profiler.SetVisible(true)
 
 -- Measure your code
 Profiler.StartSystem("aimbot")
@@ -38,6 +50,57 @@ Profiler.StartSystem("aimbot")
     Profiler.EndComponent("targeting")
 Profiler.EndSystem("aimbot")
 ```
+
+## 🎮 Controls
+
+### UI Navigation
+
+- **Drag**: Pan the virtual board around
+- **Q/E**: Zoom in/out (zooms towards mouse cursor)
+- **P**: Pause/resume recording
+- **Mouse Wheel**: Alternative zoom method
+- **Frame Timeline**: Click on frame pillars to jump to that time
+
+### Virtual Board System
+
+The profiler uses a virtual board coordinate system where all UI elements are positioned on a fixed 2000x2000 pixel board, then transformed to screen coordinates. This provides:
+
+- **Smooth Panning**: Natural drag-to-pan movement
+- **Zoom Compensation**: Content stays under mouse cursor when zooming
+- **Y-Axis Clamping**: Content can't overlap the top UI bar
+- **Predictable Movement**: All elements move together consistently
+
+## 🧪 Testing
+
+### Ultra-Aggressive Test
+
+Use `examples/simple_test.lua` to test the profiler with functions that are guaranteed to be visible:
+
+```lua
+-- This test creates functions that take 50-100+ milliseconds each
+-- Perfect for verifying the profiler is working correctly
+local Profiler = require("Profiler")
+Profiler.SetVisible(true)
+
+-- Run the test
+-- Functions include: UltraHeavyCalculation, UltraHeavyStringWork, etc.
+```
+
+**Test Features:**
+
+- **5 Million iterations** of complex math operations
+- **1 Million string concatenations** (very slow in Lua)
+- **500K table entries** with sorting
+- **Artificial delays** forcing 50ms minimum duration
+- **Simulated file/network operations**
+
+### Expected Results
+
+With the current time scale (100 px/s):
+
+- **50ms function**: 5 pixels wide (clearly visible)
+- **100ms function**: 10 pixels wide (very visible)
+- **Multiple functions**: Overlapping bars with different colors
 
 ## ⚙️ Configuration
 
@@ -60,30 +123,17 @@ Profiler.SetTextUpdateInterval(15)           -- Text update rate
 Profiler.Reset()                             -- Clear all data
 ```
 
-## 🎮 Controls
-
-### New Simplified API
-
-| Function                          | Description                |
-| --------------------------------- | -------------------------- |
-| `Profiler.SetVisible(true/false)` | Show/hide profiler         |
-| `Profiler.Enable()`               | Quick enable               |
-| `Profiler.Disable()`              | Quick disable              |
-| `Profiler.BeginSystem("name")`    | Start measuring system     |
-| `Profiler.EndSystem()`            | End last started system    |
-| `Profiler.Begin("name")`          | Start measuring component  |
-| `Profiler.End()`                  | End last started component |
-
-### Original API (Still Supported)
-
-| Function                          | Description               |
-| --------------------------------- | ------------------------- |
-| `Profiler.StartSystem("name")`    | Start measuring system    |
-| `Profiler.StartComponent("name")` | Start measuring component |
-| `Profiler.EndComponent("name")`   | End measuring component   |
-| `Profiler.EndSystem("name")`      | End measuring system      |
-
 ## 🎨 What You See
+
+### Automatic Profiling View
+
+- **Script Headers** (green bars): Each script gets its own section
+- **Function Bars** (colored): Individual functions with timing and names
+- **Function Count**: Shows how many functions were profiled per script
+- **Time Scale**: 100 pixels per second (configurable)
+- **Zoom Level**: Current zoom factor displayed
+
+### Manual Profiling View
 
 - **System bars** (grey, full width): Complete systems like "aimbot", "movement"
 - **Component bars** (colored, nested): Individual parts within systems
@@ -168,9 +218,37 @@ Profiler.Setup({
 })
 ```
 
+**For Function Analysis:**
+
+```lua
+-- The automatic profiling will show you:
+-- - Which functions are taking the most time
+-- - Function call hierarchies
+-- - Memory usage per function
+-- - Script-by-script breakdown
+```
+
 ## 📝 Examples
 
-### New Simplified API Examples
+### Automatic Profiling (Recommended)
+
+```lua
+local Profiler = require("Profiler")
+Profiler.SetVisible(true)
+
+-- Just run your code normally - everything is automatically profiled!
+function MyExpensiveFunction()
+    -- This function will automatically appear in the profiler
+    for i = 1, 1000000 do
+        math.sin(i) * math.cos(i)
+    end
+end
+
+-- Call it normally
+MyExpensiveFunction()
+```
+
+### Manual Profiling Examples
 
 **Simplified Usage:**
 
@@ -212,46 +290,6 @@ Profiler.BeginSystem("esp")
 Profiler.EndSystem() -- Ends system
 ```
 
-### Original API Examples
-
-**Basic Usage:**
-
-```lua
-local Profiler = require("Profiler")
-Profiler.SetVisible(true)
-
--- In your aimbot
-Profiler.StartSystem("aimbot")
-    local targets
-
-    Profiler.StartComponent("get_targets")
-    targets = GetTargets()
-    Profiler.EndComponent("get_targets")
-
-    Profiler.StartComponent("calculate_aim")
-    local angles = CalculateAim(targets[1])
-    Profiler.EndComponent("calculate_aim")
-Profiler.EndSystem("aimbot")
-```
-
-**Multiple Systems:**
-
-```lua
--- Movement
-Profiler.StartSystem("movement")
-    Profiler.StartComponent("bhop")
-    -- ... bhop code ...
-    Profiler.EndComponent("bhop")
-Profiler.EndSystem("movement")
-
--- ESP
-Profiler.StartSystem("esp")
-    Profiler.StartComponent("players")
-    -- ... player ESP ...
-    Profiler.EndComponent("players")
-Profiler.EndSystem("esp")
-```
-
 **Quick Function Timing:**
 
 ```lua
@@ -267,6 +305,27 @@ Profiler.BeginSystem("calculations")
     Profiler.End() -- Ends component
 Profiler.EndSystem() -- Ends system
 ```
+
+## 🔧 Technical Details
+
+### Module Structure
+
+- **Main.lua**: Entry point and API
+- **Shared.lua**: Shared runtime data (renamed from globals.lua)
+- **microprofiler.lua**: Automatic function hooking system
+- **ui_body_simple.lua**: Virtual board UI system
+- **ui_top.lua**: Top bar with frame timeline
+- **config.lua**: Configuration settings
+
+### External Dependencies
+
+The profiler safely imports the external `globals` library (providing `RealTime()` and `FrameTime()`) using `pcall` to prevent errors if the library isn't available.
+
+### Performance Impact
+
+- **Automatic profiling**: Minimal overhead, hooks only user functions
+- **Manual profiling**: Near-zero overhead when disabled
+- **UI rendering**: Optimized for 60fps with configurable update rates
 
 ---
 

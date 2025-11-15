@@ -7,6 +7,15 @@
 -- 2. One manual profiling example for custom threads
 -- 3. Clean, readable code that shows performance characteristics
 
+local function ensureProfilerReload()
+	local existingProfiler = package.loaded["Profiler"]
+	if existingProfiler and existingProfiler.Unload then
+		print("🔄 Detected existing Profiler instance - unloading before reload...")
+		existingProfiler.Unload()
+	end
+	package.loaded["Profiler"] = nil
+end
+
 -- RELOAD SUPPORT: Improved package unloading pattern
 if MICROPROFILER_DEMO_LOADED then
 	print("🔄 Microprofiler demo already loaded - reloading for fresh updates...")
@@ -24,7 +33,7 @@ if MICROPROFILER_DEMO_LOADED then
 	print("   ✓ Demo callbacks cleared")
 end
 
--- Get current script name using proper Windows path handling
+ensureProfilerReload()
 local scriptFullPath = GetScriptName()
 local scriptFileName = scriptFullPath:match("\\([^\\]-)$"):gsub("%.lua$", "") or "example"
 print(string.format("📜 Loading script: %s (from %s)", scriptFileName, scriptFullPath))

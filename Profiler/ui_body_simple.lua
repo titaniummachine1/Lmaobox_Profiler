@@ -295,9 +295,29 @@ local function handleBoardInput(screenW, screenH, topBarHeight)
 		local deltaX = mx - lastMouseX
 		local deltaY = bodyMy - lastMouseY
 
-		-- Move board (same direction as mouse movement)
-		boardOffsetX = boardOffsetX - (deltaX / boardZoom)
-		boardOffsetY = boardOffsetY - (deltaY / boardZoom)
+		-- Calculate new offset
+		local newOffsetX = boardOffsetX - (deltaX / boardZoom)
+		local newOffsetY = boardOffsetY - (deltaY / boardZoom)
+
+		-- Y clamping - prevent content from going above top bar
+		-- Calculate what Y position the content would be drawn at with current offset
+		-- Content starts at boardY = 10, so screen Y = (10 - newOffsetY) * boardZoom
+		local contentScreenY = (10 - newOffsetY) * boardZoom
+
+		-- Calculate the clamped Y offset (content just below top bar with 5px margin)
+		local clampedOffsetY = 10 - ((topBarHeight + 5) / boardZoom)
+
+		-- If content would be above top bar, clamp it immediately
+		if contentScreenY < topBarHeight then
+			newOffsetY = clampedOffsetY
+		end
+
+		-- No horizontal clamping - allow moving left/right freely
+		-- Only clamp Y to prevent content from going above top bar
+
+		-- Apply clamped offsets
+		boardOffsetX = newOffsetX
+		boardOffsetY = newOffsetY
 
 		-- Reduce spam - only print on significant movement
 		if math.abs(deltaX) > 10 or math.abs(deltaY) > 10 then
@@ -344,8 +364,28 @@ local function handleBoardInput(screenW, screenH, topBarHeight)
 			local mouseBoardY = (bodyMy / oldZoom) + boardOffsetY
 
 			-- Adjust offset so the same board point stays under the mouse cursor
-			boardOffsetX = mouseBoardX - (mx / boardZoom)
-			boardOffsetY = mouseBoardY - (bodyMy / boardZoom)
+			local newOffsetX = mouseBoardX - (mx / boardZoom)
+			local newOffsetY = mouseBoardY - (bodyMy / boardZoom)
+
+			-- Y clamping - prevent content from going above top bar
+			-- Calculate what Y position the content would be drawn at with current offset
+			-- Content starts at boardY = 10, so screen Y = (10 - newOffsetY) * boardZoom
+			local contentScreenY = (10 - newOffsetY) * boardZoom
+
+			-- Calculate the clamped Y offset (content just below top bar with 5px margin)
+			local clampedOffsetY = 10 - ((topBarHeight + 5) / boardZoom)
+
+			-- If content would be above top bar, clamp it immediately
+			if contentScreenY < topBarHeight then
+				newOffsetY = clampedOffsetY
+			end
+
+			-- No horizontal clamping - allow moving left/right freely
+			-- Only clamp Y to prevent content from going above top bar
+
+			-- Apply clamped offsets
+			boardOffsetX = newOffsetX
+			boardOffsetY = newOffsetY
 		end
 	end
 end

@@ -17,6 +17,7 @@ local FUNCTION_SPACING = 2 -- Spacing between function levels
 local SCRIPT_HEADER_HEIGHT = 25 -- Height of script headers
 local SCRIPT_SPACING = 10 -- Spacing between scripts
 local TIME_SCALE = 50000 -- Pixels per second (horizontal scale) - makes 1ms = 50px
+local RULER_HEIGHT = 30 -- Height of time ruler at top of body
 
 -- Global state (retained mode)
 local boardOffsetX = 0 -- Camera position on virtual board
@@ -24,6 +25,7 @@ local boardOffsetY = 0 -- Camera position on virtual board
 local boardZoom = 1.0 -- Zoom level of the board
 local isDragging = false
 local lastMouseX, lastMouseY = 0, 0
+local useFrameMarkers = true -- Toggle between frame markers and tick markers
 
 -- External APIs
 local draw = draw
@@ -250,6 +252,84 @@ local function drawScriptOnBoard(scriptName, functions, boardY, dataStartTime, d
 	return boardY + SCRIPT_SPACING
 end
 
+-- Draw time ruler with intervals
+local function drawTimeRuler(screenW, topBarHeight, dataStartTime, dataEndTime)
+	if not draw then
+		return
+	end
+
+	-- Ruler background
+	draw.Color(30, 30, 30, 255)
+	draw.FilledRect(0, topBarHeight, screenW, topBarHeight + RULER_HEIGHT)
+
+	-- Determine interval based on zoom (visible time span)
+	local visibleDuration = (screenW / boardZoom) / TIME_SCALE
+	local interval = 1.0 -- Default 1 second
+	if visibleDuration < 0.5 then
+		interval = 0.01 -- 10ms
+	elseif visibleDuration < 2 then
+		interval = 0.1 -- 100ms
+	elseif visibleDuration < 10 then
+		interval = 0.5 -- 500ms
+	elseif visibleDuration > 60 then
+		interval = 10.0 -- 10s
+	end
+
+	-- Draw interval markers
+	local startMark = math.floor(dataStartTime / interval) * interval
+	local time = startMark
+	while time <= dataEndTime + interval do
+		local boardX = timeToBoardX(time, dataStartTime)
+		local screenX, _ = boardToScreen(boardX, 0)
+
+		if screenX >= 0 and screenX <= screenW then
+			-- Draw tick line
+			draw.Color(100, 100, 100, 200)
+			draw.Line(math.floor(screenX), topBarHeight, math.floor(screenX), topBarHeight + RULER_HEIGHT)
+
+			-- Draw time label
+			local label
+			if interval >= 1.0 then
+				label = string.format("%.1fs", time - dataStartTime)
+			else
+				label = string.format("%dms", math.floor((time - dataStartTime) * 1000))
+			end
+			draw.Color(255, 255, 255, 255)
+			draw.Text(math.floor(screenX) + 2, topBarHeight + 2, label)
+		end
+
+		time = time + interval
+	end
+end
+
+-- Draw frame/tick boundary markers
+local function drawFrameMarkers(screenH, topBarHeight, dataStartTime, dataEndTime)
+	if not draw or not globals or not globals.FrameTime then
+		return
+	end
+
+	local frameTime = globals.FrameTime() or 0.016667 -- ~60fps fallback
+	if frameTime <= 0 then
+		frameTime = 0.016667
+	end
+
+	-- Draw vertical lines for each frame boundary
+	local frameMark = math.floor(dataStartTime / frameTime) * frameTime
+	local time = frameMark
+	while time <= dataEndTime + frameTime do
+		local boardX = timeToBoardX(time, dataStartTime)
+		local screenX, _ = boardToScreen(boardX, 0)
+
+		if screenX >= 0 and screenX <= 2000 then
+			-- Thin vertical line for frame boundary
+			draw.Color(80, 80, 150, 100)
+			draw.Line(math.floor(screenX), topBarHeight + RULER_HEIGHT, math.floor(screenX), screenH)
+		end
+
+		time = time + frameTime
+	end
+end
+
 -- Handle input for board navigation
 local function handleBoardInput(screenW, screenH, topBarHeight)
 	if not input or not input.GetMousePos then
@@ -283,17 +363,17 @@ local function handleBoardInput(screenW, screenH, topBarHeight)
 		local newOffsetX = boardOffsetX - (deltaX / boardZoom)
 		local newOffsetY = boardOffsetY - (deltaY / boardZoom)
 
-		-- Y clamping - prevent content from going above top bar
-		-- Calculate what Y position the content would be drawn at with current offset
-		-- Content starts at boardY = 10, so screen Y = (10 - newOffsetY) * boardZoom
-		local contentScreenY = (10 - newOffsetY) * boardZoom
+		-- Y clamping - prevent content from going above ruler
+		-- Content starts at boardY = RULER_HEIGHT + 10
+		local contentStartY = RULER_HEIGHT + 10
+		local contentScreenY = (contentStartY - newOffsetY) * boardZoom
 
-		-- Calculate the clamped Y offset (content just below top bar with 5px margin)
-		local clampedOffsetY = 10 - ((topBarHeight + 5) / boardZoom)
+		-- Minimum screen Y = topBarHeight + RULER_HEIGHT (just below ruler)
+		local minScreenY = topBarHeight + RULER_HEIGHT
 
-		-- If content would be above top bar, clamp it immediately
-		if contentScreenY < topBarHeight then
-			newOffsetY = clampedOffsetY
+		-- If content would be above ruler, clamp it
+		if contentScreenY < minScreenY then
+			newOffsetY = contentStartY - (minScreenY / boardZoom)
 		end
 
 		-- No horizontal clamping - allow moving left/right freely
@@ -336,17 +416,17 @@ local function handleBoardInput(screenW, screenH, topBarHeight)
 			local newOffsetX = mouseBoardX - (mx / boardZoom)
 			local newOffsetY = mouseBoardY - (bodyMy / boardZoom)
 
-			-- Y clamping - prevent content from going above top bar
-			-- Calculate what Y position the content would be drawn at with current offset
-			-- Content starts at boardY = 10, so screen Y = (10 - newOffsetY) * boardZoom
-			local contentScreenY = (10 - newOffsetY) * boardZoom
+			-- Y clamping - prevent content from going above ruler
+			-- Content starts at boardY = RULER_HEIGHT + 10
+			local contentStartY = RULER_HEIGHT + 10
+			local contentScreenY = (contentStartY - newOffsetY) * boardZoom
 
-			-- Calculate the clamped Y offset (content just below top bar with 5px margin)
-			local clampedOffsetY = 10 - ((topBarHeight + 5) / boardZoom)
+			-- Minimum screen Y = topBarHeight + RULER_HEIGHT (just below ruler)
+			local minScreenY = topBarHeight + RULER_HEIGHT
 
-			-- If content would be above top bar, clamp it immediately
-			if contentScreenY < topBarHeight then
-				newOffsetY = clampedOffsetY
+			-- If content would be above ruler, clamp it
+			if contentScreenY < minScreenY then
+				newOffsetY = contentStartY - (minScreenY / boardZoom)
 			end
 
 			-- No horizontal clamping - allow moving left/right freely
@@ -421,8 +501,16 @@ function UIBody.Draw(profilerData, topBarHeight)
 		end
 	end
 
-	-- Start drawing on virtual board
-	local boardY = 10
+	-- Draw time ruler
+	drawTimeRuler(screenW, topBarHeight, dataStartTime, dataEndTime)
+
+	-- Draw frame markers if enabled
+	if useFrameMarkers then
+		drawFrameMarkers(screenH, topBarHeight, dataStartTime, dataEndTime)
+	end
+
+	-- Start drawing on virtual board (below ruler)
+	local boardY = RULER_HEIGHT + 10
 
 	-- Draw each script's functions on the board
 	if profilerData.scriptTimelines then

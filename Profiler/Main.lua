@@ -74,6 +74,7 @@ ProfilerEnabled = false -- Global variable
 
 -- Import core module (does **not** register callbacks on its own)
 local ProfilerCore = require("Profiler.profiler")
+ProfilerCore.Init()
 
 -- Public API table
 local Profiler = {}
@@ -107,6 +108,10 @@ Profiler.SetSmoothingDecay = ProfilerCore.SetSmoothingDecay
 Profiler.SetTextUpdateInterval = ProfilerCore.SetTextUpdateInterval
 Profiler.SetSystemMemoryMode = ProfilerCore.SetSystemMemoryMode
 Profiler.SetOverheadCompensation = ProfilerCore.SetOverheadCompensation
+Profiler.SetAutoHookEnabled = ProfilerCore.SetAutoHookEnabled
+Profiler.IsAutoHookEnabled = ProfilerCore.IsAutoHookEnabled
+Profiler.Init = ProfilerCore.Init
+Profiler.Shutdown = ProfilerCore.Shutdown
 Profiler.Reset = ProfilerCore.Reset
 
 -- Metadata constants (Lua 5.4 compatible)
@@ -176,41 +181,15 @@ function Profiler.Reload()
 	print("🚀 Run 'lua_load example.lua' again to get fresh profiler!")
 end
 
--- Remove safeRegisterCallback function and use direct callbacks.Register
--- Automatic Draw callback (retained-mode) ------------------------------------
--------------------------------------------------------------------------------
-
-local DRAW_CB_ID = "microprofiler_singleton_draw"
-local cb = callbacks
-if not ProfilerCallbacksRegistered and cb and cb.Register then
-	if cb.Unregister then
-		cb.Unregister("Draw", DRAW_CB_ID)
-	end
-
-	cb.Register("Draw", DRAW_CB_ID, function()
-		-- Draw only when visible to avoid wasting time
-		Profiler.Draw()
-	end)
-
-	ProfilerCallbacksRegistered = true
-end
-
 -- Cleanup helper (enhanced for complete reloading) -------------------------
 function Profiler.Unload()
 	print("🧹 Unloading Microprofiler...")
 
-	-- Unregister draw callback
-	if cb and cb.Unregister then
-		cb.Unregister("Draw", DRAW_CB_ID)
-		print("   ✓ Draw callback unregistered")
-	end
+	Profiler.Shutdown()
 	ProfilerCallbacksRegistered = false
 
 	-- Reset internal state so a fresh load starts clean
-	if Profiler.Reset then
-		Profiler.Reset()
-		print("   ✓ Internal state reset")
-	end
+	print("   ✓ Internal state reset")
 
 	-- Clear global instance
 	Shared.ProfilerInstance = nil

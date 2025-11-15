@@ -1,150 +1,178 @@
--- ULTRA AGGRESSIVE Test for Microprofiler - Functions that WILL be visible
--- This test creates functions that will definitely show up as visible bars
+-- Runtime-friendly Profiler demo: showcases real-time work without freezing the game
+
+local SCRIPT_TAG = "microprofiler_simple_test"
+
+if _G.SIMPLE_PROFILER_TEST_LOADED then
+	_G.SIMPLE_PROFILER_TEST_LOADED = false
+end
 
 local Profiler = require("Profiler")
-
--- Enable profiler
 Profiler.SetVisible(true)
-print("✅ Profiler enabled!")
 
--- Function that does ULTRA HEAVY work - guaranteed to take 50+ms
-local function UltraHeavyCalculation()
-	local result = 0
-	for i = 1, 12000 do -- toned-down count to prevent lock-ups
-		result = result + math.sin(i) * math.cos(i) + math.sqrt(i) + math.tan(i / 1000) + math.log(i + 1)
+_G.SIMPLE_PROFILER_TEST_LOADED = true
+
+local runtimeState = {
+	lastHUDUpdate = 0,
+	frameCount = 0,
+	metrics = {
+		physics = 0,
+		network = 0,
+		ui = 0,
+		background = 0,
+	},
+}
+
+local function simulatePhysics(now)
+	Profiler.Begin("Physics.Integration")
+	local total = 0
+	for i = 1, 150 do
+		local t = now + i * 0.002
+		total = total + math.sin(t) * math.cos(t * 0.5)
 	end
-	return result
+	Profiler.End()
+
+	Profiler.Begin("Physics.ContactSolve")
+	for i = 1, 45 do
+		total = total + math.sin(now + i * 0.01) * 0.25
+	end
+	Profiler.End()
+
+	runtimeState.metrics.physics = total
 end
 
-local function UltraHeavyStringWork()
-	local text = ""
-	for i = 1, 2500 do -- reduced strings
-		text = text .. string.format("ultra_string_chunk_%d_%.4f", i, math.sin(i))
+local function simulateNetwork(now)
+	Profiler.Begin("Network.PollLoop")
+	local packets = 12
+	local checksum = 0
+	for i = 1, packets do
+		local jitter = math.sin(now * i) * 0.3
+		checksum = checksum + (i * 17) + jitter
 	end
-	return #text
+	Profiler.End()
+
+	Profiler.Begin("Network.DecodeSmall")
+	for i = 1, 4 do
+		checksum = checksum + math.cos(now * i) * 0.1
+	end
+	Profiler.End()
+
+	runtimeState.metrics.network = checksum
 end
 
-local function UltraHeavyTableWork()
-	local tbl = {}
-	for i = 1, 6000 do -- fewer entries to avoid freeze
-		tbl[i] = {
-			id = i,
-			value = math.sin(i) * math.cos(i),
-			extra = { nested = { value = i * 2 } },
-		}
+local function simulateUI(now)
+	Profiler.Begin("UI.Layout")
+	local text = {}
+	for i = 1, 6 do
+		text[i] = string.format("UI_%d_%.2f", i, now + i * 0.1)
 	end
+	Profiler.End()
 
-	table.sort(tbl, function(a, b)
-		return a.value > b.value
-	end)
+	Profiler.Begin("UI.Animations")
+	local anim = 0
+	for i = 1, 20 do
+		anim = anim + math.sin(now + i * 0.05) * 0.25
+	end
+	Profiler.End()
 
-	return #tbl
+	runtimeState.metrics.ui = #table.concat(text, "|")
 end
 
--- Function that does artificial busy waiting to force visible duration
-local function ArtificialDelayWork()
-	local startTime = globals.RealTime()
-	local targetDuration = 0.015 -- much smaller delay
+local runtimeTasks = {
+	{
+		name = "Runtime.Physics",
+		interval = 0.05,
+		lastRun = 0,
+		fn = function(now)
+			Profiler.Begin("Physics.Step")
+			simulatePhysics(now)
+			Profiler.End()
+		end,
+	},
+	{
+		name = "Runtime.Network",
+		interval = 0.1,
+		lastRun = 0,
+		fn = function(now)
+			Profiler.Begin("Network.Poll")
+			simulateNetwork(now)
+			Profiler.End()
+		end,
+	},
+	{
+		name = "Runtime.UI",
+		interval = 0.2,
+		lastRun = 0,
+		fn = function(now)
+			Profiler.Begin("UI.Update")
+			simulateUI(now)
+			Profiler.End()
+		end,
+	},
+}
 
-	-- Do work until we've spent enough time
-	local result = 0
-	while (globals.RealTime() - startTime) < targetDuration do
-		for i = 1, 250 do
-			result = result + math.sin(i) * math.cos(i) + math.sqrt(i)
+local function processTasks()
+	local now = globals.RealTime()
+	Profiler.Begin("Runtime.Tick")
+	for _, task in ipairs(runtimeTasks) do
+		if now - task.lastRun >= task.interval then
+			task.lastRun = now
+			task.fn(now)
 		end
 	end
-
-	return result
+	Profiler.End()
 end
 
--- Function that does nested ultra heavy work
-local function NestedUltraHeavyWork()
+local function runManualSpike()
+	Profiler.Begin("ManualSpike")
 	local total = 0
-
-	for i = 1, 40000 do
-		total = total + math.sin(i) + math.cos(i)
+	for i = 1, 200 do
+		total = total + math.sqrt(i * globals.FrameTime())
 	end
-
-	for i = 1, 30000 do
-		total = total + math.cos(i) * math.sqrt(i)
-	end
-
-	for i = 1, 20000 do
-		total = total + math.tan(i / 100) + math.log(i + 1)
-	end
-
+	Profiler.End()
 	return total
 end
 
--- Function that does file-like operations (very slow)
-local function SimulatedFileWork()
-	local data = {}
-	for i = 1, 5000 do
-		data[i] = string.format("file_line_%d", i)
+local function drawHud()
+	Profiler.Begin("HUD.Update")
+	local now = globals.RealTime()
+	if now - runtimeState.lastHUDUpdate < 0.25 then
+		Profiler.End()
+		return
 	end
-
-	local sum = 0
-	for i = 1, #data do
-		sum = sum + #data[i] + math.sin(i)
-	end
-
-	return sum
+	runtimeState.lastHUDUpdate = now
+	print(
+		string.format(
+			" Runtime stats | Physics %.2f | Network %.2f | UI %d",
+			runtimeState.metrics.physics,
+			runtimeState.metrics.network,
+			runtimeState.metrics.ui
+		)
+	)
+	Profiler.End()
 end
 
--- Function that does network-like operations (very slow)
-local function SimulatedNetworkWork()
-	local packets = {}
-	for i = 1, 600 do
-		packets[i] = {
-			id = i,
-			data = string.format("packet_%d", i),
-			checksum = i * 12345,
-		}
+callbacks.Register("CreateMove", SCRIPT_TAG .. "_move", function(cmd)
+	Profiler.Begin("CreateMove")
+	processTasks()
+	runtimeState.frameCount = runtimeState.frameCount + 1
+	if runtimeState.frameCount % 180 == 0 then
+		local spike = runManualSpike()
+		print(string.format(" Manual spike sample: %.2f", spike))
 	end
-
-	local result = 0
-	for i = 1, #packets do
-		result = result + packets[i].id + #packets[i].data + packets[i].checksum
-	end
-
-	return result
-end
-
--- Main test function that calls all the ultra heavy work
-local function RunUltraHeavyTests()
-	print("🧪 Running ULTRA heavy work tests (balanced CPU)...")
-
-	local steps = {
-		{ label = "Ultra heavy math", fn = UltraHeavyCalculation },
-		{ label = "Ultra heavy strings", fn = UltraHeavyStringWork },
-		{ label = "Table sorting", fn = UltraHeavyTableWork },
-		{ label = "Periodic delay", fn = ArtificialDelayWork },
-	}
-
-	for _, entry in ipairs(steps) do
-		print(string.format("   Starting %s...", entry.label))
-		local result = entry.fn()
-		print(string.format("✅ %s completed: %s", entry.label, tostring(result)))
-	end
-
-	print("🎉 Balanced heavy tests completed! Profiler UI should still be responsive.")
-end
-
--- Run tests immediately
-print("🚀 Running ULTRA heavy tests immediately...")
-RunUltraHeavyTests()
-
--- Also run tests periodically
-local frameCount = 0
-callbacks.Register("Draw", "ultra_simple_test", function()
-	frameCount = frameCount + 1
-
-	if frameCount % 900 == 0 then
-		print("🔄 Periodic ULTRA heavy tests (staggered) running...")
-		RunUltraHeavyTests()
-	end
+	Profiler.End()
 end)
 
-print("✅ ULTRA aggressive test loaded!")
-print("🔄 Tests will run every 5 seconds automatically")
-print("⚠️  This test is designed to create functions that take 50-100+ milliseconds each")
+callbacks.Register("Draw", SCRIPT_TAG .. "_draw", function()
+	Profiler.Begin("DrawLoop")
+	processTasks()
+	drawHud()
+	Profiler.Draw()
+	Profiler.End()
+end)
+
+callbacks.Register("Unload", SCRIPT_TAG .. "_unload", function()
+	print(" Unloading microprofiler simple test")
+	_G.SIMPLE_PROFILER_TEST_LOADED = false
+end)
+
+print(" Microprofiler simple runtime test loaded!")

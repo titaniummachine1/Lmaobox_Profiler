@@ -25,6 +25,7 @@ local PROFILER_SOURCES = {
 
 -- API guard to prevent recursion
 local inProfilerAPI = false
+local autoHookDesired = false
 
 -- Performance limits (MINIMAL for performance)
 local MAX_RECORD_TIME = 5.0 -- Keep records for 5 seconds max (as requested)
@@ -422,36 +423,27 @@ end
 
 -- Enable automatic profiling hook
 local function enableHook()
-	if not isHooked and isEnabled then
-		-- Test if debug.sethook is available
-		if not debug or not debug.sethook then
-			print("❌ WARNING: debug.sethook is not available in lmaobox environment!")
-			print("   Automatic function profiling disabled. Manual profiling still works.")
-			return
-		end
-
-		print("🔧 Setting up debug hook for automatic profiling...")
-
-		-- Try to set the hook safely
-		local success, err = pcall(function()
-			debug.sethook(profileHook, "cr")
-		end)
-
-		if not success then
-			print("❌ ERROR: Failed to set debug hook: " .. tostring(err))
-			print("   Automatic profiling disabled. Manual profiling still works.")
-			return
-		end
-
-		isHooked = true
-		print("✅ Debug hook enabled successfully!")
-
-		-- Test hook with a simple function call
-		local function testHook()
-			-- This should trigger the hook
-		end
-		testHook()
+	if not autoHookDesired or isHooked or not isEnabled then
+		return
 	end
+
+	if not debug or not debug.sethook then
+		print("❌ WARNING: debug.sethook is not available. Auto-hooking remains disabled; manual profiling only.")
+		return
+	end
+
+	local success, err = pcall(function()
+		debug.sethook(profileHook, "cr")
+	end)
+
+	if not success then
+		print("❌ ERROR: Failed to set debug hook: " .. tostring(err))
+		print("   Automatic profiling disabled. Manual profiling still works.")
+		return
+	end
+
+	isHooked = true
+	print("✅ Debug hook enabled (manual opt-in)")
 end
 
 -- Disable automatic profiling hook
@@ -466,7 +458,11 @@ end
 
 function MicroProfiler.Enable()
 	isEnabled = true
-	enableHook()
+	if autoHookDesired then
+		enableHook()
+	else
+		disableHook()
+	end
 end
 
 function MicroProfiler.Disable()
@@ -497,6 +493,19 @@ end
 
 function MicroProfiler.IsHooked()
 	return isHooked
+end
+
+function MicroProfiler.SetAutoHookEnabled(enabled)
+	autoHookDesired = not not enabled
+	if not autoHookDesired then
+		disableHook()
+	elseif isEnabled then
+		enableHook()
+	end
+end
+
+function MicroProfiler.IsAutoHookEnabled()
+	return autoHookDesired
 end
 
 function MicroProfiler.SetPaused(paused)
@@ -567,8 +576,6 @@ function MicroProfiler.BeginCustomThread(name)
 	table.insert(customThreads, thread)
 	table.insert(activeCustomStack, thread)
 
-	print(string.format("🎯 Manual profiling started: %s (Script: %s)", name, scriptName))
-
 	-- Limit custom threads more aggressively
 	while #customThreads > MAX_CUSTOM_THREADS do
 		table.remove(customThreads, 1)
@@ -633,6 +640,20 @@ function MicroProfiler.EndCustomThread()
 		table.insert(mainTimeline, threadRecord)
 		if #mainTimeline > MAX_TIMELINE_SIZE then
 			table.remove(mainTimeline, 1)
+		end
+
+		-- Add to script-specific timeline so UI can display it
+		local scriptName = thread.scriptName or "Manual Thread"
+		if not scriptTimelines[scriptName] then
+			scriptTimelines[scriptName] = {
+				name = scriptName,
+				functions = {},
+				type = "script",
+			}
+		end
+		table.insert(scriptTimelines[scriptName].functions, threadRecord)
+		if #scriptTimelines[scriptName].functions > MAX_TIMELINE_SIZE then
+			table.remove(scriptTimelines[scriptName].functions, 1)
 		end
 	end
 

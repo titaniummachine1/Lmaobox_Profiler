@@ -235,21 +235,6 @@ local function drawScriptOnBoard(scriptName, functions, boardY, dataStartTime, d
 			-- Calculate Y position on board
 			local functionBoardY = boardY + (level * (FUNCTION_HEIGHT + FUNCTION_SPACING))
 
-			-- Debug info for first few functions
-			if i <= 5 then
-				print(
-					string.format(
-						"  Func %d: %s | Board: X=%.1f Y=%.1f Width=%.1f | Level: %d",
-						i,
-						func.name or "unnamed",
-						boardX,
-						functionBoardY,
-						boardWidth,
-						level
-					)
-				)
-			end
-
 			-- Draw function on board
 			drawFunctionOnBoard(func, boardX, functionBoardY, boardWidth)
 		end
@@ -289,7 +274,6 @@ local function handleBoardInput(screenW, screenH, topBarHeight)
 		isDragging = true
 		lastMouseX = mx
 		lastMouseY = bodyMy
-		print("🎯 BOARD DRAG START")
 	elseif currentlyDragging and isDragging then
 		-- Continue drag - move board in opposite direction of mouse
 		local deltaX = mx - lastMouseX
@@ -319,24 +303,11 @@ local function handleBoardInput(screenW, screenH, topBarHeight)
 		boardOffsetX = newOffsetX
 		boardOffsetY = newOffsetY
 
-		-- Reduce spam - only print on significant movement
-		if math.abs(deltaX) > 10 or math.abs(deltaY) > 10 then
-			print(
-				string.format(
-					"🎯 BOARD DRAGGING: offsetX=%.1f, offsetY=%.1f, zoom=%.2f",
-					boardOffsetX,
-					boardOffsetY,
-					boardZoom
-				)
-			)
-		end
-
 		lastMouseX = mx
 		lastMouseY = bodyMy
 	elseif not currentlyDragging and isDragging then
 		-- End drag
 		isDragging = false
-		print("🎯 BOARD DRAG END")
 	end
 
 	-- Handle zoom with Q/E keys - zoom towards mouse position
@@ -349,10 +320,8 @@ local function handleBoardInput(screenW, screenH, topBarHeight)
 
 			if qPressed then
 				boardZoom = boardZoom * 1.1 -- Zoom in
-				print(string.format("🔍 BOARD ZOOM IN: %.2f -> %.2f", oldZoom, boardZoom))
 			elseif ePressed then
 				boardZoom = boardZoom / 1.1 -- Zoom out
-				print(string.format("🔍 BOARD ZOOM OUT: %.2f -> %.2f", oldZoom, boardZoom))
 			end
 
 			-- Clamp zoom
@@ -403,9 +372,7 @@ function UIBody.SetVisible(visible)
 end
 
 function UIBody.IsVisible()
-	local visible = Shared.UIBodyVisible or false
-	print("🎯 UIBody.IsVisible called - returning:", tostring(visible))
-	return visible
+	return Shared.UIBodyVisible or false
 end
 
 function UIBody.ToggleVisible()
@@ -416,7 +383,6 @@ end
 
 function UIBody.Draw(profilerData, topBarHeight)
 	if not draw or not profilerData then
-		print("❌ UIBody.Draw returning early - missing draw or profilerData")
 		return
 	end
 

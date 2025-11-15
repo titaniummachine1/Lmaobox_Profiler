@@ -35,6 +35,33 @@ local function initialize()
 	isInitialized = true
 end
 
+local function shutdown()
+	if not isInitialized and not isVisible then
+		-- Even if we never initialized, make sure runtime data is cleared
+		MicroProfiler.Disable()
+		MicroProfiler.Reset()
+		UIBody.SetVisible(false)
+		Shared.ProfilerEnabled = false
+		return
+	end
+
+	MicroProfiler.Disable()
+	MicroProfiler.Reset()
+	UIBody.SetVisible(false)
+	Shared.ProfilerEnabled = false
+	isVisible = false
+	isInitialized = false
+end
+
+function ProfilerCore.Init()
+	initialize()
+	return ProfilerCore
+end
+
+function ProfilerCore.Shutdown()
+	shutdown()
+end
+
 -- Public API -------------------------
 
 function ProfilerCore.SetVisible(visible)

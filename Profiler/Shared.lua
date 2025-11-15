@@ -16,6 +16,7 @@ local Shared = {
 	CurrentFrame = 0,
 	LastDrawTime = 0,
 	BodyToggleRequested = false,
+	UIBodyVisible = true, -- Body visible by default when profiler enabled
 
 	-- Instance control
 	ProfilerInstance = nil,

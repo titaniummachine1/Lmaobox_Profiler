@@ -16,7 +16,7 @@ local FUNCTION_HEIGHT = 20 -- Height of each function bar
 local FUNCTION_SPACING = 2 -- Spacing between function levels
 local SCRIPT_HEADER_HEIGHT = 25 -- Height of script headers
 local SCRIPT_SPACING = 10 -- Spacing between scripts
-local TIME_SCALE = 100 -- Pixels per second (horizontal scale)
+local TIME_SCALE = 50000 -- Pixels per second (horizontal scale) - makes 1ms = 50px
 
 -- Global state (retained mode)
 local boardOffsetX = 0 -- Camera position on virtual board
@@ -365,6 +365,7 @@ function UIBody.Initialize()
 	boardOffsetY = 0
 	boardZoom = 1.0
 	isDragging = false
+	print("🎨 UIBody initialized - TIME_SCALE = 50000 px/s (1ms = 50px)")
 end
 
 function UIBody.SetVisible(visible)

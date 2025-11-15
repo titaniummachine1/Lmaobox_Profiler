@@ -543,22 +543,24 @@ function MicroProfiler.BeginCustomThread(name)
 	-- Set API guard to prevent recursion
 	inProfilerAPI = true
 
-	-- Use lmaobox GetScriptName() with proper Windows path handling
+	-- Walk the callstack to find the REAL calling script (not Profiler itself)
 	local scriptName = "Manual Thread"
-	if GetScriptName then
-		local fullPath = GetScriptName()
-		if fullPath then
-			-- Extract filename from Windows path and remove .lua extension for display
-			scriptName = fullPath:match("\\([^\\]-)$") or fullPath:match("/([^/]-)$") or fullPath
-			if scriptName:match("%.lua$") then
-				scriptName = scriptName:gsub("%.lua$", "")
-			end
+	for level = 3, 10 do
+		local info = debug.getinfo(level, "S")
+		if not info then
+			break
 		end
-	end
-
-	-- Clean up bundled script names
-	if scriptName == "Profiler" then
-		scriptName = "example" -- User's actual script when bundled
+		local source = info.source or ""
+		-- Extract script name from source path
+		local name = source:match("\\([^\\]-)$") or source:match("/([^/]-)$") or source
+		if name:match("%.lua$") then
+			name = name:gsub("%.lua$", "")
+		end
+		-- Skip profiler internals, use first user script we find
+		if name ~= "Profiler" and name ~= "" and name ~= "[C]" and name ~= "[string]" then
+			scriptName = name
+			break
+		end
 	end
 
 	local thread = {

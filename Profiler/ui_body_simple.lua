@@ -465,42 +465,33 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 					draw.Color(80, 80, 80, math.floor(alpha * 0.2))
 					draw.Line(intScreenX, topBarHeight + RULER_HEIGHT, intScreenX, screenH)
 
-					-- Generate clean label: time relative to nearest tick/frame boundary
+					-- Show time relative to nearest tick/frame boundary
+					-- This gives clean incremental values: 0ms, 0.1ms, 0.2ms...
 					local relativeTime = (time - tickStart) % frameTime
-					local valueInIntervalUnits = relativeTime / interval
-					local roundedIntervals = math.floor(valueInIntervalUnits + 0.5)
-					local cleanTime = roundedIntervals * interval
 
-					-- Smart unit selection: use smallest reasonable unit
+					-- Smart unit selection based on interval spacing
 					local label
-					local timeInSeconds = cleanTime
-					local timeInMs = timeInSeconds * 1000
-					local timeInUs = timeInSeconds * 1000000
-					local timeInNs = timeInSeconds * 1000000000
+					local timeInMs = relativeTime * 1000
+					local timeInUs = relativeTime * 1000000
 
-					if timeInSeconds >= 1.0 then
-						-- >= 1s: show as seconds
-						if timeInSeconds >= 10 then
-							label = string.format("%ds", math.floor(timeInSeconds + 0.5))
-						else
-							label = string.format("%.1fs", timeInSeconds)
-						end
-					elseif timeInMs >= 1.0 then
-						-- >= 1ms: show as milliseconds (not 1000+µs)
+					-- Choose unit based on interval size for clean display
+					if interval >= 0.01 then
+						-- >= 10ms intervals: show as milliseconds
 						if timeInMs >= 10 then
 							label = string.format("%dms", math.floor(timeInMs + 0.5))
 						else
 							label = string.format("%.1fms", timeInMs)
 						end
-					elseif timeInUs >= 1.0 then
-						-- >= 1µs: show as microseconds (not 1000+ns)
-						if timeInUs >= 10 then
+					elseif interval >= 0.00001 then
+						-- >= 10µs intervals: show as microseconds
+						if timeInUs >= 100 then
 							label = string.format("%dµs", math.floor(timeInUs + 0.5))
 						else
 							label = string.format("%.1fµs", timeInUs)
 						end
 					else
-						-- < 1µs: show as nanoseconds
+						-- < 10µs: show as nanoseconds
+						local timeInNs = relativeTime * 1000000000
 						label = string.format("%dns", math.floor(timeInNs + 0.5))
 					end
 

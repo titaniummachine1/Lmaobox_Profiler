@@ -368,23 +368,63 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 	local baseInterval = targetPixelSpacing / (TIME_SCALE * boardZoom)
 
 	-- Round to nice numbers (1, 2, 5 pattern)
-	local magnitudes =
-		{ 0.0001, 0.0002, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0 }
+	-- Extended range for extreme zoom levels: 10ns to 10s
+	local magnitudes = {
+		0.00000001, -- 10ns
+		0.00000002, -- 20ns
+		0.00000005, -- 50ns
+		0.0000001, -- 100ns
+		0.0000002, -- 200ns
+		0.0000005, -- 500ns
+		0.000001, -- 1µs
+		0.000002, -- 2µs
+		0.000005, -- 5µs
+		0.00001, -- 10µs
+		0.00002, -- 20µs
+		0.00005, -- 50µs
+		0.0001, -- 100µs (RealTime limit, but useful at high zoom)
+		0.0002, -- 200µs
+		0.0005, -- 500µs
+		0.001, -- 1ms
+		0.002, -- 2ms
+		0.005, -- 5ms
+		0.01, -- 10ms
+		0.02, -- 20ms
+		0.05, -- 50ms
+		0.1, -- 100ms
+		0.2, -- 200ms
+		0.5, -- 500ms
+		1.0, -- 1s
+		2.0, -- 2s
+		5.0, -- 5s
+		10.0, -- 10s
+	}
 	local niceIntervals = {}
 
 	for _, mag in ipairs(magnitudes) do
 		local pixelSpacing = mag * TIME_SCALE * boardZoom
-		-- Increased max to allow high zoom levels
-		if pixelSpacing >= minPixelSpacing and pixelSpacing <= maxPixelSpacing * 20 then
+		-- Keep intervals that give readable spacing (20-160px)
+		if pixelSpacing >= minPixelSpacing and pixelSpacing <= maxPixelSpacing * 2 then
 			table.insert(niceIntervals, { interval = mag, pixels = pixelSpacing })
 		end
 	end
 
-	-- If no intervals fit (very high zoom), use the smallest available interval
+	-- If no intervals fit (shouldn't happen now), use best available
 	if #niceIntervals == 0 then
-		local smallestInterval = magnitudes[1] -- 100µs
-		local pixelSpacing = smallestInterval * TIME_SCALE * boardZoom
-		table.insert(niceIntervals, { interval = smallestInterval, pixels = pixelSpacing })
+		-- Find closest interval to target spacing
+		local targetSpacing = 50
+		local bestMag = magnitudes[1]
+		local bestDiff = math.huge
+		for _, mag in ipairs(magnitudes) do
+			local spacing = mag * TIME_SCALE * boardZoom
+			local diff = math.abs(spacing - targetSpacing)
+			if diff < bestDiff then
+				bestDiff = diff
+				bestMag = mag
+			end
+		end
+		local pixelSpacing = bestMag * TIME_SCALE * boardZoom
+		table.insert(niceIntervals, { interval = bestMag, pixels = pixelSpacing })
 	end
 
 	-- Draw all suitable intervals with varying opacity

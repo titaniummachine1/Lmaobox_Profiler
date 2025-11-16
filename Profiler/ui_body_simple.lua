@@ -45,6 +45,7 @@ end
 -- Use globals.RealTime() directly
 
 -- Convert time to board X coordinate
+-- startTime is the reference for the current visible window (usually dataStartTime)
 local function timeToBoardX(time, startTime)
 	return (time - startTime) * TIME_SCALE
 end
@@ -308,7 +309,11 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 	-- Only draw if spacing is at least 3px (avoid dense lines when zoomed out)
 	local framePixelSpacing = frameTime * TIME_SCALE * boardZoom
 	local shouldDrawFrameBoundaries = framePixelSpacing >= 3
-	local tickStart = math.floor(dataStartTime / frameTime) * frameTime -- Declare outside for later use
+
+	-- Use RecordingStartTime as consistent reference for frame alignment
+	-- This ensures grid stays aligned with actual work regardless of viewport
+	local recordingStart = Shared.RecordingStartTime or dataStartTime
+	local tickStart = math.floor(recordingStart / frameTime) * frameTime
 
 	if shouldDrawFrameBoundaries then
 		local tickTime = tickStart

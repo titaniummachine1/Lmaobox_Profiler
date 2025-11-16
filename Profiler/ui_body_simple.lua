@@ -467,51 +467,40 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 					draw.Color(80, 80, 80, math.floor(alpha * 0.2))
 					draw.Line(intScreenX, topBarHeight + RULER_HEIGHT, intScreenX, screenH)
 
-					-- Smart label placement: only draw if enough space from last label
-					-- Show time RELATIVE to nearest tick/frame boundary for clean values
-					local tickNumber = math.floor((time - tickStart) / frameTime)
-					local tickBoundary = tickStart + (tickNumber * frameTime)
-					local relativeTime = time - tickBoundary
+					-- Generate clean label: time relative to nearest tick/frame boundary
+					-- Use modulo for clean wrapping at boundaries
+					local relativeTime = (time - tickStart) % frameTime
 
-					-- Generate label
-					local roundedValue
+					-- Round to interval precision for clean values
+					local valueInIntervalUnits = relativeTime / interval
+					local roundedIntervals = math.floor(valueInIntervalUnits + 0.5)
+					local cleanTime = roundedIntervals * interval
+
+					-- Format label based on magnitude
 					local label
 					if interval >= 1.0 then
-						roundedValue = math.floor(relativeTime + 0.5)
-						label = string.format("%ds", roundedValue)
+						label = string.format("%ds", math.floor(cleanTime + 0.5))
 					elseif interval >= 0.001 then
-						roundedValue = math.floor(relativeTime * 1000 + 0.5)
-						label = string.format("%dms", roundedValue)
+						label = string.format("%dms", math.floor(cleanTime * 1000 + 0.5))
 					elseif interval >= 0.000001 then
-						roundedValue = math.floor(relativeTime * 1000000 + 0.5)
-						label = string.format("%dµs", roundedValue)
+						label = string.format("%dµs", math.floor(cleanTime * 1000000 + 0.5))
 					else
-						roundedValue = math.floor(relativeTime * 1000000000 + 0.5)
-						label = string.format("%dns", roundedValue)
+						label = string.format("%dns", math.floor(cleanTime * 1000000000 + 0.5))
 					end
 
-					-- Estimate text width (assume ~7px per character average)
-					local estimatedTextWidth = #label * 7
-					local textPadding = 10 -- Minimum padding between labels
-					local requiredSpace = estimatedTextWidth + textPadding
-
-					-- Only draw label if:
-					-- 1. Within screen bounds with margin
-					-- 2. Enough space from last label
-					-- 3. Most visible interval (highest alpha)
+					-- Smart label placement: only draw if enough space
+					local textWidth = #label * 7 + 10 -- ~7px/char + padding
 					local textX = intScreenX + 2
+
 					if
 						screenX >= 10
-						and screenX <= screenW - estimatedTextWidth - 20
-						and textX >= lastLabelEndX + textPadding
-						and alpha >= 60 -- Only label more visible intervals
+						and screenX <= screenW - textWidth - 10
+						and textX >= lastLabelEndX + 10
+						and alpha >= 60
 					then
 						draw.Color(150, 150, 150, 200)
-						local textY = topBarHeight + 15
-						draw.Text(textX, textY, label)
-
-						-- Update last label position
-						lastLabelEndX = textX + estimatedTextWidth
+						draw.Text(textX, topBarHeight + 15, label)
+						lastLabelEndX = textX + textWidth
 					end
 				end
 			end
@@ -519,34 +508,6 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 			time = time + interval
 			count = count + 1
 		end
-	end
-end
-
--- Draw frame/tick boundary markers
-local function drawFrameMarkers(screenH, topBarHeight, dataStartTime, dataEndTime)
-	if not draw or not globals or not globals.FrameTime then
-		return
-	end
-
-	local frameTime = globals.FrameTime() or 0.016667 -- ~60fps fallback
-	if frameTime <= 0 then
-		frameTime = 0.016667
-	end
-
-	-- Draw vertical lines for each frame boundary
-	local frameMark = math.floor(dataStartTime / frameTime) * frameTime
-	local time = frameMark
-	while time <= dataEndTime + frameTime do
-		local boardX = timeToBoardX(time, dataStartTime)
-		local screenX, _ = boardToScreen(boardX, 0)
-
-		if screenX >= 0 and screenX <= 2000 then
-			-- Thin vertical line for frame boundary
-			draw.Color(80, 80, 150, 100)
-			draw.Line(math.floor(screenX), topBarHeight + RULER_HEIGHT, math.floor(screenX), screenH)
-		end
-
-		time = time + frameTime
 	end
 end
 

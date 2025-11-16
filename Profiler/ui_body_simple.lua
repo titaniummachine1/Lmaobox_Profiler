@@ -476,23 +476,38 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 					draw.Line(intScreenX, topBarHeight + RULER_HEIGHT, intScreenX, screenH)
 
 					-- Label ONLY the largest spaced interval to prevent overlap
-					-- Adaptive minimum spacing: use smaller threshold at high zoom
-					local minLabelSpacing = math.min(100, maxLabelSpacing * 0.8)
+					-- Adaptive minimum spacing: very lenient to ensure visibility at all zooms
+					-- Only require 50% of max spacing, minimum 30px
+					local minLabelSpacing = math.max(30, maxLabelSpacing * 0.5)
 					if
 						interval == bestIntervalForLabels
 						and pixelsPerInterval >= minLabelSpacing
 						and screenX >= 10
 						and screenX <= screenW - 110
 					then
-						local deltaTime = time - dataStartTime
+						-- Show time RELATIVE to nearest tick/frame boundary for clean values
+						-- Find which tick/frame this time belongs to
+						local tickNumber = math.floor((time - tickStart) / frameTime)
+						local tickBoundary = tickStart + (tickNumber * frameTime)
+						local relativeTime = time - tickBoundary
+
+						-- Round to clean values based on interval
+						local roundedValue
 						local label
 						if interval >= 1.0 then
-							label = string.format("%.1fs", deltaTime)
+							roundedValue = math.floor(relativeTime + 0.5)
+							label = string.format("%ds", roundedValue)
 						elseif interval >= 0.001 then
-							label = string.format("%.1fms", deltaTime * 1000)
+							roundedValue = math.floor(relativeTime * 1000 + 0.5)
+							label = string.format("%dms", roundedValue)
+						elseif interval >= 0.000001 then
+							roundedValue = math.floor(relativeTime * 1000000 + 0.5)
+							label = string.format("%dµs", roundedValue)
 						else
-							label = string.format("%.0fµs", deltaTime * 1000000)
+							roundedValue = math.floor(relativeTime * 1000000000 + 0.5)
+							label = string.format("%dns", roundedValue)
 						end
+
 						draw.Color(150, 150, 150, 200)
 						-- Use integer coordinates for text - CRITICAL for visibility
 						local textX = intScreenX + 2

@@ -305,40 +305,54 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 	end
 
 	-- PRIMARY GRID: Tick/Frame boundaries (bold lines)
-	local tickStart = math.floor(dataStartTime / frameTime) * frameTime
-	local tickTime = tickStart
-	local tickCount = 0
-	while tickTime <= dataEndTime + frameTime and tickCount < 1000 do
-		-- Only draw if time >= dataStartTime (no negative time)
-		if tickTime >= dataStartTime then
-			local boardX = timeToBoardX(tickTime, dataStartTime)
-			local screenX, _ = boardToScreen(boardX, 0)
+	-- Only draw if spacing is at least 3px (avoid dense lines when zoomed out)
+	local framePixelSpacing = frameTime * TIME_SCALE * boardZoom
+	local shouldDrawFrameBoundaries = framePixelSpacing >= 3
+	local tickStart = math.floor(dataStartTime / frameTime) * frameTime -- Declare outside for later use
 
-			if screenX >= 0 and screenX <= screenW then
-				-- Bold tick/frame boundary line
-				draw.Color(150, 150, 200, 255)
-				draw.Line(math.floor(screenX), topBarHeight, math.floor(screenX), topBarHeight + RULER_HEIGHT)
+	if shouldDrawFrameBoundaries then
+		local tickTime = tickStart
+		local tickCount = 0
+		local lastDrawnX = -1000 -- Track last drawn position to avoid overlap
 
-				-- Extend through content area (frame boundary)
-				draw.Color(100, 100, 150, 80)
-				draw.Line(math.floor(screenX), topBarHeight + RULER_HEIGHT, math.floor(screenX), screenH)
+		while tickTime <= dataEndTime + frameTime and tickCount < 1000 do
+			-- Only draw if time >= dataStartTime (no negative time)
+			if tickTime >= dataStartTime then
+				local boardX = timeToBoardX(tickTime, dataStartTime)
+				local screenX, _ = boardToScreen(boardX, 0)
+				local intScreenX = math.floor(screenX + 0.5)
 
-				-- Label tick/frame number
-				local label
-				if mode == "tick" then
-					local tickNum = math.floor((tickTime - dataStartTime) / frameTime)
-					label = string.format("T%d", tickNum)
-				else
-					local frameNum = math.floor((tickTime - dataStartTime) / frameTime)
-					label = string.format("F%d", frameNum)
+				-- Only draw if on screen and not too close to last line
+				if screenX >= -10 and screenX <= screenW + 10 and (intScreenX - lastDrawnX) >= 2 then
+					-- Bold tick/frame boundary line
+					draw.Color(150, 150, 200, 255)
+					draw.Line(intScreenX, topBarHeight, intScreenX, topBarHeight + RULER_HEIGHT)
+
+					-- Extend through content area (frame boundary)
+					draw.Color(100, 100, 150, 80)
+					draw.Line(intScreenX, topBarHeight + RULER_HEIGHT, intScreenX, screenH)
+
+					-- Label tick/frame number (only if spacing is wide enough)
+					if framePixelSpacing >= 25 then
+						local label
+						if mode == "tick" then
+							local tickNum = math.floor((tickTime - dataStartTime) / frameTime)
+							label = string.format("T%d", tickNum)
+						else
+							local frameNum = math.floor((tickTime - dataStartTime) / frameTime)
+							label = string.format("F%d", frameNum)
+						end
+						draw.Color(200, 200, 255, 255)
+						draw.Text(intScreenX + 2, topBarHeight + 2, label)
+					end
+
+					lastDrawnX = intScreenX
 				end
-				draw.Color(200, 200, 255, 255)
-				draw.Text(math.floor(screenX) + 2, topBarHeight + 2, label)
 			end
-		end
 
-		tickTime = tickTime + frameTime
-		tickCount = tickCount + 1
+			tickTime = tickTime + frameTime
+			tickCount = tickCount + 1
+		end
 	end
 
 	-- SECONDARY GRID: Procedural fractal subdivisions

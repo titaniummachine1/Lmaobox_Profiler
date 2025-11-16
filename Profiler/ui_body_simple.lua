@@ -85,6 +85,32 @@ local function drawFunctionOnBoard(func, boardX, boardY, boardWidth)
 			math.floor(screenY + screenHeight)
 		)
 
+		-- Draw vertical grid lines on function bar (segment by milliseconds)
+		local duration = func.endTime - func.startTime
+		local gridInterval = 0.001 -- 1ms grid
+		if duration > 0.01 then
+			local gridStart = math.ceil(func.startTime / gridInterval) * gridInterval
+			local gridTime = gridStart
+			local gridCount = 0
+			while gridTime < func.endTime and gridCount < 100 do
+				local gridBoardX = timeToBoardX(gridTime, func.startTime) + boardX
+				local gridScreenX, _ = boardToScreen(gridBoardX, 0)
+
+				if gridScreenX >= screenX and gridScreenX <= screenX + screenWidth then
+					draw.Color(255, 255, 255, 30)
+					draw.Line(
+						math.floor(gridScreenX),
+						math.floor(screenY),
+						math.floor(gridScreenX),
+						math.floor(screenY + screenHeight)
+					)
+				end
+
+				gridTime = gridTime + gridInterval
+				gridCount = gridCount + 1
+			end
+		end
+
 		-- Draw border
 		draw.Color(255, 255, 255, 100)
 		draw.OutlinedRect(
@@ -108,8 +134,8 @@ local function drawFunctionOnBoard(func, boardX, boardY, boardWidth)
 
 		-- Draw duration if there's space (positioned on board, then transformed)
 		if screenWidth > 120 and screenHeight > 24 then
-			local duration = (func.endTime - func.startTime) * 1000 -- ms
-			local durationText = string.format("%.3fms", duration)
+			local durationMs = duration * 1000 -- ms
+			local durationText = string.format("%.3fms", durationMs)
 
 			-- Position duration text on board, then transform to screen
 			local durationBoardX = boardX + 4
@@ -252,7 +278,7 @@ local function drawScriptOnBoard(scriptName, functions, boardY, dataStartTime, d
 	return boardY + SCRIPT_SPACING
 end
 
--- Draw time ruler with intervals
+-- Draw fractal time ruler with adaptive multi-level intervals
 local function drawTimeRuler(screenW, topBarHeight, dataStartTime, dataEndTime)
 	if not draw then
 		return
@@ -262,43 +288,71 @@ local function drawTimeRuler(screenW, topBarHeight, dataStartTime, dataEndTime)
 	draw.Color(30, 30, 30, 255)
 	draw.FilledRect(0, topBarHeight, screenW, topBarHeight + RULER_HEIGHT)
 
-	-- Determine interval based on zoom (visible time span)
+	-- Measurement mode
+	local mode = Shared.MeasurementMode or "frame"
+	local recordStart = Shared.RecordingStartTime or dataStartTime
+
+	-- Define fractal interval levels (smallest to largest)
+	local intervals = {
+		0.0001, -- 100us
+		0.001, -- 1ms
+		0.01, -- 10ms
+		0.1, -- 100ms
+		1.0, -- 1s
+		10.0, -- 10s
+	}
+
+	-- Calculate visible duration to determine which intervals to show
 	local visibleDuration = (screenW / boardZoom) / TIME_SCALE
-	local interval = 1.0 -- Default 1 second
-	if visibleDuration < 0.5 then
-		interval = 0.01 -- 10ms
-	elseif visibleDuration < 2 then
-		interval = 0.1 -- 100ms
-	elseif visibleDuration < 10 then
-		interval = 0.5 -- 500ms
-	elseif visibleDuration > 60 then
-		interval = 10.0 -- 10s
-	end
 
-	-- Draw interval markers
-	local startMark = math.floor(dataStartTime / interval) * interval
-	local time = startMark
-	while time <= dataEndTime + interval do
-		local boardX = timeToBoardX(time, dataStartTime)
-		local screenX, _ = boardToScreen(boardX, 0)
-
-		if screenX >= 0 and screenX <= screenW then
-			-- Draw tick line
-			draw.Color(100, 100, 100, 200)
-			draw.Line(math.floor(screenX), topBarHeight, math.floor(screenX), topBarHeight + RULER_HEIGHT)
-
-			-- Draw time label
-			local label
-			if interval >= 1.0 then
-				label = string.format("%.1fs", time - dataStartTime)
-			else
-				label = string.format("%dms", math.floor((time - dataStartTime) * 1000))
+	-- Draw all interval levels with decreasing opacity for finer intervals
+	for i, interval in ipairs(intervals) do
+		-- Skip intervals that are too fine for current zoom
+		local pixelsPerInterval = interval * TIME_SCALE * boardZoom
+		if pixelsPerInterval >= 3 then -- Only show if spacing is at least 3px
+			-- Calculate alpha based on interval size relative to view
+			local alpha = 50
+			if pixelsPerInterval > 100 then
+				alpha = 200 -- Main grid
+			elseif pixelsPerInterval > 50 then
+				alpha = 150 -- Medium grid
+			elseif pixelsPerInterval > 20 then
+				alpha = 100 -- Fine grid
 			end
-			draw.Color(255, 255, 255, 255)
-			draw.Text(math.floor(screenX) + 2, topBarHeight + 2, label)
-		end
 
-		time = time + interval
+			-- Draw grid lines for this interval level
+			local startMark = math.floor(dataStartTime / interval) * interval
+			local time = startMark
+			local lineCount = 0
+			while time <= dataEndTime + interval and lineCount < 500 do
+				local boardX = timeToBoardX(time, dataStartTime)
+				local screenX, _ = boardToScreen(boardX, 0)
+
+				if screenX >= 0 and screenX <= screenW then
+					-- Draw tick line
+					draw.Color(100, 100, 100, alpha)
+					draw.Line(math.floor(screenX), topBarHeight, math.floor(screenX), topBarHeight + RULER_HEIGHT)
+
+					-- Only label major intervals
+					if pixelsPerInterval > 60 and alpha >= 150 then
+						local label
+						if mode == "tick" then
+							local tickCount = math.floor((time - recordStart) / (globals.FrameTime() or 0.015))
+							label = string.format("T%d", tickCount)
+						elseif interval >= 1.0 then
+							label = string.format("%.1fs", time - dataStartTime)
+						else
+							label = string.format("%dms", math.floor((time - dataStartTime) * 1000))
+						end
+						draw.Color(255, 255, 255, 255)
+						draw.Text(math.floor(screenX) + 2, topBarHeight + 2, label)
+					end
+				end
+
+				time = time + interval
+				lineCount = lineCount + 1
+			end
+		end
 	end
 end
 
@@ -405,7 +459,7 @@ local function handleBoardInput(screenW, screenH, topBarHeight)
 			end
 
 			-- Clamp zoom
-			boardZoom = math.max(0.1, math.min(10.0, boardZoom))
+			boardZoom = math.max(0.1, math.min(200.0, boardZoom))
 
 			-- Zoom towards mouse position - keep the point under mouse cursor fixed
 			-- Convert mouse screen position to board position BEFORE zoom change
@@ -542,7 +596,7 @@ function UIBody.ResetCamera()
 end
 
 function UIBody.SetZoom(newZoom)
-	boardZoom = math.max(0.1, math.min(10.0, newZoom))
+	boardZoom = math.max(0.1, math.min(200.0, newZoom))
 end
 
 function UIBody.GetZoom()

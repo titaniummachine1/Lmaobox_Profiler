@@ -1,126 +1,81 @@
--- Microprofiler example rewritten to showcase the manual API in a predictable way.
--- The profiler no longer auto-hooks anything – scripts must wrap their own scopes.
+--[[
+    PROFILER EXAMPLE - Super Simple Usage
+    
+    HOW TO USE:
+    1. Load this script
+    2. Profiler draws automatically
+    3. Use Profiler.Begin("Name") and Profiler.End() to measure code
+    4. Set mode: Profiler.SetMeasurementMode("tick") or ("frame")
+    
+    BASIC PATTERN:
+        Profiler.Begin("MyWork")
+        -- your code here
+        Profiler.End()
+]]
 
-local SCRIPT_TAG = "microprofiler_example"
+local SCRIPT_TAG = "profiler_example"
 
+-- Load profiler
 local Profiler = require("Profiler")
 Profiler.SetVisible(true)
+Profiler.SetMeasurementMode("frame") -- or "tick"
 
-local state = {
-	frame = 0,
-	telemetry = {
-		ai = 0,
-		network = 0,
-		ui = 0,
-	},
-}
-
-local function runScoped(name, fn)
-	Profiler.Begin(name)
-	local ok, err = pcall(fn)
-	Profiler.End()
-	if not ok then
-		print(string.format("[Profiler Example] scope '%s' error: %s", name, err))
-	end
-end
-
-local function simulateAI()
-	runScoped("AI.Pathfinding", function()
-		local sum = 0
-		for i = 1, 80 do
-			sum = sum + math.sin(i * 0.05) * math.cos(i * 0.025)
-		end
-		state.telemetry.ai = sum
-	end)
-
-	runScoped("AI.Decision", function()
-		local choice = 0
-		for i = 1, 25 do
-			choice = choice + math.random()
-		end
-		state.telemetry.ai = state.telemetry.ai + choice
-	end)
-end
-
-local function simulateNetwork()
-	runScoped("Net.Poll", function()
-		local checksum = 0
-		for i = 1, 15 do
-			checksum = checksum + (i * 13) + math.sin(globals.RealTime() * i)
-		end
-		state.telemetry.network = checksum
-	end)
-
-	runScoped("Net.Decode", function()
-		for _ = 1, 5 do
-			local payload = string.format("pkt_%d", math.random(1000, 9000))
-			state.telemetry.network = state.telemetry.network + #payload
-		end
-	end)
-end
-
-local function simulateUI()
-	runScoped("UI.Layout", function()
-		local total = 0
-		for i = 1, 8 do
-			total = total + math.sin(globals.RealTime() + i * 0.1)
-		end
-		state.telemetry.ui = total
-	end)
-
-	runScoped("UI.Animate", function()
-		local t = globals.RealTime()
-		for i = 1, 30 do
-			state.telemetry.ui = state.telemetry.ui + math.cos(t + i * 0.07)
-		end
-	end)
-end
-
-local function manualSpike(name, iterations)
-	runScoped(name, function()
-		local acc = 0
-		for i = 1, iterations do
-			acc = acc + math.sqrt(i) * math.sin(i * globals.FrameTime())
-		end
-	end)
-end
-
-local function drawHUD()
-	Profiler.Begin("ProfilerExample.DrawHUD")
-	draw.Color(255, 255, 255, 255)
-	draw.Text(
-		10,
-		20,
-		string.format("AI %.2f | Net %.2f | UI %.2f", state.telemetry.ai, state.telemetry.network, state.telemetry.ui)
-	)
-	Profiler.End()
-end
-
-callbacks.Register("CreateMove", SCRIPT_TAG .. "_move", function(cmd)
-	Profiler.Begin("ProfilerExample.CreateMove")
-	simulateAI()
-	simulateNetwork()
-	simulateUI()
-
-	state.frame = state.frame + 1
-	if state.frame % 200 == 0 then
-		manualSpike("ProfilerExample.Spike", 250)
+-- Helper: Do some work
+local function doPathfinding()
+	Profiler.Begin("AI.Pathfinding")
+	local sum = 0
+	for i = 1, 50 do
+		sum = sum + math.sin(i * 0.1)
 	end
 	Profiler.End()
-end)
+end
 
-callbacks.Register("Draw", SCRIPT_TAG .. "_draw", function()
-	Profiler.Begin("ProfilerExample.DrawLoop")
-	simulateUI()
-	drawHUD()
-	Profiler.Draw()
+local function doRendering()
+	Profiler.Begin("Render.DrawStuff")
+	local t = globals.RealTime()
+	for i = 1, 30 do
+		local _ = math.cos(t + i * 0.1)
+	end
 	Profiler.End()
-end)
+end
 
-callbacks.Register("Unload", SCRIPT_TAG .. "_unload", function()
-	print("[Profiler Example] unloading")
-	_G.MICROPROFILER_EXAMPLE_ACTIVE = false
-end)
+local function doPhysics()
+	Profiler.Begin("Physics.Step")
+	for i = 1, 20 do
+		local _ = math.sqrt(i)
+	end
+	Profiler.End()
+end
 
-_G.MICROPROFILER_EXAMPLE_ACTIVE = true
-print("[Profiler Example] loaded. Use Profiler.Begin/End in your own code just like this demo.")
+-- CreateMove callback - runs every tick
+local function onCreateMove(cmd)
+	Profiler.SetMeasurementMode("tick") -- Tick mode for CreateMove
+
+	Profiler.Begin("GameTick")
+	doPathfinding()
+	doPhysics()
+	Profiler.End()
+end
+
+-- Draw callback - runs every frame
+local function onDraw()
+	Profiler.SetMeasurementMode("frame") -- Frame mode for Draw
+
+	Profiler.Begin("Frame")
+	doRendering()
+	Profiler.Draw() -- Draws the profiler UI
+	Profiler.End()
+end
+
+-- Unload callback
+local function onUnload()
+	print("[Profiler Example] unloaded")
+	Profiler.SetVisible(false)
+end
+
+-- Register callbacks (no anonymous functions!)
+callbacks.Register("CreateMove", SCRIPT_TAG, onCreateMove)
+callbacks.Register("Draw", SCRIPT_TAG, onDraw)
+callbacks.Register("Unload", SCRIPT_TAG, onUnload)
+
+print("[Profiler Example] loaded. Measuring ticks in CreateMove, frames in Draw.")

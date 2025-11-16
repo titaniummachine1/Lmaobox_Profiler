@@ -316,6 +316,20 @@ function ProfilerCore.GetZoom()
 	return UIBody.GetZoom()
 end
 
+-- Measurement mode (tick vs frame)
+function ProfilerCore.SetMeasurementMode(mode)
+	if mode == "tick" or mode == "frame" then
+		Shared.MeasurementMode = mode
+		if mode == "tick" and not Shared.RecordingStartTime then
+			Shared.RecordingStartTime = globals.RealTime()
+		end
+	end
+end
+
+function ProfilerCore.GetMeasurementMode()
+	return Shared.MeasurementMode or "frame"
+end
+
 -- Initialize if visible by default
 if isVisible then
 	initialize()

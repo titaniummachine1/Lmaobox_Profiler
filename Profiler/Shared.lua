@@ -16,7 +16,14 @@ local Shared = {
 	CurrentFrame = 0,
 	LastDrawTime = 0,
 	BodyToggleRequested = false,
-	UIBodyVisible = true, -- Body visible by default when profiler enabled
+
+	-- UI State
+	UITopVisible = true, -- Top bar visible by default
+	UIBodyVisible = true, -- Body visible by default
+
+	-- Measurement mode
+	MeasurementMode = "frame", -- "tick" or "frame"
+	RecordingStartTime = nil, -- Start time for tick counting
 
 	-- Instance control
 	ProfilerInstance = nil,

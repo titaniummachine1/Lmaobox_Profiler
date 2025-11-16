@@ -445,14 +445,22 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 			alpha = 60
 		end
 
-		-- Find first interval mark at or after tick boundary
+		-- Find first tick boundary visible on screen
 		local firstTickAfterStart = tickStart
 		while firstTickAfterStart < dataStartTime do
 			firstTickAfterStart = firstTickAfterStart + frameTime
 		end
 
-		-- Start from first interval mark within current tick/frame
-		local intervalStart = math.floor(firstTickAfterStart / interval) * interval
+		-- Start intervals AT the tick boundary (not before)
+		-- Use ceil to ensure we're at or after the boundary
+		local intervalsFromZero = math.ceil(firstTickAfterStart / interval)
+		local intervalStart = intervalsFromZero * interval
+
+		-- If we're before the tick, move forward to tick
+		if intervalStart < firstTickAfterStart then
+			intervalStart = firstTickAfterStart
+		end
+
 		local time = intervalStart
 		local count = 0
 

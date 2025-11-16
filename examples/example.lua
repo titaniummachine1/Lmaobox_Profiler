@@ -20,12 +20,12 @@ local Profiler = require("Profiler")
 Profiler.SetVisible(true)
 Profiler.SetMeasurementMode("frame") -- or "tick"
 
--- Helper: Do some work
+-- Helper: Do realistic work (each takes ~0.5ms)
 local function doPathfinding()
 	Profiler.Begin("AI.Pathfinding")
 	local sum = 0
-	for i = 1, 50 do
-		sum = sum + math.sin(i * 0.1)
+	for i = 1, 5000 do
+		sum = sum + math.sin(i * 0.1) * math.cos(i * 0.05)
 	end
 	Profiler.End()
 end
@@ -33,16 +33,24 @@ end
 local function doRendering()
 	Profiler.Begin("Render.DrawStuff")
 	local t = globals.RealTime()
-	for i = 1, 30 do
-		local _ = math.cos(t + i * 0.1)
+	for i = 1, 3000 do
+		local _ = math.cos(t + i * 0.1) * math.sin(t + i * 0.05)
 	end
 	Profiler.End()
 end
 
 local function doPhysics()
 	Profiler.Begin("Physics.Step")
-	for i = 1, 20 do
-		local _ = math.sqrt(i)
+	for i = 1, 4000 do
+		local _ = math.sqrt(i) * math.log(i + 1)
+	end
+	Profiler.End()
+end
+
+local function doNetworking()
+	Profiler.Begin("Net.PacketProcess")
+	for i = 1, 2000 do
+		local _ = string.format("packet_%d", i)
 	end
 	Profiler.End()
 end
@@ -54,6 +62,7 @@ local function onCreateMove(cmd)
 	Profiler.Begin("GameTick")
 	doPathfinding()
 	doPhysics()
+	doNetworking()
 	Profiler.End()
 end
 
@@ -63,6 +72,7 @@ local function onDraw()
 
 	Profiler.Begin("Frame")
 	doRendering()
+	doPhysics() -- Also do physics in frame for comparison
 	Profiler.Draw() -- Draws the profiler UI
 	Profiler.End()
 end

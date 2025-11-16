@@ -165,17 +165,16 @@ local function drawScriptOnBoard(scriptName, functions, boardY, dataStartTime, d
 		end
 	end
 
-	-- Draw script header (ALL positioned on board, then transformed)
+	-- Draw script header - FIXED PIXEL HEIGHT (not zoom-scaled)
 	if scriptStartTime ~= math.huge and scriptEndTime ~= -math.huge then
 		local headerBoardX = timeToBoardX(scriptStartTime, dataStartTime)
 		local headerBoardWidth = timeToBoardX(scriptEndTime, dataStartTime) - headerBoardX
 		local headerBoardY = boardY
-		local headerBoardHeight = SCRIPT_HEADER_HEIGHT
 
-		-- Convert ALL header coordinates to screen coordinates
+		-- Convert to screen coordinates
 		local headerScreenX, headerScreenY = boardToScreen(headerBoardX, headerBoardY)
 		local headerScreenWidth = headerBoardWidth * boardZoom
-		local headerScreenHeight = headerBoardHeight * boardZoom
+		local headerScreenHeight = SCRIPT_HEADER_HEIGHT -- Fixed pixel height, no zoom
 
 		-- Only draw if visible (check both horizontal and vertical bounds)
 		if
@@ -279,7 +278,7 @@ local function drawScriptOnBoard(scriptName, functions, boardY, dataStartTime, d
 end
 
 -- Draw fractal time ruler with adaptive multi-level intervals
-local function drawTimeRuler(screenW, topBarHeight, dataStartTime, dataEndTime)
+local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, dataEndTime)
 	if not draw then
 		return
 	end
@@ -333,12 +332,21 @@ local function drawTimeRuler(screenW, topBarHeight, dataStartTime, dataEndTime)
 					draw.Color(100, 100, 100, alpha)
 					draw.Line(math.floor(screenX), topBarHeight, math.floor(screenX), topBarHeight + RULER_HEIGHT)
 
+					-- Extend grid line through entire content area
+					draw.Color(80, 80, 80, math.floor(alpha * 0.3))
+					draw.Line(math.floor(screenX), topBarHeight + RULER_HEIGHT, math.floor(screenX), screenH)
+
 					-- Only label major intervals
 					if pixelsPerInterval > 60 and alpha >= 150 then
 						local label
-						if mode == "tick" then
-							local tickCount = math.floor((time - recordStart) / (globals.FrameTime() or 0.015))
-							label = string.format("T%d", tickCount)
+						if mode == "tick" and globals and globals.FrameTime then
+							local frameTime = globals.FrameTime()
+							if frameTime > 0 then
+								local tickCount = math.floor((time - dataStartTime) / frameTime)
+								label = string.format("T%d", tickCount)
+							else
+								label = string.format("%dms", math.floor((time - dataStartTime) * 1000))
+							end
 						elseif interval >= 1.0 then
 							label = string.format("%.1fs", time - dataStartTime)
 						else
@@ -556,7 +564,7 @@ function UIBody.Draw(profilerData, topBarHeight)
 	end
 
 	-- Draw time ruler
-	drawTimeRuler(screenW, topBarHeight, dataStartTime, dataEndTime)
+	drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, dataEndTime)
 
 	-- Draw frame markers if enabled
 	if useFrameMarkers then

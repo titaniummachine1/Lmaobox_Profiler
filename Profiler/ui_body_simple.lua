@@ -341,18 +341,15 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 		tickCount = tickCount + 1
 	end
 
-	-- SECONDARY GRID: Fractal time subdivisions (infinite precision)
+	-- SECONDARY GRID: Fractal time subdivisions (limited by RealTime precision)
+	-- RealTime provides ~100μs precision, so don't go below that
 	local timeIntervals = {
-		{ interval = 0.000000001, label = "%.0fns", mult = 1000000000 }, -- 1ns
-		{ interval = 0.00000001, label = "%.0fns", mult = 1000000000 }, -- 10ns
-		{ interval = 0.0000001, label = "%.0fns", mult = 1000000000 }, -- 100ns
-		{ interval = 0.000001, label = "%.1fµs", mult = 1000000 }, -- 1us
-		{ interval = 0.00001, label = "%.0fµs", mult = 1000000 }, -- 10us
-		{ interval = 0.0001, label = "%.0fµs", mult = 1000000 }, -- 100us
+		{ interval = 0.0001, label = "%.0fµs", mult = 1000000 }, -- 100us (RealTime limit)
 		{ interval = 0.001, label = "%.1fms", mult = 1000 }, -- 1ms
 		{ interval = 0.01, label = "%.0fms", mult = 1000 }, -- 10ms
 		{ interval = 0.1, label = "%.0fms", mult = 1000 }, -- 100ms
 		{ interval = 1.0, label = "%.1fs", mult = 1 }, -- 1s
+		{ interval = 10.0, label = "%.0fs", mult = 1 }, -- 10s
 	}
 
 	for _, intervalData in ipairs(timeIntervals) do
@@ -497,8 +494,14 @@ local function handleBoardInput(screenW, screenH, topBarHeight)
 				boardZoom = boardZoom / 1.1 -- Zoom out
 			end
 
-			-- No zoom limits - infinite zoom
-			boardZoom = math.max(0.01, boardZoom)
+			-- Clamp zoom based on RealTime precision
+			-- Lua doubles have ~15-17 significant digits
+			-- At 4722s, smallest delta is ~0.0001s (100μs precision)
+			-- Max useful zoom: 3px = 0.0001s * TIME_SCALE * zoom
+			-- zoom = 3 / (0.0001 * 50000) = 0.6 is too low
+			-- Use 100μs precision -> max zoom ~1000x for 3px spacing at 100μs
+			local maxZoom = 1000.0
+			boardZoom = math.max(0.01, math.min(maxZoom, boardZoom))
 
 			-- Zoom towards mouse position - keep the point under mouse cursor fixed
 			-- Convert mouse screen position to board position BEFORE zoom change
@@ -631,7 +634,8 @@ function UIBody.ResetCamera()
 end
 
 function UIBody.SetZoom(newZoom)
-	boardZoom = math.max(0.01, newZoom) -- Infinite zoom, min 0.01x
+	local maxZoom = 1000.0 -- Based on RealTime precision (~100μs)
+	boardZoom = math.max(0.01, math.min(maxZoom, newZoom))
 end
 
 function UIBody.GetZoom()

@@ -21,7 +21,6 @@ local runtimeState = {
 		background = 0,
 	},
 }
-print(globals.RealTime())
 
 local function simulatePhysics(now)
 	Profiler.Begin("Physics.Integration")

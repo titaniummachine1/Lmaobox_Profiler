@@ -445,86 +445,84 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 			alpha = 60
 		end
 
-		-- Find first tick boundary visible on screen
-		local firstTickAfterStart = tickStart
-		while firstTickAfterStart < dataStartTime do
-			firstTickAfterStart = firstTickAfterStart + frameTime
+		-- Draw marks starting from first visible tick boundary
+		local currentTickBoundary = tickStart
+		while currentTickBoundary < dataStartTime do
+			currentTickBoundary = currentTickBoundary + frameTime
 		end
 
-		-- Start intervals AT the tick boundary (not before)
-		-- Use ceil to ensure we're at or after the boundary
-		local intervalsFromZero = math.ceil(firstTickAfterStart / interval)
-		local intervalStart = intervalsFromZero * interval
+		-- For each visible tick, draw interval marks within it
+		local tickIndex = 0
+		while currentTickBoundary <= dataEndTime + frameTime and tickIndex < 100 do
+			-- Draw marks at: tick + (0, interval, 2*interval, 3*interval...)
+			local markIndex = 0
+			local time = currentTickBoundary
 
-		-- If we're before the tick, move forward to tick
-		if intervalStart < firstTickAfterStart then
-			intervalStart = firstTickAfterStart
-		end
+			while time < currentTickBoundary + frameTime and markIndex < 1000 do
+				-- Only draw if time is visible
+				if time >= dataStartTime and time <= dataEndTime then
+					local boardX = timeToBoardX(time, dataStartTime)
+					local screenX, _ = boardToScreen(boardX, 0)
 
-		local time = intervalStart
-		local count = 0
+					-- Only draw if within screen bounds with margin
+					if screenX >= -50 and screenX <= screenW + 50 then
+						local intScreenX = math.floor(screenX + 0.5)
 
-		while time <= dataEndTime + interval and count < 10000 do
-			-- Only draw if time >= dataStartTime (no negative time)
-			if time >= dataStartTime then
-				local boardX = timeToBoardX(time, dataStartTime)
-				local screenX, _ = boardToScreen(boardX, 0)
+						-- Fine subdivision line
+						draw.Color(100, 100, 100, alpha)
+						draw.Line(intScreenX, topBarHeight, intScreenX, topBarHeight + RULER_HEIGHT)
+						draw.Color(80, 80, 80, math.floor(alpha * 0.2))
+						draw.Line(intScreenX, topBarHeight + RULER_HEIGHT, intScreenX, screenH)
 
-				-- Only draw if within screen bounds with margin
-				if screenX >= -50 and screenX <= screenW + 50 then
-					local intScreenX = math.floor(screenX + 0.5) -- Round to nearest pixel
+						-- Show time relative to current tick boundary
+						local relativeTime = time - currentTickBoundary
 
-					-- Fine subdivision line
-					draw.Color(100, 100, 100, alpha)
-					draw.Line(intScreenX, topBarHeight, intScreenX, topBarHeight + RULER_HEIGHT)
-					draw.Color(80, 80, 80, math.floor(alpha * 0.2))
-					draw.Line(intScreenX, topBarHeight + RULER_HEIGHT, intScreenX, screenH)
+						-- Smart unit selection based on interval spacing
+						-- NOTE: Don't go below µs (1µs is maximum timer accuracy)
+						local label
+						local timeInMs = relativeTime * 1000
+						local timeInUs = relativeTime * 1000000
 
-					-- Show time relative to nearest tick/frame boundary (always from 0)
-					local relativeTime = (time - tickStart) % frameTime
-
-					-- Smart unit selection based on interval spacing
-					-- NOTE: Don't go below µs (1µs is maximum timer accuracy)
-					local label
-					local timeInMs = relativeTime * 1000
-					local timeInUs = relativeTime * 1000000
-
-					-- Choose unit based on interval size for clean display
-					if interval >= 0.01 then
-						-- >= 10ms intervals: show as milliseconds
-						if timeInMs >= 10 then
-							label = string.format("%dms", math.floor(timeInMs + 0.5))
+						-- Choose unit based on interval size for clean display
+						if interval >= 0.01 then
+							-- >= 10ms intervals: show as milliseconds
+							if timeInMs >= 10 then
+								label = string.format("%dms", math.floor(timeInMs + 0.5))
+							else
+								label = string.format("%.1fms", timeInMs)
+							end
 						else
-							label = string.format("%.1fms", timeInMs)
+							-- < 10ms: show as microseconds (smallest unit, 1µs = max accuracy)
+							if timeInUs >= 100 then
+								label = string.format("%dµs", math.floor(timeInUs + 0.5))
+							else
+								label = string.format("%.1fµs", timeInUs)
+							end
 						end
-					else
-						-- < 10ms: show as microseconds (smallest unit, 1µs = max accuracy)
-						if timeInUs >= 100 then
-							label = string.format("%dµs", math.floor(timeInUs + 0.5))
-						else
-							label = string.format("%.1fµs", timeInUs)
+
+						-- Stable label placement: only skip if would overlap on screen
+						local textWidth = #label * 7 + 10
+						local textX = intScreenX + 2
+
+						if
+							screenX >= 10
+							and screenX <= screenW - textWidth - 10
+							and textX >= lastLabelEndX + 10
+							and alpha >= 60
+						then
+							draw.Color(150, 150, 150, 200)
+							draw.Text(textX, topBarHeight + 15, label)
+							lastLabelEndX = textX + textWidth
 						end
-					end
-
-					-- Stable label placement: only skip if would overlap on screen
-					local textWidth = #label * 7 + 10
-					local textX = intScreenX + 2
-
-					if
-						screenX >= 10
-						and screenX <= screenW - textWidth - 10
-						and textX >= lastLabelEndX + 10
-						and alpha >= 60
-					then
-						draw.Color(150, 150, 150, 200)
-						draw.Text(textX, topBarHeight + 15, label)
-						lastLabelEndX = textX + textWidth
 					end
 				end
+
+				time = time + interval
+				markIndex = markIndex + 1
 			end
 
-			time = time + interval
-			count = count + 1
+			currentTickBoundary = currentTickBoundary + frameTime
+			tickIndex = tickIndex + 1
 		end
 	end
 end

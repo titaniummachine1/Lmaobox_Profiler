@@ -374,9 +374,17 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 
 	for _, mag in ipairs(magnitudes) do
 		local pixelSpacing = mag * TIME_SCALE * boardZoom
-		if pixelSpacing >= minPixelSpacing and pixelSpacing <= maxPixelSpacing * 2 then
+		-- Increased max to allow high zoom levels
+		if pixelSpacing >= minPixelSpacing and pixelSpacing <= maxPixelSpacing * 20 then
 			table.insert(niceIntervals, { interval = mag, pixels = pixelSpacing })
 		end
+	end
+
+	-- If no intervals fit (very high zoom), use the smallest available interval
+	if #niceIntervals == 0 then
+		local smallestInterval = magnitudes[1] -- 100µs
+		local pixelSpacing = smallestInterval * TIME_SCALE * boardZoom
+		table.insert(niceIntervals, { interval = smallestInterval, pixels = pixelSpacing })
 	end
 
 	-- Draw all suitable intervals with varying opacity
@@ -428,10 +436,11 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 					draw.Line(intScreenX, topBarHeight + RULER_HEIGHT, intScreenX, screenH)
 
 					-- Label ONLY the largest spaced interval to prevent overlap
-					-- And only if spacing is wide enough (at least 100px)
+					-- Adaptive minimum spacing: use smaller threshold at high zoom
+					local minLabelSpacing = math.min(100, maxLabelSpacing * 0.8)
 					if
 						interval == bestIntervalForLabels
-						and pixelsPerInterval >= 100
+						and pixelsPerInterval >= minLabelSpacing
 						and screenX >= 10
 						and screenX <= screenW - 110
 					then

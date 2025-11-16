@@ -470,6 +470,7 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 					local relativeTime = (time - tickStart) % frameTime
 
 					-- Smart unit selection based on interval spacing
+					-- NOTE: Don't go below µs (1µs is maximum timer accuracy)
 					local label
 					local timeInMs = relativeTime * 1000
 					local timeInUs = relativeTime * 1000000
@@ -482,17 +483,13 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 						else
 							label = string.format("%.1fms", timeInMs)
 						end
-					elseif interval >= 0.00001 then
-						-- >= 10µs intervals: show as microseconds
+					else
+						-- < 10ms: show as microseconds (smallest unit, 1µs = max accuracy)
 						if timeInUs >= 100 then
 							label = string.format("%dµs", math.floor(timeInUs + 0.5))
 						else
 							label = string.format("%.1fµs", timeInUs)
 						end
-					else
-						-- < 10µs: show as nanoseconds
-						local timeInNs = relativeTime * 1000000000
-						label = string.format("%dns", math.floor(timeInNs + 0.5))
 					end
 
 					-- Stable label placement: only skip if would overlap on screen

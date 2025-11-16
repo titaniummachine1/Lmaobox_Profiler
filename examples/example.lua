@@ -20,59 +20,119 @@ local Profiler = require("Profiler")
 Profiler.SetVisible(true)
 Profiler.SetMeasurementMode("frame") -- or "tick"
 
--- Helper: Do realistic work (each takes ~0.5ms)
-local function doPathfinding()
-	Profiler.Begin("AI.Pathfinding")
+-- Helper: Nested work showing compound tasks
+
+local function calculatePath()
+	Profiler.Begin("AI.PathCalculation")
 	local sum = 0
-	for i = 1, 5000 do
-		sum = sum + math.sin(i * 0.1) * math.cos(i * 0.05)
+	for i = 1, 2000 do
+		sum = sum + math.sin(i * 0.1)
+	end
+	Profiler.End()
+end
+
+local function validatePath()
+	Profiler.Begin("AI.PathValidation")
+	for i = 1, 1500 do
+		local _ = math.sqrt(i)
+	end
+	Profiler.End()
+end
+
+local function doPathfinding()
+	Profiler.Begin("AI.Pathfinding") -- Parent task
+
+	-- Child tasks
+	calculatePath()
+	validatePath()
+
+	Profiler.End()
+end
+
+local function renderGeometry()
+	Profiler.Begin("Render.Geometry")
+	local t = globals.RealTime()
+	for i = 1, 2000 do
+		local _ = math.cos(t + i * 0.1)
+	end
+	Profiler.End()
+end
+
+local function renderLighting()
+	Profiler.Begin("Render.Lighting")
+	for i = 1, 1000 do
+		local _ = math.exp(i * 0.001)
 	end
 	Profiler.End()
 end
 
 local function doRendering()
-	Profiler.Begin("Render.DrawStuff")
-	local t = globals.RealTime()
-	for i = 1, 3000 do
-		local _ = math.cos(t + i * 0.1) * math.sin(t + i * 0.05)
-	end
+	Profiler.Begin("Render.Frame") -- Parent task
+
+	-- Child tasks
+	renderGeometry()
+	renderLighting()
+
 	Profiler.End()
 end
 
-local function doPhysics()
-	Profiler.Begin("Physics.Step")
-	for i = 1, 4000 do
+local function collisionDetection()
+	Profiler.Begin("Physics.Collision")
+	for i = 1, 1500 do
 		local _ = math.sqrt(i) * math.log(i + 1)
 	end
 	Profiler.End()
 end
 
+local function integration()
+	Profiler.Begin("Physics.Integration")
+	for i = 1, 2000 do
+		local _ = math.sin(i * 0.05)
+	end
+	Profiler.End()
+end
+
+local function doPhysics()
+	Profiler.Begin("Physics.Step") -- Parent task
+
+	-- Child tasks
+	collisionDetection()
+	integration()
+
+	Profiler.End()
+end
+
 local function doNetworking()
 	Profiler.Begin("Net.PacketProcess")
-	for i = 1, 2000 do
+	for i = 1, 1000 do
 		local _ = string.format("packet_%d", i)
 	end
 	Profiler.End()
 end
 
--- CreateMove callback - runs every tick
+-- CreateMove callback - runs every tick (shows tick-based ruler)
 local function onCreateMove(cmd)
 	Profiler.SetMeasurementMode("tick") -- Tick mode for CreateMove
 
-	Profiler.Begin("GameTick")
-	doPathfinding()
-	doPhysics()
+	Profiler.Begin("GameTick") -- Top-level work
+
+	-- Compound tasks with nested work
+	doPathfinding() -- Contains PathCalculation + PathValidation
+	doPhysics() -- Contains Collision + Integration
 	doNetworking()
+
 	Profiler.End()
 end
 
--- Draw callback - runs every frame
+-- Draw callback - runs every frame (shows frame-based ruler)
 local function onDraw()
 	Profiler.SetMeasurementMode("frame") -- Frame mode for Draw
 
-	Profiler.Begin("Frame")
-	doRendering()
-	doPhysics() -- Also do physics in frame for comparison
+	Profiler.Begin("RenderFrame") -- Top-level work
+
+	-- Compound rendering with nested work
+	doRendering() -- Contains Geometry + Lighting
+
 	Profiler.Draw() -- Draws the profiler UI
 	Profiler.End()
 end

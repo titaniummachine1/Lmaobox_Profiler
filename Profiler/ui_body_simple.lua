@@ -341,64 +341,83 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 		tickCount = tickCount + 1
 	end
 
-	-- SECONDARY GRID: Fractal time subdivisions (limited by RealTime precision)
-	-- RealTime provides ~100μs precision, so don't go below that
-	local timeIntervals = {
-		{ interval = 0.0001, label = "%.0fµs", mult = 1000000 }, -- 100us (RealTime limit)
-		{ interval = 0.001, label = "%.1fms", mult = 1000 }, -- 1ms
-		{ interval = 0.01, label = "%.0fms", mult = 1000 }, -- 10ms
-		{ interval = 0.1, label = "%.0fms", mult = 1000 }, -- 100ms
-		{ interval = 1.0, label = "%.1fs", mult = 1 }, -- 1s
-		{ interval = 10.0, label = "%.0fs", mult = 1 }, -- 10s
-	}
+	-- SECONDARY GRID: Procedural fractal subdivisions
+	-- Generate intervals dynamically based on current zoom level
+	-- Target: lines spaced 20-80px apart for readability
 
-	for _, intervalData in ipairs(timeIntervals) do
-		local interval = intervalData.interval
-		local pixelsPerInterval = interval * TIME_SCALE * boardZoom
+	local minPixelSpacing = 20
+	local maxPixelSpacing = 80
+	local minInterval = 0.0001 -- 100µs (RealTime precision limit)
 
-		-- Only show if spacing is at least 3px (shows more detail when zoomed)
-		if pixelsPerInterval >= 3 then
-			local alpha = 30
-			if pixelsPerInterval > 100 then
-				alpha = 150
-			elseif pixelsPerInterval > 50 then
-				alpha = 100
-			elseif pixelsPerInterval > 20 then
-				alpha = 60
-			end
+	-- Calculate ideal interval for current zoom
+	local targetPixelSpacing = 40
+	local baseInterval = targetPixelSpacing / (TIME_SCALE * boardZoom)
 
-			local intervalStart = math.floor(dataStartTime / interval) * interval
-			local time = intervalStart
-			local count = 0
-			while time <= dataEndTime + interval and count < 10000 do
-				-- Only draw if not on a tick boundary and time >= dataStartTime
-				local onTickBoundary = math.abs((time - tickStart) % frameTime) < (interval * 0.1)
-				if not onTickBoundary and time >= dataStartTime then
-					local boardX = timeToBoardX(time, dataStartTime)
-					local screenX, _ = boardToScreen(boardX, 0)
+	-- Round to nice numbers (1, 2, 5 pattern)
+	local magnitudes =
+		{ 0.0001, 0.0002, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0 }
+	local niceIntervals = {}
 
-					if screenX >= 0 and screenX <= screenW then
-						-- Fine subdivision line
-						draw.Color(100, 100, 100, alpha)
-						draw.Line(math.floor(screenX), topBarHeight, math.floor(screenX), topBarHeight + RULER_HEIGHT)
+	for _, mag in ipairs(magnitudes) do
+		local pixelSpacing = mag * TIME_SCALE * boardZoom
+		if pixelSpacing >= minPixelSpacing and pixelSpacing <= maxPixelSpacing * 2 then
+			table.insert(niceIntervals, { interval = mag, pixels = pixelSpacing })
+		end
+	end
 
-						-- Extend through content (faint)
-						draw.Color(80, 80, 80, math.floor(alpha * 0.2))
-						draw.Line(math.floor(screenX), topBarHeight + RULER_HEIGHT, math.floor(screenX), screenH)
+	-- Draw all suitable intervals with varying opacity
+	for _, data in ipairs(niceIntervals) do
+		local interval = data.interval
+		local pixelsPerInterval = data.pixels
 
-						-- Label if enough space
-						if pixelsPerInterval > 60 and alpha > 60 then
-							local value = (time - dataStartTime) * intervalData.mult
-							local timeLabel = string.format(intervalData.label, value)
-							draw.Color(150, 150, 150, 200)
-							draw.Text(math.floor(screenX) + 2, topBarHeight + 15, timeLabel)
+		-- Calculate alpha based on spacing
+		local alpha = 30
+		if pixelsPerInterval > 100 then
+			alpha = 150
+		elseif pixelsPerInterval > 60 then
+			alpha = 100
+		elseif pixelsPerInterval > 30 then
+			alpha = 60
+		end
+
+		local intervalStart = math.floor(dataStartTime / interval) * interval
+		local time = intervalStart
+		local count = 0
+
+		while time <= dataEndTime + interval and count < 10000 do
+			local onTickBoundary = math.abs((time - tickStart) % frameTime) < (interval * 0.1)
+			if not onTickBoundary and time >= dataStartTime then
+				local boardX = timeToBoardX(time, dataStartTime)
+				local screenX, _ = boardToScreen(boardX, 0)
+
+				if screenX >= 0 and screenX <= screenW then
+					-- Fine subdivision line
+					draw.Color(100, 100, 100, alpha)
+					draw.Line(math.floor(screenX), topBarHeight, math.floor(screenX), topBarHeight + RULER_HEIGHT)
+
+					-- Extend through content (faint)
+					draw.Color(80, 80, 80, math.floor(alpha * 0.2))
+					draw.Line(math.floor(screenX), topBarHeight + RULER_HEIGHT, math.floor(screenX), screenH)
+
+					-- Label only the most visible intervals
+					if pixelsPerInterval > 60 and alpha > 60 then
+						local deltaTime = time - dataStartTime
+						local label
+						if interval >= 1.0 then
+							label = string.format("%.1fs", deltaTime)
+						elseif interval >= 0.001 then
+							label = string.format("%.1fms", deltaTime * 1000)
+						else
+							label = string.format("%.0fµs", deltaTime * 1000000)
 						end
+						draw.Color(150, 150, 150, 200)
+						draw.Text(math.floor(screenX) + 2, topBarHeight + 15, label)
 					end
 				end
-
-				time = time + interval
-				count = count + 1
 			end
+
+			time = time + interval
+			count = count + 1
 		end
 	end
 end

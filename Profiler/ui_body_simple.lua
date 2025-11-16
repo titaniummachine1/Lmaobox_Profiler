@@ -428,16 +428,8 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 	end
 
 	-- Draw all suitable intervals with varying opacity
-	-- Only label the interval with largest spacing to avoid overlap
-	local bestIntervalForLabels = nil
-	local maxLabelSpacing = 0
-
-	for _, data in ipairs(niceIntervals) do
-		if data.pixels > maxLabelSpacing then
-			maxLabelSpacing = data.pixels
-			bestIntervalForLabels = data.interval
-		end
-	end
+	-- Track last label position to prevent overlap
+	local lastLabelEndX = -1000
 
 	for _, data in ipairs(niceIntervals) do
 		local interval = data.interval
@@ -458,8 +450,8 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 		local count = 0
 
 		while time <= dataEndTime + interval and count < 10000 do
-			local onTickBoundary = math.abs((time - tickStart) % frameTime) < (interval * 0.1)
-			if not onTickBoundary and time >= dataStartTime then
+			-- Only draw if time >= dataStartTime (no negative time)
+			if time >= dataStartTime then
 				local boardX = timeToBoardX(time, dataStartTime)
 				local screenX, _ = boardToScreen(boardX, 0)
 
@@ -475,44 +467,51 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 					draw.Color(80, 80, 80, math.floor(alpha * 0.2))
 					draw.Line(intScreenX, topBarHeight + RULER_HEIGHT, intScreenX, screenH)
 
-					-- Label ONLY the largest spaced interval to prevent overlap
-					-- Adaptive minimum spacing: very lenient to ensure visibility at all zooms
-					-- Only require 50% of max spacing, minimum 30px
-					local minLabelSpacing = math.max(30, maxLabelSpacing * 0.5)
+					-- Smart label placement: only draw if enough space from last label
+					-- Show time RELATIVE to nearest tick/frame boundary for clean values
+					local tickNumber = math.floor((time - tickStart) / frameTime)
+					local tickBoundary = tickStart + (tickNumber * frameTime)
+					local relativeTime = time - tickBoundary
+
+					-- Generate label
+					local roundedValue
+					local label
+					if interval >= 1.0 then
+						roundedValue = math.floor(relativeTime + 0.5)
+						label = string.format("%ds", roundedValue)
+					elseif interval >= 0.001 then
+						roundedValue = math.floor(relativeTime * 1000 + 0.5)
+						label = string.format("%dms", roundedValue)
+					elseif interval >= 0.000001 then
+						roundedValue = math.floor(relativeTime * 1000000 + 0.5)
+						label = string.format("%dµs", roundedValue)
+					else
+						roundedValue = math.floor(relativeTime * 1000000000 + 0.5)
+						label = string.format("%dns", roundedValue)
+					end
+
+					-- Estimate text width (assume ~7px per character average)
+					local estimatedTextWidth = #label * 7
+					local textPadding = 10 -- Minimum padding between labels
+					local requiredSpace = estimatedTextWidth + textPadding
+
+					-- Only draw label if:
+					-- 1. Within screen bounds with margin
+					-- 2. Enough space from last label
+					-- 3. Most visible interval (highest alpha)
+					local textX = intScreenX + 2
 					if
-						interval == bestIntervalForLabels
-						and pixelsPerInterval >= minLabelSpacing
-						and screenX >= 10
-						and screenX <= screenW - 110
+						screenX >= 10
+						and screenX <= screenW - estimatedTextWidth - 20
+						and textX >= lastLabelEndX + textPadding
+						and alpha >= 60 -- Only label more visible intervals
 					then
-						-- Show time RELATIVE to nearest tick/frame boundary for clean values
-						-- Find which tick/frame this time belongs to
-						local tickNumber = math.floor((time - tickStart) / frameTime)
-						local tickBoundary = tickStart + (tickNumber * frameTime)
-						local relativeTime = time - tickBoundary
-
-						-- Round to clean values based on interval
-						local roundedValue
-						local label
-						if interval >= 1.0 then
-							roundedValue = math.floor(relativeTime + 0.5)
-							label = string.format("%ds", roundedValue)
-						elseif interval >= 0.001 then
-							roundedValue = math.floor(relativeTime * 1000 + 0.5)
-							label = string.format("%dms", roundedValue)
-						elseif interval >= 0.000001 then
-							roundedValue = math.floor(relativeTime * 1000000 + 0.5)
-							label = string.format("%dµs", roundedValue)
-						else
-							roundedValue = math.floor(relativeTime * 1000000000 + 0.5)
-							label = string.format("%dns", roundedValue)
-						end
-
 						draw.Color(150, 150, 150, 200)
-						-- Use integer coordinates for text - CRITICAL for visibility
-						local textX = intScreenX + 2
 						local textY = topBarHeight + 15
 						draw.Text(textX, textY, label)
+
+						-- Update last label position
+						lastLabelEndX = textX + estimatedTextWidth
 					end
 				end
 			end

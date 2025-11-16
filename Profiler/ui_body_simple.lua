@@ -468,6 +468,7 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 					draw.Line(intScreenX, topBarHeight + RULER_HEIGHT, intScreenX, screenH)
 
 					-- Generate clean label: time relative to nearest tick/frame boundary
+					-- Use modulo for clean wrapping at boundaries
 					local relativeTime = (time - tickStart) % frameTime
 
 					-- Round to interval precision for clean values
@@ -475,19 +476,15 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 					local roundedIntervals = math.floor(valueInIntervalUnits + 0.5)
 					local cleanTime = roundedIntervals * interval
 
-					-- Smart unit selection: pick smallest unit that keeps value < 1000
+					-- Format label based on magnitude
 					local label
-					if cleanTime >= 1.0 then
-						-- Use seconds
+					if interval >= 1.0 then
 						label = string.format("%ds", math.floor(cleanTime + 0.5))
-					elseif cleanTime >= 0.001 then
-						-- Use milliseconds (1ms - 999ms)
+					elseif interval >= 0.001 then
 						label = string.format("%dms", math.floor(cleanTime * 1000 + 0.5))
-					elseif cleanTime >= 0.000001 then
-						-- Use microseconds (1µs - 999µs)
+					elseif interval >= 0.000001 then
 						label = string.format("%dµs", math.floor(cleanTime * 1000000 + 0.5))
 					else
-						-- Use nanoseconds (< 1µs)
 						label = string.format("%dns", math.floor(cleanTime * 1000000000 + 0.5))
 					end
 

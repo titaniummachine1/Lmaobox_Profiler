@@ -445,7 +445,14 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 			alpha = 60
 		end
 
-		local intervalStart = math.floor(dataStartTime / interval) * interval
+		-- Find first interval mark at or after tick boundary
+		local firstTickAfterStart = tickStart
+		while firstTickAfterStart < dataStartTime do
+			firstTickAfterStart = firstTickAfterStart + frameTime
+		end
+
+		-- Start from first interval mark within current tick/frame
+		local intervalStart = math.floor(firstTickAfterStart / interval) * interval
 		local time = intervalStart
 		local count = 0
 
@@ -465,8 +472,7 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 					draw.Color(80, 80, 80, math.floor(alpha * 0.2))
 					draw.Line(intScreenX, topBarHeight + RULER_HEIGHT, intScreenX, screenH)
 
-					-- Show time relative to nearest tick/frame boundary
-					-- This gives clean incremental values: 0ms, 0.1ms, 0.2ms...
+					-- Show time relative to nearest tick/frame boundary (always from 0)
 					local relativeTime = (time - tickStart) % frameTime
 
 					-- Smart unit selection based on interval spacing

@@ -403,21 +403,23 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 
 				-- Only draw if within screen bounds with margin
 				if screenX >= -50 and screenX <= screenW + 50 then
+					local intScreenX = math.floor(screenX + 0.5) -- Round to nearest pixel
+
 					-- Fine subdivision line
 					draw.Color(100, 100, 100, alpha)
-					draw.Line(math.floor(screenX), topBarHeight, math.floor(screenX), topBarHeight + RULER_HEIGHT)
+					draw.Line(intScreenX, topBarHeight, intScreenX, topBarHeight + RULER_HEIGHT)
 
 					-- Extend through content (faint)
 					draw.Color(80, 80, 80, math.floor(alpha * 0.2))
-					draw.Line(math.floor(screenX), topBarHeight + RULER_HEIGHT, math.floor(screenX), screenH)
+					draw.Line(intScreenX, topBarHeight + RULER_HEIGHT, intScreenX, screenH)
 
 					-- Label ONLY the largest spaced interval to prevent overlap
 					-- And only if spacing is wide enough (at least 100px)
 					if
 						interval == bestIntervalForLabels
 						and pixelsPerInterval >= 100
-						and screenX >= 0
-						and screenX <= screenW - 100
+						and screenX >= 10
+						and screenX <= screenW - 110
 					then
 						local deltaTime = time - dataStartTime
 						local label
@@ -429,7 +431,10 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 							label = string.format("%.0fµs", deltaTime * 1000000)
 						end
 						draw.Color(150, 150, 150, 200)
-						draw.Text(math.floor(screenX) + 2, topBarHeight + 15, label)
+						-- Use integer coordinates for text - CRITICAL for visibility
+						local textX = intScreenX + 2
+						local textY = topBarHeight + 15
+						draw.Text(textX, textY, label)
 					end
 				end
 			end

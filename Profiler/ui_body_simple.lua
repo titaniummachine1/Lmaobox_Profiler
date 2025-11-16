@@ -366,6 +366,17 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 	end
 
 	-- Draw all suitable intervals with varying opacity
+	-- Only label the interval with largest spacing to avoid overlap
+	local bestIntervalForLabels = nil
+	local maxLabelSpacing = 0
+
+	for _, data in ipairs(niceIntervals) do
+		if data.pixels > maxLabelSpacing then
+			maxLabelSpacing = data.pixels
+			bestIntervalForLabels = data.interval
+		end
+	end
+
 	for _, data in ipairs(niceIntervals) do
 		local interval = data.interval
 		local pixelsPerInterval = data.pixels
@@ -390,7 +401,8 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 				local boardX = timeToBoardX(time, dataStartTime)
 				local screenX, _ = boardToScreen(boardX, 0)
 
-				if screenX >= 0 and screenX <= screenW then
+				-- Only draw if within screen bounds with margin
+				if screenX >= -50 and screenX <= screenW + 50 then
 					-- Fine subdivision line
 					draw.Color(100, 100, 100, alpha)
 					draw.Line(math.floor(screenX), topBarHeight, math.floor(screenX), topBarHeight + RULER_HEIGHT)
@@ -399,8 +411,14 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 					draw.Color(80, 80, 80, math.floor(alpha * 0.2))
 					draw.Line(math.floor(screenX), topBarHeight + RULER_HEIGHT, math.floor(screenX), screenH)
 
-					-- Label only the most visible intervals
-					if pixelsPerInterval > 60 and alpha > 60 then
+					-- Label ONLY the largest spaced interval to prevent overlap
+					-- And only if spacing is wide enough (at least 100px)
+					if
+						interval == bestIntervalForLabels
+						and pixelsPerInterval >= 100
+						and screenX >= 0
+						and screenX <= screenW - 100
+					then
 						local deltaTime = time - dataStartTime
 						local label
 						if interval >= 1.0 then

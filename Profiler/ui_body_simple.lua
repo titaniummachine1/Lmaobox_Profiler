@@ -462,34 +462,50 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 					-- Fine subdivision line
 					draw.Color(100, 100, 100, alpha)
 					draw.Line(intScreenX, topBarHeight, intScreenX, topBarHeight + RULER_HEIGHT)
-
-					-- Extend through content (faint)
 					draw.Color(80, 80, 80, math.floor(alpha * 0.2))
 					draw.Line(intScreenX, topBarHeight + RULER_HEIGHT, intScreenX, screenH)
 
 					-- Generate clean label: time relative to nearest tick/frame boundary
-					-- Use modulo for clean wrapping at boundaries
 					local relativeTime = (time - tickStart) % frameTime
-
-					-- Round to interval precision for clean values
 					local valueInIntervalUnits = relativeTime / interval
 					local roundedIntervals = math.floor(valueInIntervalUnits + 0.5)
 					local cleanTime = roundedIntervals * interval
 
-					-- Format label based on magnitude
+					-- Smart unit selection: use smallest reasonable unit
 					local label
-					if interval >= 1.0 then
-						label = string.format("%ds", math.floor(cleanTime + 0.5))
-					elseif interval >= 0.001 then
-						label = string.format("%dms", math.floor(cleanTime * 1000 + 0.5))
-					elseif interval >= 0.000001 then
-						label = string.format("%dµs", math.floor(cleanTime * 1000000 + 0.5))
+					local timeInSeconds = cleanTime
+					local timeInMs = timeInSeconds * 1000
+					local timeInUs = timeInSeconds * 1000000
+					local timeInNs = timeInSeconds * 1000000000
+
+					if timeInSeconds >= 1.0 then
+						-- >= 1s: show as seconds
+						if timeInSeconds >= 10 then
+							label = string.format("%ds", math.floor(timeInSeconds + 0.5))
+						else
+							label = string.format("%.1fs", timeInSeconds)
+						end
+					elseif timeInMs >= 1.0 then
+						-- >= 1ms: show as milliseconds (not 1000+µs)
+						if timeInMs >= 10 then
+							label = string.format("%dms", math.floor(timeInMs + 0.5))
+						else
+							label = string.format("%.1fms", timeInMs)
+						end
+					elseif timeInUs >= 1.0 then
+						-- >= 1µs: show as microseconds (not 1000+ns)
+						if timeInUs >= 10 then
+							label = string.format("%dµs", math.floor(timeInUs + 0.5))
+						else
+							label = string.format("%.1fµs", timeInUs)
+						end
 					else
-						label = string.format("%dns", math.floor(cleanTime * 1000000000 + 0.5))
+						-- < 1µs: show as nanoseconds
+						label = string.format("%dns", math.floor(timeInNs + 0.5))
 					end
 
-					-- Smart label placement: only draw if enough space
-					local textWidth = #label * 7 + 10 -- ~7px/char + padding
+					-- Stable label placement: only skip if would overlap on screen
+					local textWidth = #label * 7 + 10
 					local textX = intScreenX + 2
 
 					if

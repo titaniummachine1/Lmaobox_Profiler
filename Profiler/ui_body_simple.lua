@@ -5,6 +5,8 @@
 
 -- Imports
 local Shared = require("Profiler.Shared") --[[ Imported by: profiler ]]
+local UILayout = require("Profiler.ui_layout")
+local UIRender = require("Profiler.ui_render")
 
 -- Module declaration
 local UIBody = {}
@@ -305,229 +307,137 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 		frameTime = 0.015
 	end
 
-	-- PRIMARY GRID: Tick/Frame boundaries (bold lines)
-	-- Only draw if spacing is at least 3px (avoid dense lines when zoomed out)
+	-- PRIMARY GRID: Tick/Frame boundaries (bold lines with T/F labels)
 	local framePixelSpacing = frameTime * TIME_SCALE * boardZoom
 	local shouldDrawFrameBoundaries = framePixelSpacing >= 3
 
-	-- Use RecordingStartTime as consistent reference for frame alignment
-	-- This ensures grid stays aligned with actual work regardless of viewport
-	local recordingStart = Shared.RecordingStartTime or dataStartTime
-	local tickStart = math.floor(recordingStart / frameTime) * frameTime
+	-- dataStartTime is already aligned to first frame boundary by caller
+	local tickStart = dataStartTime
 
 	if shouldDrawFrameBoundaries then
 		local tickTime = tickStart
-		local tickCount = 0
-		local lastDrawnX = -1000 -- Track last drawn position to avoid overlap
+		local tickIndex = 0
+		local lastDrawnX = -1000
 
-		while tickTime <= dataEndTime + frameTime and tickCount < 1000 do
-			-- Only draw if time >= dataStartTime (no negative time)
-			if tickTime >= dataStartTime then
-				local boardX = timeToBoardX(tickTime, dataStartTime)
-				local screenX, _ = boardToScreen(boardX, 0)
-				local intScreenX = math.floor(screenX + 0.5)
+		while tickTime <= dataEndTime + frameTime and tickIndex < 1000 do
+			local boardX = timeToBoardX(tickTime, dataStartTime)
+			local screenX, _ = boardToScreen(boardX, 0)
+			local intScreenX = math.floor(screenX + 0.5)
 
-				-- Only draw if on screen and not too close to last line
-				if screenX >= -10 and screenX <= screenW + 10 and (intScreenX - lastDrawnX) >= 2 then
-					-- Bold tick/frame boundary line
-					draw.Color(150, 150, 200, 255)
-					draw.Line(intScreenX, topBarHeight, intScreenX, topBarHeight + RULER_HEIGHT)
+			-- Only draw if on screen and not too close to last line
+			if screenX >= -10 and screenX <= screenW + 10 and (intScreenX - lastDrawnX) >= 2 then
+				-- Bold tick/frame boundary line
+				draw.Color(150, 150, 200, 255)
+				draw.Line(intScreenX, topBarHeight, intScreenX, topBarHeight + RULER_HEIGHT)
 
-					-- Extend through content area (frame boundary)
-					draw.Color(100, 100, 150, 80)
-					draw.Line(intScreenX, topBarHeight + RULER_HEIGHT, intScreenX, screenH)
+				-- Extend through content area
+				draw.Color(100, 100, 150, 80)
+				draw.Line(intScreenX, topBarHeight + RULER_HEIGHT, intScreenX, screenH)
 
-					-- Label tick/frame number (only if spacing is wide enough)
-					if framePixelSpacing >= 25 then
-						local label
-						if mode == "tick" then
-							local tickNum = math.floor((tickTime - dataStartTime) / frameTime)
-							label = string.format("T%d", tickNum)
-						else
-							local frameNum = math.floor((tickTime - dataStartTime) / frameTime)
-							label = string.format("F%d", frameNum)
-						end
-						draw.Color(200, 200, 255, 255)
-						draw.Text(intScreenX + 2, topBarHeight + 2, label)
+				-- Label with T# or F# (always show, based on tick index from start)
+				if framePixelSpacing >= 25 then
+					local label
+					if mode == "tick" then
+						label = string.format("T%d", tickIndex)
+					else
+						label = string.format("F%d", tickIndex)
 					end
-
-					lastDrawnX = intScreenX
+					draw.Color(200, 200, 255, 255)
+					draw.Text(intScreenX + 2, topBarHeight + 2, label)
 				end
+
+				lastDrawnX = intScreenX
 			end
 
 			tickTime = tickTime + frameTime
-			tickCount = tickCount + 1
+			tickIndex = tickIndex + 1
 		end
 	end
 
-	-- SECONDARY GRID: Procedural fractal subdivisions
-	-- Generate intervals dynamically based on current zoom level
-	-- Target: lines spaced 20-80px apart for readability
+	-- SECONDARY GRID: Time subdivisions with CLEAN distinct labels
+	-- Show absolute time from recording start (never duplicates)
 
-	local minPixelSpacing = 20
-	local maxPixelSpacing = 80
-	local minInterval = 0.0001 -- 100µs (RealTime precision limit)
+	local minPixelSpacing = 40 -- Wider spacing for cleaner labels
+	local minInterval = 0.0001 -- 100µs minimum
 
-	-- Calculate ideal interval for current zoom
-	local targetPixelSpacing = 40
-	local baseInterval = targetPixelSpacing / (TIME_SCALE * boardZoom)
+	-- Pick ONE best interval based on zoom
+	local targetPixelSpacing = 60
+	local bestInterval = minInterval
+	local base = minInterval
 
-	-- Round to nice numbers (1, 2, 5 pattern)
-	-- Extended range for extreme zoom levels: 10ns to 10s
-	local magnitudes = {
-		0.00000001, -- 10ns
-		0.00000002, -- 20ns
-		0.00000005, -- 50ns
-		0.0000001, -- 100ns
-		0.0000002, -- 200ns
-		0.0000005, -- 500ns
-		0.000001, -- 1µs
-		0.000002, -- 2µs
-		0.000005, -- 5µs
-		0.00001, -- 10µs
-		0.00002, -- 20µs
-		0.00005, -- 50µs
-		0.0001, -- 100µs (RealTime limit, but useful at high zoom)
-		0.0002, -- 200µs
-		0.0005, -- 500µs
-		0.001, -- 1ms
-		0.002, -- 2ms
-		0.005, -- 5ms
-		0.01, -- 10ms
-		0.02, -- 20ms
-		0.05, -- 50ms
-		0.1, -- 100ms
-		0.2, -- 200ms
-		0.5, -- 500ms
-		1.0, -- 1s
-		2.0, -- 2s
-		5.0, -- 5s
-		10.0, -- 10s
-	}
-	local niceIntervals = {}
-
-	for _, mag in ipairs(magnitudes) do
-		local pixelSpacing = mag * TIME_SCALE * boardZoom
-		-- Keep intervals that give readable spacing (20-160px)
-		if pixelSpacing >= minPixelSpacing and pixelSpacing <= maxPixelSpacing * 2 then
-			table.insert(niceIntervals, { interval = mag, pixels = pixelSpacing })
-		end
-	end
-
-	-- If no intervals fit (shouldn't happen now), use best available
-	if #niceIntervals == 0 then
-		-- Find closest interval to target spacing
-		local targetSpacing = 50
-		local bestMag = magnitudes[1]
-		local bestDiff = math.huge
-		for _, mag in ipairs(magnitudes) do
-			local spacing = mag * TIME_SCALE * boardZoom
-			local diff = math.abs(spacing - targetSpacing)
-			if diff < bestDiff then
-				bestDiff = diff
-				bestMag = mag
+	while base < 10.0 do
+		for _, scale in ipairs({ 1, 2, 5 }) do
+			local mag = base * scale
+			local pixelSpacing = mag * TIME_SCALE * boardZoom
+			if pixelSpacing >= minPixelSpacing and pixelSpacing <= 120 then
+				if
+					math.abs(pixelSpacing - targetPixelSpacing)
+					< math.abs(bestInterval * TIME_SCALE * boardZoom - targetPixelSpacing)
+				then
+					bestInterval = mag
+				end
 			end
 		end
-		local pixelSpacing = bestMag * TIME_SCALE * boardZoom
-		table.insert(niceIntervals, { interval = bestMag, pixels = pixelSpacing })
+		base = base * 10
 	end
 
-	-- Draw all suitable intervals with varying opacity
-	-- Track last label position to prevent overlap
-	local lastLabelEndX = -1000
+	local interval = bestInterval
+	local pixelsPerInterval = interval * TIME_SCALE * boardZoom
 
-	for _, data in ipairs(niceIntervals) do
-		local interval = data.interval
-		local pixelsPerInterval = data.pixels
+	-- Only draw if spacing is reasonable
+	if pixelsPerInterval >= minPixelSpacing then
+		-- Start from first interval mark at or after dataStartTime
+		local firstMark = math.ceil(dataStartTime / interval) * interval
+		local time = firstMark
+		local lastLabelEndX = -1000
 
-		-- Calculate alpha based on spacing
-		local alpha = 30
-		if pixelsPerInterval > 100 then
-			alpha = 150
-		elseif pixelsPerInterval > 60 then
-			alpha = 100
-		elseif pixelsPerInterval > 30 then
-			alpha = 60
-		end
+		while time <= dataEndTime and time - dataStartTime < 100.0 do
+			local boardX = timeToBoardX(time, dataStartTime)
+			local screenX, _ = boardToScreen(boardX, 0)
 
-		-- Draw marks starting from first visible tick boundary
-		local currentTickBoundary = tickStart
-		while currentTickBoundary < dataStartTime do
-			currentTickBoundary = currentTickBoundary + frameTime
-		end
+			if screenX >= -10 and screenX <= screenW + 10 then
+				local intScreenX = math.floor(screenX + 0.5)
 
-		-- For each visible tick, draw interval marks within it
-		local tickIndex = 0
-		while currentTickBoundary <= dataEndTime + frameTime and tickIndex < 100 do
-			-- Draw marks at: tick + (0, interval, 2*interval, 3*interval...)
-			local markIndex = 0
-			local time = currentTickBoundary
+				-- Subdivision line
+				draw.Color(100, 100, 100, 120)
+				draw.Line(intScreenX, topBarHeight, intScreenX, topBarHeight + RULER_HEIGHT)
+				draw.Color(80, 80, 80, 30)
+				draw.Line(intScreenX, topBarHeight + RULER_HEIGHT, intScreenX, screenH)
 
-			while time < currentTickBoundary + frameTime and markIndex < 1000 do
-				-- Only draw if time is visible
-				if time >= dataStartTime and time <= dataEndTime then
-					local boardX = timeToBoardX(time, dataStartTime)
-					local screenX, _ = boardToScreen(boardX, 0)
+				-- ABSOLUTE time from recording start (distinct values)
+				local absoluteTime = time - dataStartTime
+				local label
 
-					-- Only draw if within screen bounds with margin
-					if screenX >= -50 and screenX <= screenW + 50 then
-						local intScreenX = math.floor(screenX + 0.5)
+				-- Clean distinct intervals: 1,2,3 or 10,20,30 or 100,200,300
+				local timeInMs = absoluteTime * 1000
+				local timeInUs = absoluteTime * 1000000
 
-						-- Fine subdivision line
-						draw.Color(100, 100, 100, alpha)
-						draw.Line(intScreenX, topBarHeight, intScreenX, topBarHeight + RULER_HEIGHT)
-						draw.Color(80, 80, 80, math.floor(alpha * 0.2))
-						draw.Line(intScreenX, topBarHeight + RULER_HEIGHT, intScreenX, screenH)
-
-						-- Show time relative to current tick boundary
-						local relativeTime = time - currentTickBoundary
-
-						-- Smart unit selection based on interval spacing
-						-- NOTE: Don't go below µs (1µs is maximum timer accuracy)
-						local label
-						local timeInMs = relativeTime * 1000
-						local timeInUs = relativeTime * 1000000
-
-						-- Choose unit based on interval size for clean display
-						if interval >= 0.01 then
-							-- >= 10ms intervals: show as milliseconds
-							if timeInMs >= 10 then
-								label = string.format("%dms", math.floor(timeInMs + 0.5))
-							else
-								label = string.format("%.1fms", timeInMs)
-							end
-						else
-							-- < 10ms: show as microseconds (smallest unit, 1µs = max accuracy)
-							if timeInUs >= 100 then
-								label = string.format("%dµs", math.floor(timeInUs + 0.5))
-							else
-								label = string.format("%.1fµs", timeInUs)
-							end
-						end
-
-						-- Stable label placement: only skip if would overlap on screen
-						local textWidth = #label * 7 + 10
-						local textX = intScreenX + 2
-
-						if
-							screenX >= 10
-							and screenX <= screenW - textWidth - 10
-							and textX >= lastLabelEndX + 10
-							and alpha >= 60
-						then
-							draw.Color(150, 150, 150, 200)
-							draw.Text(textX, topBarHeight + 15, label)
-							lastLabelEndX = textX + textWidth
-						end
+				if interval >= 0.01 then
+					-- Milliseconds: show whole numbers when >= 10ms
+					if timeInMs >= 10 then
+						label = string.format("%dms", math.floor(timeInMs + 0.5))
+					else
+						label = string.format("%.1fms", timeInMs)
+					end
+				else
+					-- Microseconds: show whole numbers when >= 10µs
+					if timeInUs >= 10 then
+						label = string.format("%dµs", math.floor(timeInUs + 0.5))
+					else
+						label = string.format("%.1fµs", timeInUs)
 					end
 				end
 
-				time = time + interval
-				markIndex = markIndex + 1
+				-- Draw label if not overlapping
+				local estimatedWidth = #label * 7 + 10
+				if (intScreenX - lastLabelEndX) > estimatedWidth then
+					draw.Color(180, 180, 200, 220)
+					draw.Text(intScreenX + 2, topBarHeight + 15, label)
+					lastLabelEndX = intScreenX + estimatedWidth
+				end
 			end
 
-			currentTickBoundary = currentTickBoundary + frameTime
-			tickIndex = tickIndex + 1
+			time = time + interval
 		end
 	end
 end
@@ -565,12 +475,10 @@ local function handleBoardInput(screenW, screenH, topBarHeight)
 		local newOffsetX = boardOffsetX - (deltaX / boardZoom)
 		local newOffsetY = boardOffsetY - (deltaY / boardZoom)
 
-		-- No Y scrolling - lock Y offset to 0
-		newOffsetY = 0
+		-- Clamp Y offset - prevent scrolling zones above screen top
+		-- Minimum Y offset is 0 (zones start at topBarHeight)
+		newOffsetY = math.max(0, newOffsetY)
 
-		-- No horizontal clamping - allow moving left/right freely
-
-		-- Apply clamped offsets
 		boardOffsetX = newOffsetX
 		boardOffsetY = newOffsetY
 
@@ -609,15 +517,14 @@ local function handleBoardInput(screenW, screenH, topBarHeight)
 			local mouseBoardX = (mx / oldZoom) + boardOffsetX
 			local mouseBoardY = (bodyMy / oldZoom) + boardOffsetY
 
-			-- No Y scrolling - lock Y offset to 0
-			local newOffsetY = 0
-
-			-- Adjust offset so the same board point stays under the mouse cursor
+			-- Adjust offsets so the same board point stays under the mouse cursor
 			local newOffsetX = mouseBoardX - (mx / boardZoom)
+			local newOffsetY = mouseBoardY - (bodyMy / boardZoom)
 
-			-- No horizontal clamping - allow moving left/right freely
+			-- Clamp Y offset - prevent scrolling zones above screen top
+			newOffsetY = math.max(0, newOffsetY)
 
-			-- Apply clamped offsets
+			-- Apply offsets
 			boardOffsetX = newOffsetX
 			boardOffsetY = newOffsetY
 		end
@@ -652,16 +559,13 @@ function UIBody.Draw(profilerData, topBarHeight)
 		return
 	end
 
-	-- Store topBarHeight for use in boardToScreen
-	currentTopBarHeight = topBarHeight or 60
-
 	local screenW, screenH = draw.GetScreenSize()
 
 	-- Draw background
 	draw.Color(20, 20, 20, 240)
 	draw.FilledRect(0, topBarHeight, screenW, screenH)
 
-	-- Calculate time bounds from all data
+	-- Calculate time bounds
 	local dataStartTime = math.huge
 	local dataEndTime = -math.huge
 
@@ -678,7 +582,7 @@ function UIBody.Draw(profilerData, topBarHeight)
 		end
 	end
 
-	-- Fallback if no data
+	-- Fallback
 	if dataStartTime == math.huge then
 		if globals and globals.RealTime then
 			dataStartTime = globals.RealTime() - 5
@@ -689,39 +593,68 @@ function UIBody.Draw(profilerData, topBarHeight)
 		end
 	end
 
-	-- Draw time ruler (includes frame/tick boundaries and ms subdivisions)
-	drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, dataEndTime)
-
-	-- Start drawing on virtual board (FIXED position below ruler, not zoom-scaled)
-	-- Content always starts at screenY = topBarHeight + RULER_HEIGHT
-	-- In board coordinates, this means boardY = boardOffsetY + (RULER_HEIGHT / boardZoom)
-	local boardY = 0 -- Board Y position for first script
-
-	-- Draw each script's functions on the board
-	if profilerData.scriptTimelines then
-		for scriptName, scriptData in pairs(profilerData.scriptTimelines) do
-			if scriptData.functions and #scriptData.functions > 0 then
-				boardY = drawScriptOnBoard(
-					scriptName,
-					scriptData.functions,
-					boardY,
-					dataStartTime,
-					dataEndTime,
-					screenW,
-					screenH
-				)
-			end
-		end
+	-- Get frame time
+	local frameTime = (globals and globals.FrameTime and globals.FrameTime()) or 0.015
+	if frameTime <= 0 then
+		frameTime = 0.015
 	end
 
-	-- Draw info overlay
+	-- Align to recording start
+	local recordingStart = Shared.RecordingStartTime or dataStartTime
+	if dataStartTime < recordingStart then
+		dataStartTime = recordingStart
+	end
+
+	local alignedOrigin = math.ceil(dataStartTime / frameTime) * frameTime
+
+	-- Create dual-zone layout
+	local layout = UILayout.CreateLayout(profilerData, topBarHeight, screenH)
+
+	-- Draw tick zone
+	if layout.tickZone then
+		UIRender.DrawZone(
+			layout.tickZone,
+			"tick",
+			0,
+			layout.tickZone.startY,
+			screenW,
+			screenH,
+			alignedOrigin,
+			dataEndTime,
+			frameTime,
+			boardZoom,
+			boardOffsetX,
+			boardOffsetY
+		)
+	end
+
+	-- Draw frame zone
+	if layout.frameZone then
+		UIRender.DrawZone(
+			layout.frameZone,
+			"frame",
+			0,
+			layout.frameZone.startY,
+			screenW,
+			screenH,
+			alignedOrigin,
+			dataEndTime,
+			frameTime,
+			boardZoom,
+			boardOffsetX,
+			boardOffsetY
+		)
+	end
+
+	-- Debug info
 	draw.Color(255, 255, 255, 255)
-	draw.Text(10, screenH - 95, string.format("Board Zoom: %.2fx", boardZoom))
-	draw.Text(10, screenH - 80, string.format("Board Offset: X=%.0f Y=%.0f", boardOffsetX, boardOffsetY))
-	draw.Text(10, screenH - 65, string.format("Time Range: %.3fs - %.3fs", dataStartTime, dataEndTime))
-	draw.Text(10, screenH - 50, string.format("Time Scale: %.1f px/s", TIME_SCALE))
-	draw.Text(10, screenH - 35, "Drag=Move Board, Q=Zoom In, E=Zoom Out")
-	draw.Text(10, screenH - 20, string.format("Dragging: %s", tostring(isDragging)))
+	draw.Text(
+		10,
+		screenH - 65,
+		string.format("Zoom: %.2fx | Offset: X=%.0f Y=%.0f", boardZoom, boardOffsetX, boardOffsetY)
+	)
+	draw.Text(10, screenH - 50, "Drag=Pan (X+Y) | Q=Zoom In | E=Zoom Out")
+	draw.Text(10, screenH - 35, string.format("Time: %.3fs - %.3fs", alignedOrigin, dataEndTime))
 
 	-- Handle input
 	handleBoardInput(screenW, screenH, topBarHeight)

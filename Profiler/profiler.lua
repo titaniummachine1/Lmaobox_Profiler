@@ -112,7 +112,7 @@ function ProfilerCore.Begin(name)
 	MicroProfiler.BeginCustomThread(name)
 end
 
-function ProfilerCore.End()
+function ProfilerCore.End(name)
 	if not isVisible then
 		return
 	end
@@ -123,16 +123,25 @@ function ProfilerCore.End()
 	if UITop.IsPaused() then
 		return -- Don't end manual profiling when paused
 	end
-	MicroProfiler.EndCustomThread()
+
+	-- Require name to match Begin
+	if not name or name == "" then
+		print("❌ Profiler.End(): name is required and must match Begin(name)")
+		return
+	end
+
+	MicroProfiler.EndCustomThread(name)
 end
 
 -- Legacy API support (keeping for compatibility)
 function ProfilerCore.StartSystem(name)
-	ProfilerCore.Begin("System: " .. name)
+	local scopeName = "System: " .. name
+	ProfilerCore.Begin(scopeName)
 end
 
 function ProfilerCore.EndSystem(name)
-	ProfilerCore.End()
+	local scopeName = "System: " .. name
+	ProfilerCore.End(scopeName)
 end
 
 function ProfilerCore.StartComponent(name)
@@ -140,16 +149,18 @@ function ProfilerCore.StartComponent(name)
 end
 
 function ProfilerCore.EndComponent(name)
-	ProfilerCore.End()
+	ProfilerCore.End(name)
 end
 
 -- Simplified system API
 function ProfilerCore.BeginSystem(name)
-	ProfilerCore.Begin("System: " .. name)
+	local scopeName = "System: " .. name
+	ProfilerCore.Begin(scopeName)
 end
 
-function ProfilerCore.StopSystem()
-	ProfilerCore.End()
+function ProfilerCore.StopSystem(name)
+	local scopeName = "System: " .. name
+	ProfilerCore.End(scopeName)
 end
 
 -- New minimalist API
@@ -157,8 +168,8 @@ function ProfilerCore.Start(name)
 	ProfilerCore.Begin(name)
 end
 
-function ProfilerCore.Finish()
-	ProfilerCore.End()
+function ProfilerCore.Finish(name)
+	ProfilerCore.End(name)
 end
 
 -- Pause/Resume controls

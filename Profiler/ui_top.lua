@@ -403,11 +403,7 @@ local function handleInput(screenW, buttonX, pauseY, bindY)
 						and my <= region.y + region.h
 					then
 						selectedFrameIndex = i
-						-- Center body timeline on this frame timestamp
-						local UIBody = require("Profiler.ui_body")
-						if UIBody and UIBody.CenterOnTimestamp then
-							UIBody.CenterOnTimestamp(frame.timestamp)
-						end
+						-- Frame selected (timeline centering removed - not implemented)
 						break
 					end
 				end

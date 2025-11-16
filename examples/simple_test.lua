@@ -29,13 +29,13 @@ local function simulatePhysics(now)
 		local t = now + i * 0.002
 		total = total + math.sin(t) * math.cos(t * 0.5)
 	end
-	Profiler.End()
+	Profiler.End("Physics.Integration")
 
 	Profiler.Begin("Physics.ContactSolve")
 	for i = 1, 45 do
 		total = total + math.sin(now + i * 0.01) * 0.25
 	end
-	Profiler.End()
+	Profiler.End("Physics.ContactSolve")
 
 	runtimeState.metrics.physics = total
 end
@@ -48,13 +48,13 @@ local function simulateNetwork(now)
 		local jitter = math.sin(now * i) * 0.3
 		checksum = checksum + (i * 17) + jitter
 	end
-	Profiler.End()
+	Profiler.End("Network.PollLoop")
 
 	Profiler.Begin("Network.DecodeSmall")
 	for i = 1, 4 do
 		checksum = checksum + math.cos(now * i) * 0.1
 	end
-	Profiler.End()
+	Profiler.End("Network.DecodeSmall")
 
 	runtimeState.metrics.network = checksum
 end
@@ -65,14 +65,14 @@ local function simulateUI(now)
 	for i = 1, 6 do
 		text[i] = string.format("UI_%d_%.2f", i, now + i * 0.1)
 	end
-	Profiler.End()
+	Profiler.End("UI.Layout")
 
 	Profiler.Begin("UI.Animations")
 	local anim = 0
 	for i = 1, 20 do
 		anim = anim + math.sin(now + i * 0.05) * 0.25
 	end
-	Profiler.End()
+	Profiler.End("UI.Animations")
 
 	runtimeState.metrics.ui = #table.concat(text, "|")
 end
@@ -85,7 +85,7 @@ local runtimeTasks = {
 		fn = function(now)
 			Profiler.Begin("Physics.Step")
 			simulatePhysics(now)
-			Profiler.End()
+			Profiler.End("Physics.Step")
 		end,
 	},
 	{
@@ -95,7 +95,7 @@ local runtimeTasks = {
 		fn = function(now)
 			Profiler.Begin("Network.Poll")
 			simulateNetwork(now)
-			Profiler.End()
+			Profiler.End("Network.Poll")
 		end,
 	},
 	{
@@ -105,7 +105,7 @@ local runtimeTasks = {
 		fn = function(now)
 			Profiler.Begin("UI.Update")
 			simulateUI(now)
-			Profiler.End()
+			Profiler.End("UI.Update")
 		end,
 	},
 }
@@ -119,7 +119,7 @@ local function processTasks()
 			task.fn(now)
 		end
 	end
-	Profiler.End()
+	Profiler.End("Runtime.Tick")
 end
 
 local function runManualSpike()
@@ -128,7 +128,7 @@ local function runManualSpike()
 	for i = 1, 200 do
 		total = total + math.sqrt(i * globals.FrameTime())
 	end
-	Profiler.End()
+	Profiler.End("ManualSpike")
 	return total
 end
 
@@ -136,7 +136,7 @@ local function drawHud()
 	Profiler.Begin("HUD.Update")
 	local now = globals.RealTime()
 	if now - runtimeState.lastHUDUpdate < 0.25 then
-		Profiler.End()
+		Profiler.End("HUD.Update")
 		return
 	end
 	runtimeState.lastHUDUpdate = now
@@ -148,7 +148,7 @@ local function drawHud()
 			runtimeState.metrics.ui
 		)
 	)
-	Profiler.End()
+	Profiler.End("HUD.Update")
 end
 
 callbacks.Register("CreateMove", SCRIPT_TAG .. "_move", function(cmd)
@@ -159,7 +159,7 @@ callbacks.Register("CreateMove", SCRIPT_TAG .. "_move", function(cmd)
 		local spike = runManualSpike()
 		print(string.format(" Manual spike sample: %.2f", spike))
 	end
-	Profiler.End()
+	Profiler.End("CreateMove")
 end)
 
 callbacks.Register("Draw", SCRIPT_TAG .. "_draw", function()
@@ -167,12 +167,43 @@ callbacks.Register("Draw", SCRIPT_TAG .. "_draw", function()
 	processTasks()
 	drawHud()
 	Profiler.Draw()
-	Profiler.End()
+	Profiler.End("DrawLoop")
 end)
 
 callbacks.Register("Unload", SCRIPT_TAG .. "_unload", function()
 	print(" Unloading microprofiler simple test")
 	_G.SIMPLE_PROFILER_TEST_LOADED = false
+end)
+
+-- Add overlapping concurrent work to test vertical stacking
+callbacks.Register("Draw", "ProfilerConcurrentTest", function()
+	if not _G.SIMPLE_PROFILER_TEST_LOADED then
+		return
+	end
+
+	-- Simulate 3 overlapping processes running concurrently (same frame)
+	Profiler.Begin("Physics.Update")
+	for i = 1, 1000 do
+	end -- Simulate work
+	Profiler.End("Physics.Update")
+
+	-- Start second process (overlaps with third in time)
+	Profiler.Begin("Network.Send")
+	for i = 1, 1500 do
+	end -- Simulate work
+	Profiler.End("Network.Send")
+
+	-- Start third process
+	Profiler.Begin("Audio.Process")
+	for i = 1, 750 do
+	end -- Simulate work
+	Profiler.End("Audio.Process")
+
+	-- Fourth process
+	Profiler.Begin("UI.Update")
+	for i = 1, 500 do
+	end -- Simulate work
+	Profiler.End("UI.Update")
 end)
 
 print(" Microprofiler simple runtime test loaded!")

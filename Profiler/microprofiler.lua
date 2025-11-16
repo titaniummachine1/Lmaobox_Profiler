@@ -29,7 +29,7 @@ local autoHookDesired = false
 
 -- Performance limits (MINIMAL for performance)
 local MAX_RECORD_TIME = 5.0 -- Keep records for 5 seconds max (as requested)
-local MAX_TIMELINE_SIZE = 50 -- Increase limit to show more functions
+local MAX_TIMELINE_SIZE = 66 -- Show last 66 frames/ticks (sliding window)
 local MAX_CUSTOM_THREADS = 10 -- Increase custom threads limit
 local CLEANUP_INTERVAL = 1.0 -- Clean up every 1 second
 
@@ -40,7 +40,7 @@ isPaused = isPaused or false -- Add pause state
 callStack = callStack or {}
 mainTimeline = mainTimeline or {}
 customThreads = customThreads or {}
-activeCustomStack = activeCustomStack or {}
+activeNamedScopes = activeNamedScopes or {} -- Map: { [name] = { stack of threads } }
 lastCleanupTime = lastCleanupTime or 0
 
 -- Script-separated timelines for better organization
@@ -398,23 +398,27 @@ local function profileHook(event)
 			end
 		end
 
-		-- Copy to active custom threads if within their timeframe
-		for _, thread in ipairs(activeCustomStack) do
-			if record.startTime >= thread.startTime and (not thread.endTime or record.endTime <= thread.endTime) then
-				-- Create a copy for the custom thread (only if thread isn't full)
-				if #thread.children < 100 then -- Limit children per thread
-					local copy = {
-						key = record.key,
-						name = record.name,
-						source = record.source,
-						line = record.line,
-						startTime = record.startTime,
-						endTime = record.endTime,
-						duration = record.duration,
-						memDelta = record.memDelta,
-						children = record.children, -- Shallow copy of children
-					}
-					table.insert(thread.children, copy)
+		-- Copy to active named scopes if within their timeframe
+		for scopeName, scopeStack in pairs(activeNamedScopes) do
+			for _, thread in ipairs(scopeStack) do
+				if
+					record.startTime >= thread.startTime and (not thread.endTime or record.endTime <= thread.endTime)
+				then
+					-- Create a copy for the custom thread (only if thread isn't full)
+					if #thread.children < 100 then -- Limit children per thread
+						local copy = {
+							key = record.key,
+							name = record.name,
+							source = record.source,
+							line = record.line,
+							startTime = record.startTime,
+							endTime = record.endTime,
+							duration = record.duration,
+							memDelta = record.memDelta,
+							children = record.children, -- Shallow copy of children
+						}
+						table.insert(thread.children, copy)
+					end
 				end
 			end
 		end
@@ -529,7 +533,7 @@ function MicroProfiler.IsPaused()
 	return isPaused
 end
 
--- Manual profiling for custom threads (with API guards)
+-- Manual profiling for custom threads (with API guards and named scope tracking)
 function MicroProfiler.BeginCustomThread(name)
 	if not isEnabled or inProfilerAPI or isPaused then
 		return
@@ -537,6 +541,12 @@ function MicroProfiler.BeginCustomThread(name)
 
 	-- DOUBLE CHECK: Make sure we're really not paused
 	if isPaused then
+		return
+	end
+
+	-- Validate name
+	if not name or name == "" then
+		print("❌ BeginCustomThread: name is required")
 		return
 	end
 
@@ -552,21 +562,29 @@ function MicroProfiler.BeginCustomThread(name)
 		end
 		local source = info.source or ""
 		-- Extract script name from source path
-		local name = source:match("\\([^\\]-)$") or source:match("/([^/]-)$") or source
-		if name:match("%.lua$") then
-			name = name:gsub("%.lua$", "")
+		local fileName = source:match("\\([^\\]-)$") or source:match("/([^/]-)$") or source
+		if fileName:match("%.lua$") then
+			fileName = fileName:gsub("%.lua$", "")
 		end
 		-- Skip profiler internals, use first user script we find
-		if name ~= "Profiler" and name ~= "" and name ~= "[C]" and name ~= "[string]" then
-			scriptName = name
+		if fileName ~= "Profiler" and fileName ~= "" and fileName ~= "[C]" and fileName ~= "[string]" then
+			scriptName = fileName
 			break
 		end
 	end
+
+	-- Capture tick/frame context at Begin
+	local currentTickCount = (globals and globals.TickCount and globals.TickCount()) or 0
+	local currentFrameCount = (globals and globals.FrameCount and globals.FrameCount()) or 0
+	local measurementMode = Shared.MeasurementMode or "frame"
 
 	local thread = {
 		name = name,
 		scriptName = scriptName,
 		startTime = globals.RealTime(),
+		tickCount = currentTickCount,
+		frameCount = currentFrameCount,
+		measurementMode = measurementMode,
 		memStart = getMemory(),
 		endTime = nil,
 		memDelta = 0,
@@ -575,24 +593,27 @@ function MicroProfiler.BeginCustomThread(name)
 		type = "custom",
 	}
 
+	-- Add to customThreads for cleanup tracking
 	table.insert(customThreads, thread)
-	table.insert(activeCustomStack, thread)
 
 	-- Limit custom threads more aggressively
 	while #customThreads > MAX_CUSTOM_THREADS do
 		table.remove(customThreads, 1)
 	end
 
-	-- Clean up if we have too many active threads
-	if #activeCustomStack > 10 then
-		table.remove(activeCustomStack, 1)
+	-- Initialize stack for this name if needed
+	if not activeNamedScopes[name] then
+		activeNamedScopes[name] = {}
 	end
+
+	-- Push thread onto named scope stack
+	table.insert(activeNamedScopes[name], thread)
 
 	-- Clear API guard
 	inProfilerAPI = false
 end
 
-function MicroProfiler.EndCustomThread()
+function MicroProfiler.EndCustomThread(name)
 	if not isEnabled or inProfilerAPI or isPaused then
 		return
 	end
@@ -602,14 +623,29 @@ function MicroProfiler.EndCustomThread()
 		return
 	end
 
+	-- Validate name
+	if not name or name == "" then
+		print("❌ EndCustomThread: name is required")
+		return
+	end
+
 	-- Set API guard to prevent recursion
 	inProfilerAPI = true
 
-	local thread = table.remove(activeCustomStack)
-	if not thread then
-		print("❌ EndCustomThread called but no active thread!")
+	-- Get the stack for this name
+	local scopeStack = activeNamedScopes[name]
+	if not scopeStack or #scopeStack == 0 then
+		print(string.format("❌ EndCustomThread('%s'): No matching Begin found!", name))
 		inProfilerAPI = false
 		return
+	end
+
+	-- Pop thread from named scope stack
+	local thread = table.remove(scopeStack)
+
+	-- Clean up empty scope stacks
+	if #scopeStack == 0 then
+		activeNamedScopes[name] = nil
 	end
 
 	thread.endTime = globals.RealTime()
@@ -631,31 +667,48 @@ function MicroProfiler.EndCustomThread()
 		endTime = thread.endTime,
 		duration = thread.duration,
 		memDelta = thread.memDelta,
+		tickCount = thread.tickCount,
+		frameCount = thread.frameCount,
+		measurementMode = thread.measurementMode,
 		children = thread.children,
 	}
 
-	local parentThread = activeCustomStack[#activeCustomStack]
-	if parentThread then
-		parentThread.children = parentThread.children or {}
-		table.insert(parentThread.children, threadRecord)
-	else
+	-- Check if this thread belongs to a parent scope (any active scope)
+	local hasParent = false
+	for parentName, parentStack in pairs(activeNamedScopes) do
+		if #parentStack > 0 then
+			local parentThread = parentStack[#parentStack]
+			-- If parent started before this thread, add as child
+			if parentThread.startTime < thread.startTime then
+				parentThread.children = parentThread.children or {}
+				table.insert(parentThread.children, threadRecord)
+				hasParent = true
+				break
+			end
+		end
+	end
+
+	-- If no parent, add to main timeline
+	if not hasParent then
 		table.insert(mainTimeline, threadRecord)
 		if #mainTimeline > MAX_TIMELINE_SIZE then
 			table.remove(mainTimeline, 1)
 		end
 
-		-- Add to script-specific timeline so UI can display it
-		local scriptName = thread.scriptName or "Manual Thread"
-		if not scriptTimelines[scriptName] then
-			scriptTimelines[scriptName] = {
-				name = scriptName,
+		-- Organize by PROCESS (extracted from work name), not by script
+		-- Extract process from work name: "Physics.Step" -> "Physics", "Network.Poll" -> "Network"
+		local processName = thread.name:match("^([^%.]+)") or thread.name or "Other"
+
+		if not scriptTimelines[processName] then
+			scriptTimelines[processName] = {
+				name = processName,
 				functions = {},
-				type = "script",
+				type = "process",
 			}
 		end
-		table.insert(scriptTimelines[scriptName].functions, threadRecord)
-		if #scriptTimelines[scriptName].functions > MAX_TIMELINE_SIZE then
-			table.remove(scriptTimelines[scriptName].functions, 1)
+		table.insert(scriptTimelines[processName].functions, threadRecord)
+		if #scriptTimelines[processName].functions > MAX_TIMELINE_SIZE then
+			table.remove(scriptTimelines[processName].functions, 1)
 		end
 	end
 
@@ -696,7 +749,7 @@ end
 function MicroProfiler.ClearData()
 	mainTimeline = {}
 	customThreads = {}
-	activeCustomStack = {}
+	activeNamedScopes = {}
 	callStack = {}
 	scriptTimelines = {}
 end
@@ -716,7 +769,13 @@ end
 function MicroProfiler.GetStats()
 	local totalFunctions = #mainTimeline
 	local totalCustomThreads = #customThreads
-	local activeCustoms = #activeCustomStack
+
+	-- Count active scopes across all named scopes
+	local activeCustoms = 0
+	for scopeName, scopeStack in pairs(activeNamedScopes) do
+		activeCustoms = activeCustoms + #scopeStack
+	end
+
 	local callStackDepth = #callStack
 
 	-- Calculate total time covered

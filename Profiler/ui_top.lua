@@ -8,12 +8,7 @@
 local Shared = require("Profiler.Shared") --[[ Imported by: profiler ]]
 local config = require("Profiler.config")
 
--- Safely require external globals library (provides RealTime, FrameTime)
-local globals = nil -- External globals library (RealTime, FrameTime)
-local ok, globalsModule = pcall(require, "globals")
-if ok then
-	globals = globalsModule
-end
+-- globals is a global table provided by the environment (RealTime, TickInterval, etc.)
 
 -- Module declaration
 local UITop = {}
@@ -27,12 +22,13 @@ local BUTTON_SPACING = 3
 local MAX_FRAMES = 150 -- Reduced frame storage
 
 -- Global variables for retained mode (not local)
-frames = frames or {} -- { dt = frameTime, timestamp = realTime }
+frames = frames or {} -- { dt = tickInterval, timestamp = realTime }
 selectedFrameIndex = selectedFrameIndex or nil
 isPaused = isPaused or false
 isCapturingKey = isCapturingKey or false
 bodyKey = bodyKey or nil
 totalRecordedTime = totalRecordedTime or 0
+local lastFrameTimestamp = 0
 
 -- Key constants with fallbacks (Lua 5.4 compatible)
 local KEY_P = KEY_P or 26
@@ -91,7 +87,7 @@ local function initializeFont()
 	end
 end
 
--- Remove these functions - use globals.RealTime() and globals.FrameTime() directly
+-- Remove these functions - use globals.RealTime() and globals.TickInterval() directly
 
 local function clamp(value, min, max)
 	if value < min then
@@ -185,16 +181,17 @@ local function updateFrameRecording()
 		return
 	end
 
-	local dt = 0
-	local timestamp = 0
-	if globals then
-		if globals.FrameTime then
-			dt = globals.FrameTime()
-		end
-		if globals.RealTime then
-			timestamp = globals.RealTime()
-		end
+	local currentTime = globals.RealTime()
+	local tickInterval = globals.TickInterval()
+	assert(tickInterval and tickInterval > 0, "updateFrameRecording: invalid tick interval")
+
+	if currentTime - lastFrameTimestamp < tickInterval then
+		return
 	end
+
+	lastFrameTimestamp = currentTime
+	local dt = tickInterval
+	local timestamp = currentTime
 
 	-- Add new frame
 	table.insert(frames, {
@@ -483,10 +480,8 @@ function UITop.Draw()
 	draw.OutlinedRect(0, 0, screenW, TIMELINE_HEIGHT)
 
 	-- Draw left side info (integer coordinates for crisp text, larger font spacing)
-	local dt = 0
-	if globals and globals.FrameTime then
-		dt = globals.FrameTime()
-	end
+	assert(globals and globals.TickInterval, "UITop.Draw: globals.TickInterval missing")
+	local dt = globals.TickInterval()
 	local fps = dt > 0 and math.floor(1 / dt + 0.5) or 0
 	draw.Color(230, 230, 230, 255)
 	draw.Text(8, 6, "FPS: " .. tostring(fps))

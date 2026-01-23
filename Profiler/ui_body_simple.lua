@@ -18,6 +18,9 @@ local SCRIPT_HEADER_HEIGHT = 25 -- Height of script headers
 local SCRIPT_SPACING = 10 -- Spacing between scripts
 local TIME_SCALE = 50000 -- Pixels per second (horizontal scale) - makes 1ms = 50px
 local RULER_HEIGHT = 30 -- Height of time ruler at top of body
+local MEMORY_SCALE_START_MB = 1
+local MEMORY_SCALE_END_MB = 10
+local MEMORY_HEIGHT_MULTIPLIER_MAX = 2
 
 -- Global state (retained mode)
 local boardOffsetX = 0 -- Camera position on virtual board
@@ -26,6 +29,16 @@ local boardZoom = 1.0 -- Zoom level of the board
 local isDragging = false
 local lastMouseX, lastMouseY = 0, 0
 local currentTopBarHeight = 60 -- Current top bar height (updated each frame)
+local hoveredFunc = nil
+local cachedScriptKeys = {}
+local cachedScriptCount = 0
+local cachedDataStartTime = nil
+local cachedDataEndTime = nil
+local lastDataUpdateTime = 0
+local layoutItems = {}
+local levelRanges = {}
+local levelHeights = {}
+local levelOffsets = {}
 
 -- External APIs
 local draw = draw
@@ -34,12 +47,7 @@ local MOUSE_LEFT = MOUSE_LEFT or 107
 local KEY_Q = KEY_Q or 18
 local KEY_E = KEY_E or 20
 
--- Safely require external globals library (provides RealTime, FrameTime)
-local globals = nil -- External globals library (RealTime, FrameTime)
-local ok, globalsModule = pcall(require, "globals")
-if ok then
-	globals = globalsModule
-end
+-- globals is a global table provided by the environment (RealTime, TickInterval, etc.)
 
 -- Helper functions
 -- Use globals.RealTime() directly
@@ -48,6 +56,30 @@ end
 -- startTime is the reference for the current visible window (usually dataStartTime)
 local function timeToBoardX(time, startTime)
 	return (time - startTime) * TIME_SCALE
+end
+
+local function clearArray(array)
+	assert(array, "clearArray: array missing")
+	for i = #array, 1, -1 do
+		array[i] = nil
+	end
+end
+
+local function getFunctionHeight(func)
+	assert(func, "getFunctionHeight: func missing")
+	local memDeltaKb = func.memDelta
+	assert(type(memDeltaKb) == "number", "getFunctionHeight: memDelta invalid")
+	if memDeltaKb < 0 then
+		memDeltaKb = 0
+	end
+	local memDeltaMb = memDeltaKb / 1024
+	if memDeltaMb <= MEMORY_SCALE_START_MB then
+		return FUNCTION_HEIGHT
+	end
+	local cappedMb = math.min(memDeltaMb, MEMORY_SCALE_END_MB)
+	local ratio = (cappedMb - MEMORY_SCALE_START_MB) / (MEMORY_SCALE_END_MB - MEMORY_SCALE_START_MB)
+	local scale = 1 + ratio * (MEMORY_HEIGHT_MULTIPLIER_MAX - 1)
+	return FUNCTION_HEIGHT * scale
 end
 
 -- Convert board coordinates to screen coordinates
@@ -78,19 +110,43 @@ local function drawFunctionOnBoard(func, boardX, boardY, boardWidth, screenW, sc
 	-- Y is NOT zoom-scaled - fixed pixel height
 	local screenHeight = FUNCTION_HEIGHT
 
+	-- Clamp screen coordinates to prevent overflow at extreme zoom
+	local clampedScreenX = math.max(-50000, math.min(50000, screenX))
+	local clampedScreenWidth = math.max(0, math.min(100000, screenWidth))
+
 	-- Only draw if visible on screen (use actual screen bounds)
 	if
-		screenX + screenWidth > 0
-		and screenX < screenW
+		clampedScreenX + clampedScreenWidth > 0
+		and clampedScreenX < screenW
 		and screenY + screenHeight > currentTopBarHeight
 		and screenY < screenH
 	then
-		-- Draw function bar
-		draw.Color(100, 150, 200, 180)
+		-- Check if mouse is hovering over this function
+		local isHovered = false
+		if input and input.GetMousePos then
+			local pos = input.GetMousePos()
+			local mx, my = pos[1] or 0, pos[2] or 0
+			if
+				mx >= clampedScreenX
+				and mx <= clampedScreenX + clampedScreenWidth
+				and my >= screenY
+				and my <= screenY + screenHeight
+			then
+				isHovered = true
+				hoveredFunc = func
+			end
+		end
+
+		-- Draw function bar (highlight if hovered)
+		if isHovered then
+			draw.Color(150, 200, 255, 220)
+		else
+			draw.Color(100, 150, 200, 180)
+		end
 		draw.FilledRect(
-			math.floor(screenX),
+			math.floor(clampedScreenX),
 			math.floor(screenY),
-			math.floor(screenX + screenWidth),
+			math.floor(clampedScreenX + clampedScreenWidth),
 			math.floor(screenY + screenHeight)
 		)
 
@@ -105,12 +161,13 @@ local function drawFunctionOnBoard(func, boardX, boardY, boardWidth, screenW, sc
 				local gridBoardX = timeToBoardX(gridTime, func.startTime) + boardX
 				local gridScreenX, _ = boardToScreen(gridBoardX, 0)
 
-				if gridScreenX >= screenX and gridScreenX <= screenX + screenWidth then
+				local clampedGridX = math.max(-50000, math.min(50000, gridScreenX))
+				if clampedGridX >= clampedScreenX and clampedGridX <= clampedScreenX + clampedScreenWidth then
 					draw.Color(255, 255, 255, 30)
 					draw.Line(
-						math.floor(gridScreenX),
+						math.floor(clampedGridX),
 						math.floor(screenY),
-						math.floor(gridScreenX),
+						math.floor(clampedGridX),
 						math.floor(screenY + screenHeight)
 					)
 				end
@@ -123,26 +180,27 @@ local function drawFunctionOnBoard(func, boardX, boardY, boardWidth, screenW, sc
 		-- Draw border
 		draw.Color(255, 255, 255, 100)
 		draw.OutlinedRect(
-			math.floor(screenX),
+			math.floor(clampedScreenX),
 			math.floor(screenY),
-			math.floor(screenX + screenWidth),
+			math.floor(clampedScreenX + clampedScreenWidth),
 			math.floor(screenY + screenHeight)
 		)
 
 		-- Draw function name if it fits (positioned on board, then transformed)
 		local name = func.name or "unknown"
-		if screenWidth > 50 and screenHeight > 12 then
+		if clampedScreenWidth > 50 and screenHeight > 12 then
 			-- Position text on board, then transform to screen
 			local textBoardX = boardX + 4
 			local textBoardY = boardY + 2
 			local textScreenX, textScreenY = boardToScreen(textBoardX, textBoardY)
+			local clampedTextX = math.max(-50000, math.min(50000, textScreenX))
 
 			draw.Color(255, 255, 255, 255)
-			draw.Text(math.floor(textScreenX), math.floor(textScreenY), name)
+			draw.Text(math.floor(clampedTextX), math.floor(textScreenY), name)
 		end
 
 		-- Draw duration if there's space (positioned on board, then transformed)
-		if screenWidth > 120 and screenHeight > 24 then
+		if clampedScreenWidth > 120 and screenHeight > 24 then
 			local durationMs = duration * 1000 -- ms
 			local durationText = string.format("%.3fms", durationMs)
 
@@ -150,9 +208,10 @@ local function drawFunctionOnBoard(func, boardX, boardY, boardWidth, screenW, sc
 			local durationBoardX = boardX + 4
 			local durationBoardY = boardY + FUNCTION_HEIGHT - 12
 			local durationScreenX, durationScreenY = boardToScreen(durationBoardX, durationBoardY)
+			local clampedDurationX = math.max(-50000, math.min(50000, durationScreenX))
 
 			draw.Color(255, 255, 100, 255)
-			draw.Text(math.floor(durationScreenX), math.floor(durationScreenY), durationText)
+			draw.Text(math.floor(clampedDurationX), math.floor(durationScreenY), durationText)
 		end
 	end
 end
@@ -297,13 +356,10 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 	draw.FilledRect(0, topBarHeight, screenW, topBarHeight + RULER_HEIGHT)
 
 	-- Measurement mode
-	local mode = Shared.MeasurementMode or "frame"
+	local mode = Shared.MeasurementMode
+	assert(mode == "tick" or mode == "frame", "drawTimeRuler: invalid MeasurementMode")
 
-	-- Get frame/tick time
-	local frameTime = (globals and globals.FrameTime and globals.FrameTime()) or 0.015
-	if frameTime <= 0 then
-		frameTime = 0.015
-	end
+	local frameTime = globals.TickInterval()
 
 	-- PRIMARY GRID: Tick/Frame boundaries (bold lines)
 	-- Only draw if spacing is at least 3px (avoid dense lines when zoomed out)
@@ -341,10 +397,10 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 					if framePixelSpacing >= 25 then
 						local label
 						if mode == "tick" then
-							local tickNum = math.floor((tickTime - dataStartTime) / frameTime)
+							local tickNum = math.floor((tickTime - recordingStart) / frameTime)
 							label = string.format("T%d", tickNum)
 						else
-							local frameNum = math.floor((tickTime - dataStartTime) / frameTime)
+							local frameNum = math.floor((tickTime - recordingStart) / frameTime)
 							label = string.format("F%d", frameNum)
 						end
 						draw.Color(200, 200, 255, 255)
@@ -652,6 +708,9 @@ function UIBody.Draw(profilerData, topBarHeight)
 		return
 	end
 
+	-- Reset hovered function at start of frame
+	hoveredFunc = nil
+
 	-- Store topBarHeight for use in boardToScreen
 	currentTopBarHeight = topBarHeight or 60
 
@@ -711,6 +770,49 @@ function UIBody.Draw(profilerData, topBarHeight)
 					screenH
 				)
 			end
+		end
+	end
+
+	-- Draw hover tooltip if function is hovered
+	if hoveredFunc and input and input.GetMousePos then
+		local pos = input.GetMousePos()
+		local mx, my = pos[1] or 0, pos[2] or 0
+		local tooltipX = mx + 15
+		local tooltipY = my + 15
+		local tooltipW = 220
+		local tooltipH = 70
+
+		if tooltipX + tooltipW > screenW then
+			tooltipX = mx - tooltipW - 5
+		end
+		if tooltipY + tooltipH > screenH then
+			tooltipY = my - tooltipH - 5
+		end
+
+		draw.Color(20, 20, 20, 240)
+		draw.FilledRect(tooltipX, tooltipY, tooltipX + tooltipW, tooltipY + tooltipH)
+		draw.Color(150, 200, 255, 255)
+		draw.OutlinedRect(tooltipX, tooltipY, tooltipX + tooltipW, tooltipY + tooltipH)
+
+		local textX = tooltipX + 5
+		local textY = tooltipY + 5
+		draw.Color(255, 255, 255, 255)
+		draw.Text(textX, textY, hoveredFunc.name or "unknown")
+
+		local durationMs = (hoveredFunc.endTime - hoveredFunc.startTime) * 1000
+		draw.Color(255, 255, 150, 255)
+		draw.Text(textX, textY + 18, string.format("Duration: %.3fms", durationMs))
+
+		local memKb = hoveredFunc.memDelta or 0
+		local memMb = memKb / 1024
+		local memText = memMb >= 1 and string.format("Memory: %.2f MB", memMb)
+			or string.format("Memory: %.1f KB", memKb)
+		draw.Color(150, 255, 150, 255)
+		draw.Text(textX, textY + 36, memText)
+
+		if hoveredFunc.scriptName then
+			draw.Color(200, 200, 200, 255)
+			draw.Text(textX, textY + 54, "Script: " .. hoveredFunc.scriptName)
 		end
 	end
 

@@ -60,6 +60,14 @@ end
 
 function ProfilerCore.Shutdown()
 	shutdown()
+	package.loaded["Profiler"] = nil
+	package.loaded["Profiler.profiler"] = nil
+	package.loaded["Profiler.microprofiler"] = nil
+	package.loaded["Profiler.ui_top"] = nil
+	package.loaded["Profiler.ui_body_simple"] = nil
+	package.loaded["Profiler.ui_body"] = nil
+	package.loaded["Profiler.Shared"] = nil
+	package.loaded["Profiler.config"] = nil
 end
 
 -- Public API -------------------------

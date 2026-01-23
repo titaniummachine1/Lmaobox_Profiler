@@ -36,14 +36,9 @@ lastMouseY = lastMouseY or 0
 
 -- External APIs with fallbacks (Lua 5.4 compatible)
 local draw = draw
-local globals = nil -- External globals library (RealTime, FrameTime)
 local input = input
 
--- Safely require external globals library (provides RealTime, FrameTime)
-local ok, globalsModule = pcall(require, "globals")
-if ok then
-	globals = globalsModule
-end
+-- globals is a global table provided by the environment (RealTime, TickInterval, etc.)
 
 -- Key constants (Lua 5.4 compatible)
 local MOUSE_LEFT = MOUSE_LEFT or 107

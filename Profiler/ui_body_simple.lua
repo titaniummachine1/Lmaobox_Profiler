@@ -214,8 +214,13 @@ local function drawFunctionOnBoard(func, boardX, boardY, boardWidth, screenW, sc
 
 		-- Draw duration if there's space (positioned on board, then transformed)
 		if clampedScreenWidth > 120 and screenHeight > 24 then
-			local durationUs = duration * 1000000 -- µs
-			local durationText = string.format("%.2fµs", durationUs)
+			local durationUs = duration * 1000000
+			local durationText
+			if durationUs >= 1000 then
+				durationText = string.format("%.2f ms", durationUs / 1000)
+			else
+				durationText = string.format("%.0f µs", durationUs)
+			end
 
 			-- Position duration text on board, then transform to screen
 			local durationBoardX = boardX + 4
@@ -821,17 +826,12 @@ function UIBody.Draw(profilerData, topBarHeight)
 		local durationSec = endRaw - startRaw
 		local durationUs = durationSec * 1000000
 
-		-- Show with MAXIMUM precision to detect any hidden variance
+		-- Format like tick_profiler
 		local durationText
-		if durationSec >= 0.001 then
-			-- >= 1ms: show 6 decimals in ms + µs
-			durationText = string.format("Duration: %.6fms (%.3fµs)", durationSec * 1000, durationUs)
-		elseif durationSec >= 0.0001 then
-			-- >= 100μs: show 3 decimals
-			durationText = string.format("Duration: %.3fµs", durationUs)
+		if durationUs >= 1000 then
+			durationText = string.format("Duration: %.2f ms", durationUs / 1000)
 		else
-			-- < 100μs: show 4 decimals
-			durationText = string.format("Duration: %.4fµs", durationUs)
+			durationText = string.format("Duration: %.0f µs", durationUs)
 		end
 
 		-- Add raw timing debug info

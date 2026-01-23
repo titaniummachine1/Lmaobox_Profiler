@@ -123,10 +123,9 @@ function ProfilerCore.End(name)
 	if UITop.IsPaused() then
 		return -- Don't end manual profiling when paused
 	end
-	-- Require name to match Begin
+	-- If no name supplied, end the most‐recent Begin()
 	if not name or name == "" then
-		print("Profiler.End(): name is required and must match Begin(name)")
-		return
+		name = nil -- pop last
 	end
 	MicroProfiler.EndCustomWork(name)
 end

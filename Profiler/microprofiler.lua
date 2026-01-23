@@ -602,10 +602,13 @@ function MicroProfiler.EndCustomWork(name)
 		return
 	end
 
-	-- Validate name
+	-- If no name provided, pop the most-recent active work
 	if not name or name == "" then
-		print("EndCustomWork: name is required")
-		return
+		if #activeCustomStack == 0 then
+			inProfilerAPI = false
+			return -- nothing to end
+		end
+		name = activeCustomStack[#activeCustomStack].name
 	end
 
 	-- Set API guard to prevent recursion

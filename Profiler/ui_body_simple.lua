@@ -99,17 +99,27 @@ local function screenToBoard(screenX, screenY)
 	return boardX, boardY
 end
 
--- Draw a function bar on the virtual board
+-- Draw a function bar on the virtual board with memory-based height scaling
 local function drawFunctionOnBoard(func, boardX, boardY, boardWidth, screenW, screenH)
 	if not func.startTime or not func.endTime or not draw then
 		return
 	end
 
+	-- Calculate height based on memory usage (1B-10MB → 1x-2x height)
+	local memBytes = math.abs(func.memDelta or 0)
+	local heightMultiplier = 1.0
+	if memBytes >= 1 and memBytes <= 10485760 then -- 1B to 10MB
+		-- Linear interpolation: 1B=1x, 10MB=2x
+		heightMultiplier = 1.0 + (memBytes / 10485760)
+	elseif memBytes > 10485760 then
+		heightMultiplier = 2.0
+	end
+
 	-- Convert board coordinates to screen coordinates
 	local screenX, screenY = boardToScreen(boardX, boardY)
 	local screenWidth = boardWidth * boardZoom
-	-- Y is NOT zoom-scaled - fixed pixel height
-	local screenHeight = FUNCTION_HEIGHT
+	-- Y is NOT zoom-scaled - height scaled by memory usage
+	local screenHeight = FUNCTION_HEIGHT * heightMultiplier
 
 	-- Clamp screen coordinates to prevent overflow at extreme zoom
 	local clampLimit = math.max(100000, boardZoom * 10000)
@@ -298,14 +308,15 @@ local function drawScriptOnBoard(scriptName, functions, boardY, dataStartTime, d
 	local stackLevels = {} -- Track occupied time ranges at each Y level
 
 	-- Recursive function to draw a function and its children
-	local function drawFunctionAndChildren(func, parentLevel)
+	local function drawFunctionAndChildren(func, minLevel)
 		-- Cull functions completely outside visible time window
 		if func.startTime and func.endTime and func.endTime >= dataStartTime and func.startTime <= dataEndTime then
 			local boardX = timeToBoardX(func.startTime, dataStartTime)
 			local boardWidth = timeToBoardX(func.endTime, dataStartTime) - boardX
 
-			-- Find available Y level starting from parentLevel
-			local level = parentLevel
+			-- Find available Y level starting from minLevel (children must be below parent)
+			-- Earlier-started functions get lower level numbers (visually higher up)
+			local level = minLevel
 			local foundLevel = false
 
 			while not foundLevel do
@@ -313,6 +324,7 @@ local function drawScriptOnBoard(scriptName, functions, boardY, dataStartTime, d
 
 				if stackLevels[level] then
 					for _, occupiedRange in ipairs(stackLevels[level]) do
+						-- Check for time overlap
 						if not (func.endTime <= occupiedRange.startTime or func.startTime >= occupiedRange.endTime) then
 							conflictFound = true
 							break
@@ -331,15 +343,24 @@ local function drawScriptOnBoard(scriptName, functions, boardY, dataStartTime, d
 				end
 			end
 
-			-- Calculate Y position on board
+			-- Calculate Y position on board (higher level = further down screen)
 			local functionBoardY = boardY + (level * (FUNCTION_HEIGHT + FUNCTION_SPACING))
 
 			-- Draw function on board
 			drawFunctionOnBoard(func, boardX, functionBoardY, boardWidth, screenW, screenH)
 
-			-- Draw children at next level
+			-- Draw children at deeper level (further down screen, below parent)
 			if func.children and #func.children > 0 then
+				-- Sort children by start time to ensure earlier ones are drawn first
+				local sortedChildren = {}
 				for _, child in ipairs(func.children) do
+					table.insert(sortedChildren, child)
+				end
+				table.sort(sortedChildren, function(a, b)
+					return (a.startTime or 0) < (b.startTime or 0)
+				end)
+
+				for _, child in ipairs(sortedChildren) do
 					drawFunctionAndChildren(child, level + 1)
 				end
 			end

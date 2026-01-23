@@ -720,26 +720,31 @@ function UIBody.Draw(profilerData, topBarHeight)
 	draw.Color(20, 20, 20, 240)
 	draw.FilledRect(0, topBarHeight, screenW, screenH)
 
-	-- Anchor time bounds to RecordingStartTime for stable positioning
-	local dataStartTime = Shared.RecordingStartTime or 0
-	local dataEndTime = -math.huge
+	-- Keep only last 10 seconds of history to prevent infinite growth
+	local currentTime = os.clock()
+	local MAX_HISTORY_TIME = 10.0
+	local recordingStart = Shared.RecordingStartTime or currentTime
+	local cutoffTime = currentTime - MAX_HISTORY_TIME
 
+	-- Clean old data beyond time window
 	if profilerData.scriptTimelines then
-		for _, scriptData in pairs(profilerData.scriptTimelines) do
+		for scriptName, scriptData in pairs(profilerData.scriptTimelines) do
 			if scriptData.functions then
+				local cleaned = {}
 				for _, func in ipairs(scriptData.functions) do
-					if func.startTime and func.endTime then
-						dataEndTime = math.max(dataEndTime, func.endTime)
+					if func.endTime and func.endTime >= cutoffTime then
+						table.insert(cleaned, func)
 					end
 				end
+				scriptData.functions = cleaned
 			end
 		end
 	end
 
-	-- Fallback if no data
-	if dataEndTime == -math.huge then
-		dataEndTime = os.clock()
-	end
+	-- Calculate visible time window based on current viewport
+	local visibleTimeWidth = (screenW / boardZoom) / TIME_SCALE
+	local dataStartTime = recordingStart + (boardOffsetX / TIME_SCALE)
+	local dataEndTime = dataStartTime + visibleTimeWidth
 
 	-- Draw time ruler (includes frame/tick boundaries and ms subdivisions)
 	drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, dataEndTime)

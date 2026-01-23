@@ -15,10 +15,22 @@
 
 local SCRIPT_TAG = "profiler_example"
 
+-- Properly unload existing profiler instance before loading new one
+if _G.PROFILER_EXAMPLE_LOADED then
+	print("[Profiler Example] Unloading previous profiler instance...")
+	callbacks.Unregister("CreateMove", SCRIPT_TAG)
+	callbacks.Unregister("Draw", SCRIPT_TAG)
+	callbacks.Unregister("Unload", SCRIPT_TAG)
+	_G.PROFILER_EXAMPLE_LOADED = false
+	collectgarbage("collect")
+end
+
 -- Load profiler
 local Profiler = require("Profiler")
 Profiler.SetVisible(true)
 Profiler.SetMeasurementMode("frame") -- or "tick"
+
+_G.PROFILER_EXAMPLE_LOADED = true
 
 -- Helper: Nested work showing compound tasks
 
@@ -218,6 +230,8 @@ end
 local function onUnload()
 	print("[Profiler Example] unloaded")
 	Profiler.SetVisible(false)
+	Profiler.Shutdown()
+	_G.PROFILER_EXAMPLE_LOADED = false
 end
 
 -- Register callbacks (no anonymous functions!)

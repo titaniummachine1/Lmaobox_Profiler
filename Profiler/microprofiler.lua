@@ -33,18 +33,16 @@ local MAX_TIMELINE_SIZE = 50 -- Increase limit to show more functions
 local MAX_CUSTOM_THREADS = 10 -- Increase custom threads limit
 local CLEANUP_INTERVAL = 1.0 -- Clean up every 1 second
 
--- Global variables for retained mode (not local)
-isEnabled = false
-isHooked = false
-isPaused = isPaused or false -- Add pause state
-callStack = callStack or {}
-mainTimeline = mainTimeline or {}
-customThreads = customThreads or {}
-activeCustomStack = activeCustomStack or {}
-lastCleanupTime = lastCleanupTime or 0
-
--- Script-separated timelines for better organization
-scriptTimelines = scriptTimelines or {} -- { [scriptName] = { functions = {}, name = scriptName } }
+-- Local state (not global)
+local isEnabled = false
+local isHooked = false
+local isPaused = false
+local callStack = {}
+local mainTimeline = {}
+local customThreads = {}
+local activeCustomStack = {}
+local lastCleanupTime = 0
+local scriptTimelines = {}
 
 -- External APIs (Lua 5.4 compatible)
 -- Use external globals library (RealTime, FrameTime) directly since it's globally available
@@ -529,9 +527,15 @@ function MicroProfiler.IsPaused()
 	return isPaused
 end
 
--- Manual profiling for custom threads (with API guards)
-function MicroProfiler.BeginCustomThread(name)
+-- Manual profiling for custom categories (with API guards)
+function MicroProfiler.BeginCustomCategory(name)
 	if not isEnabled or inProfilerAPI or isPaused then
+		return
+	end
+
+	-- Validate name
+	if not name or name == "" then
+		print("BeginCustomCategory: name is required")
 		return
 	end
 
@@ -544,7 +548,7 @@ function MicroProfiler.BeginCustomThread(name)
 	inProfilerAPI = true
 
 	-- Walk the callstack to find the REAL calling script (not Profiler itself)
-	local scriptName = "Manual Thread"
+	local scriptName = "Manual Category"
 	for level = 3, 10 do
 		local info = debug.getinfo(level, "S")
 		if not info then
@@ -552,18 +556,18 @@ function MicroProfiler.BeginCustomThread(name)
 		end
 		local source = info.source or ""
 		-- Extract script name from source path
-		local name = source:match("\\([^\\]-)$") or source:match("/([^/]-)$") or source
-		if name:match("%.lua$") then
-			name = name:gsub("%.lua$", "")
+		local fileName = source:match("\\([^\\]-)$") or source:match("/([^/]-)$") or source
+		if fileName:match("%.lua$") then
+			fileName = fileName:gsub("%.lua$", "")
 		end
 		-- Skip profiler internals, use first user script we find
-		if name ~= "Profiler" and name ~= "" and name ~= "[C]" and name ~= "[string]" then
-			scriptName = name
+		if fileName ~= "Profiler" and fileName ~= "" and fileName ~= "[C]" and fileName ~= "[string]" then
+			scriptName = fileName
 			break
 		end
 	end
 
-	local thread = {
+	local category = {
 		name = name,
 		scriptName = scriptName,
 		startTime = globals.RealTime(),
@@ -575,15 +579,15 @@ function MicroProfiler.BeginCustomThread(name)
 		type = "custom",
 	}
 
-	table.insert(customThreads, thread)
-	table.insert(activeCustomStack, thread)
+	table.insert(customThreads, category)
+	table.insert(activeCustomStack, category)
 
-	-- Limit custom threads more aggressively
+	-- Limit custom categories more aggressively
 	while #customThreads > MAX_CUSTOM_THREADS do
 		table.remove(customThreads, 1)
 	end
 
-	-- Clean up if we have too many active threads
+	-- Clean up if we have too many active categories
 	if #activeCustomStack > 10 then
 		table.remove(activeCustomStack, 1)
 	end
@@ -592,71 +596,34 @@ function MicroProfiler.BeginCustomThread(name)
 	inProfilerAPI = false
 end
 
-function MicroProfiler.EndCustomThread()
+function MicroProfiler.EndCustomCategory(name)
 	if not isEnabled or inProfilerAPI or isPaused then
 		return
 	end
 
-	-- DOUBLE CHECK: Make sure we're really not paused
-	if isPaused then
+	-- Validate name
+	if not name or name == "" then
+		print("EndCustomCategory: name is required")
 		return
 	end
 
 	-- Set API guard to prevent recursion
 	inProfilerAPI = true
 
-	local thread = table.remove(activeCustomStack)
-	if not thread then
-		print("❌ EndCustomThread called but no active thread!")
-		inProfilerAPI = false
-		return
+	-- Find the matching category by name
+	local category = nil
+	for i = #activeCustomStack, 1, -1 do
+		if activeCustomStack[i].name == name then
+			category = activeCustomStack[i]
+			table.remove(activeCustomStack, i)
+			break
+		end
 	end
 
-	thread.endTime = globals.RealTime()
-	thread.memDelta = getMemory() - thread.memStart
-	thread.duration = thread.endTime - thread.startTime
-
-	-- Validate timing
-	if thread.duration < 0 then
-		thread.duration = 0
-	end
-
-	local threadRecord = {
-		key = thread.name,
-		name = thread.name,
-		source = "manual",
-		scriptName = thread.scriptName,
-		line = 0,
-		startTime = thread.startTime,
-		endTime = thread.endTime,
-		duration = thread.duration,
-		memDelta = thread.memDelta,
-		children = thread.children,
-	}
-
-	local parentThread = activeCustomStack[#activeCustomStack]
-	if parentThread then
-		parentThread.children = parentThread.children or {}
-		table.insert(parentThread.children, threadRecord)
-	else
-		table.insert(mainTimeline, threadRecord)
-		if #mainTimeline > MAX_TIMELINE_SIZE then
-			table.remove(mainTimeline, 1)
-		end
-
-		-- Add to script-specific timeline so UI can display it
-		local scriptName = thread.scriptName or "Manual Thread"
-		if not scriptTimelines[scriptName] then
-			scriptTimelines[scriptName] = {
-				name = scriptName,
-				functions = {},
-				type = "script",
-			}
-		end
-		table.insert(scriptTimelines[scriptName].functions, threadRecord)
-		if #scriptTimelines[scriptName].functions > MAX_TIMELINE_SIZE then
-			table.remove(scriptTimelines[scriptName].functions, 1)
-		end
+	if category then
+		category.endTime = globals.RealTime()
+		category.memDelta = getMemory() - category.memStart
+		category.duration = category.endTime - category.startTime
 	end
 
 	-- Clear API guard

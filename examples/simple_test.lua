@@ -2,8 +2,14 @@
 
 local SCRIPT_TAG = "microprofiler_simple_test"
 
+-- Properly unload existing profiler instance before loading new one
 if _G.SIMPLE_PROFILER_TEST_LOADED then
+	print("[Simple Test] Unloading previous profiler instance...")
+	callbacks.Unregister("CreateMove", SCRIPT_TAG .. "_move")
+	callbacks.Unregister("Draw", SCRIPT_TAG .. "_draw")
+	callbacks.Unregister("Unload", SCRIPT_TAG .. "_unload")
 	_G.SIMPLE_PROFILER_TEST_LOADED = false
+	collectgarbage("collect")
 end
 
 local Profiler = require("Profiler")
@@ -171,7 +177,9 @@ callbacks.Register("Draw", SCRIPT_TAG .. "_draw", function()
 end)
 
 callbacks.Register("Unload", SCRIPT_TAG .. "_unload", function()
-	print(" Unloading microprofiler simple test")
+	print("[Simple Test] Unloading microprofiler simple test")
+	Profiler.SetVisible(false)
+	Profiler.Shutdown()
 	_G.SIMPLE_PROFILER_TEST_LOADED = false
 end)
 

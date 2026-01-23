@@ -97,8 +97,8 @@ function ProfilerCore.IsVisible()
 	return isVisible
 end
 
--- Manual profiling API (for custom threads)
-function ProfilerCore.Begin(name)
+-- Manual profiling API (for custom work items)
+function ProfilerCore.Begin(name, category)
 	if not isVisible then
 		return
 	end
@@ -109,7 +109,7 @@ function ProfilerCore.Begin(name)
 	if UITop.IsPaused() then
 		return -- Don't start manual profiling when paused
 	end
-	MicroProfiler.BeginCustomCategory(name)
+	MicroProfiler.BeginCustomWork(name, category)
 end
 
 function ProfilerCore.End(name)
@@ -128,7 +128,7 @@ function ProfilerCore.End(name)
 		print("Profiler.End(): name is required and must match Begin(name)")
 		return
 	end
-	MicroProfiler.EndCustomCategory(name)
+	MicroProfiler.EndCustomWork(name)
 end
 
 -- Legacy API support (keeping for compatibility)

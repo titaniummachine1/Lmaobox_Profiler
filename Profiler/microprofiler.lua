@@ -527,15 +527,15 @@ function MicroProfiler.IsPaused()
 	return isPaused
 end
 
--- Manual profiling for custom categories (with API guards)
-function MicroProfiler.BeginCustomCategory(name)
+-- Manual profiling for custom work items (with API guards)
+function MicroProfiler.BeginCustomWork(name, category)
 	if not isEnabled or inProfilerAPI or isPaused then
 		return
 	end
 
 	-- Validate name
 	if not name or name == "" then
-		print("BeginCustomCategory: name is required")
+		print("BeginCustomWork: name is required")
 		return
 	end
 
@@ -548,7 +548,7 @@ function MicroProfiler.BeginCustomCategory(name)
 	inProfilerAPI = true
 
 	-- Walk the callstack to find the REAL calling script (not Profiler itself)
-	local scriptName = "Manual Category"
+	local scriptName = "Manual Work"
 	for level = 3, 10 do
 		local info = debug.getinfo(level, "S")
 		if not info then
@@ -567,8 +567,9 @@ function MicroProfiler.BeginCustomCategory(name)
 		end
 	end
 
-	local category = {
+	local work = {
 		name = name,
+		category = category or nil,
 		scriptName = scriptName,
 		startTime = globals.RealTime(),
 		memStart = getMemory(),
@@ -579,15 +580,15 @@ function MicroProfiler.BeginCustomCategory(name)
 		type = "custom",
 	}
 
-	table.insert(customThreads, category)
-	table.insert(activeCustomStack, category)
+	table.insert(customThreads, work)
+	table.insert(activeCustomStack, work)
 
-	-- Limit custom categories more aggressively
+	-- Limit custom work items more aggressively
 	while #customThreads > MAX_CUSTOM_THREADS do
 		table.remove(customThreads, 1)
 	end
 
-	-- Clean up if we have too many active categories
+	-- Clean up if we have too many active work items
 	if #activeCustomStack > 10 then
 		table.remove(activeCustomStack, 1)
 	end
@@ -596,34 +597,34 @@ function MicroProfiler.BeginCustomCategory(name)
 	inProfilerAPI = false
 end
 
-function MicroProfiler.EndCustomCategory(name)
+function MicroProfiler.EndCustomWork(name)
 	if not isEnabled or inProfilerAPI or isPaused then
 		return
 	end
 
 	-- Validate name
 	if not name or name == "" then
-		print("EndCustomCategory: name is required")
+		print("EndCustomWork: name is required")
 		return
 	end
 
 	-- Set API guard to prevent recursion
 	inProfilerAPI = true
 
-	-- Find the matching category by name
-	local category = nil
+	-- Find the matching work item by name
+	local work = nil
 	for i = #activeCustomStack, 1, -1 do
 		if activeCustomStack[i].name == name then
-			category = activeCustomStack[i]
+			work = activeCustomStack[i]
 			table.remove(activeCustomStack, i)
 			break
 		end
 	end
 
-	if category then
-		category.endTime = globals.RealTime()
-		category.memDelta = getMemory() - category.memStart
-		category.duration = category.endTime - category.startTime
+	if work then
+		work.endTime = globals.RealTime()
+		work.memDelta = getMemory() - work.memStart
+		work.duration = work.endTime - work.startTime
 	end
 
 	-- Clear API guard

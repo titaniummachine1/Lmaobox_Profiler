@@ -454,11 +454,20 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 
 				-- Label with time relative to left edge (positive values)
 				local relativeTime = time - dataStartTime
+				local timeUs = relativeTime * 1000000
 				local label
-				if interval >= 0.001 then
+				if interval >= 0.1 then
+					-- >= 100ms: show seconds
+					label = string.format("%.1fs", relativeTime)
+				elseif interval >= 0.001 then
+					-- >= 1ms: show milliseconds
 					label = string.format("%.1fms", relativeTime * 1000)
+				elseif interval >= 0.0001 then
+					-- >= 100μs: show μs with no decimals
+					label = string.format("%.0fµs", timeUs)
 				else
-					label = string.format("%.0fµs", relativeTime * 1000000)
+					-- < 100μs: show μs with 1 decimal
+					label = string.format("%.1fµs", timeUs)
 				end
 
 				local textWidth = #label * 7 + 10

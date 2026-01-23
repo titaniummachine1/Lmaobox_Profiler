@@ -347,7 +347,7 @@ local function drawScriptOnBoard(scriptName, functions, boardY, dataStartTime, d
 	return boardY + SCRIPT_SPACING
 end
 
--- Draw fractal time ruler with tick/frame boundaries as primary grid
+-- Draw simple time ruler with tick boundaries and ms labels
 local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, dataEndTime)
 	if not draw then
 		return
@@ -357,64 +357,41 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 	draw.Color(30, 30, 30, 255)
 	draw.FilledRect(0, topBarHeight, screenW, topBarHeight + RULER_HEIGHT)
 
-	-- Measurement mode
-	local mode = Shared.MeasurementMode
-	assert(mode == "tick" or mode == "frame", "drawTimeRuler: invalid MeasurementMode")
-
 	local frameTime = globals.TickInterval()
+	local timeRange = dataEndTime - dataStartTime
+	if timeRange <= 0 then
+		return
+	end
 
-	-- PRIMARY GRID: Tick/Frame boundaries (bold lines)
-	-- Only draw if spacing is at least 3px (avoid dense lines when zoomed out)
+	-- Draw tick boundaries
 	local framePixelSpacing = frameTime * TIME_SCALE * boardZoom
-	local shouldDrawFrameBoundaries = framePixelSpacing >= 3
-
-	-- Use RecordingStartTime as consistent reference for frame alignment
-	-- This ensures grid stays aligned with actual work regardless of viewport
-	local recordingStart = Shared.RecordingStartTime or dataStartTime
-	local tickStart = math.floor(recordingStart / frameTime) * frameTime
-
-	if shouldDrawFrameBoundaries then
+	if framePixelSpacing >= 3 then
+		local tickStart = math.floor(dataStartTime / frameTime) * frameTime
 		local tickTime = tickStart
-		local tickCount = 0
-		local lastDrawnX = -1000 -- Track last drawn position to avoid overlap
+		local tickNum = 0
+		local lastDrawnX = -1000
 
-		while tickTime <= dataEndTime + frameTime and tickCount < 1000 do
-			-- Only draw if time >= dataStartTime (no negative time)
+		while tickTime <= dataEndTime and tickNum < 200 do
 			if tickTime >= dataStartTime then
 				local boardX = timeToBoardX(tickTime, dataStartTime)
 				local screenX, _ = boardToScreen(boardX, 0)
 				local intScreenX = math.floor(screenX + 0.5)
 
-				-- Only draw if on screen and not too close to last line
-				if screenX >= -10 and screenX <= screenW + 10 and (intScreenX - lastDrawnX) >= 2 then
-					-- Bold tick/frame boundary line
+				if screenX >= 0 and screenX <= screenW and (intScreenX - lastDrawnX) >= 2 then
 					draw.Color(150, 150, 200, 255)
 					draw.Line(intScreenX, topBarHeight, intScreenX, topBarHeight + RULER_HEIGHT)
-
-					-- Extend through content area (frame boundary)
-					draw.Color(100, 100, 150, 80)
+					draw.Color(100, 100, 150, 40)
 					draw.Line(intScreenX, topBarHeight + RULER_HEIGHT, intScreenX, screenH)
 
-					-- Label tick/frame number (only if spacing is wide enough)
 					if framePixelSpacing >= 25 then
-						local label
-						if mode == "tick" then
-							local tickNum = math.floor((tickTime - recordingStart) / frameTime)
-							label = string.format("T%d", tickNum)
-						else
-							local frameNum = math.floor((tickTime - recordingStart) / frameTime)
-							label = string.format("F%d", frameNum)
-						end
 						draw.Color(200, 200, 255, 255)
-						draw.Text(intScreenX + 2, topBarHeight + 2, label)
+						draw.Text(intScreenX + 2, topBarHeight + 2, string.format("T%d", tickNum))
 					end
-
 					lastDrawnX = intScreenX
 				end
 			end
-
 			tickTime = tickTime + frameTime
-			tickCount = tickCount + 1
+			tickNum = tickNum + 1
 		end
 	end
 
@@ -475,13 +452,13 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 				draw.Color(80, 80, 80, 20)
 				draw.Line(intScreenX, topBarHeight + RULER_HEIGHT, intScreenX, screenH)
 
-				-- Label with absolute time from RecordingStartTime
-				local absoluteTime = time - recordingStart
+				-- Label with time relative to left edge (positive values)
+				local relativeTime = time - dataStartTime
 				local label
 				if interval >= 0.001 then
-					label = string.format("%.1fms", absoluteTime * 1000)
+					label = string.format("%.1fms", relativeTime * 1000)
 				else
-					label = string.format("%.0fµs", absoluteTime * 1000000)
+					label = string.format("%.0fµs", relativeTime * 1000000)
 				end
 
 				local textWidth = #label * 7 + 10
@@ -631,31 +608,48 @@ function UIBody.Draw(profilerData, topBarHeight)
 	draw.Color(20, 20, 20, 240)
 	draw.FilledRect(0, topBarHeight, screenW, screenH)
 
-	-- Keep only last 10 seconds of history to prevent infinite growth
+	-- Tick-based history: keep max 66 ticks of data
+	local MAX_TICKS = 66
+	local tickInterval = globals.TickInterval()
 	local currentTime = os.clock()
-	local MAX_HISTORY_TIME = 10.0
-	local recordingStart = Shared.RecordingStartTime or currentTime
-	local cutoffTime = currentTime - MAX_HISTORY_TIME
 
-	-- Clean old data beyond time window
+	-- Calculate data time bounds from actual profiler data
+	local dataStartTime = math.huge
+	local dataEndTime = -math.huge
+
 	if profilerData.scriptTimelines then
-		for scriptName, scriptData in pairs(profilerData.scriptTimelines) do
+		for _, scriptData in pairs(profilerData.scriptTimelines) do
 			if scriptData.functions then
-				local cleaned = {}
 				for _, func in ipairs(scriptData.functions) do
-					if func.endTime and func.endTime >= cutoffTime then
-						table.insert(cleaned, func)
+					if func.startTime and func.endTime then
+						dataStartTime = math.min(dataStartTime, func.startTime)
+						dataEndTime = math.max(dataEndTime, func.endTime)
 					end
 				end
-				scriptData.functions = cleaned
 			end
 		end
 	end
 
-	-- Calculate visible time window based on current viewport
-	local visibleTimeWidth = (screenW / boardZoom) / TIME_SCALE
-	local dataStartTime = recordingStart + (boardOffsetX / TIME_SCALE)
-	local dataEndTime = dataStartTime + visibleTimeWidth
+	-- Fallback if no data
+	if dataStartTime == math.huge then
+		dataStartTime = currentTime - (MAX_TICKS * tickInterval)
+		dataEndTime = currentTime
+	end
+
+	-- Auto-scroll: keep newest data visible on screen
+	-- Board offset tracks from dataStartTime (oldest visible data = position 0)
+	-- When not paused, reset offset to show newest data on right edge
+	local UITop = require("Profiler.ui_top")
+	if not UITop.IsPaused() then
+		-- Auto-scroll to show newest data
+		local visibleTimeWidth = screenW / (TIME_SCALE * boardZoom)
+		local targetOffset = (dataEndTime - dataStartTime) - visibleTimeWidth
+		if targetOffset > 0 then
+			boardOffsetX = targetOffset * TIME_SCALE
+		else
+			boardOffsetX = 0
+		end
+	end
 
 	-- Draw time ruler (includes frame/tick boundaries and ms subdivisions)
 	drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, dataEndTime)

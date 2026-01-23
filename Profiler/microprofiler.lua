@@ -27,11 +27,11 @@ local PROFILER_SOURCES = {
 local inProfilerAPI = false
 local autoHookDesired = false
 
--- Performance limits (MINIMAL for performance)
-local MAX_RECORD_TIME = 5.0 -- Keep records for 5 seconds max (as requested)
-local MAX_TIMELINE_SIZE = 50 -- Increase limit to show more functions
-local MAX_CUSTOM_THREADS = 10 -- Increase custom threads limit
-local CLEANUP_INTERVAL = 1.0 -- Clean up every 1 second
+-- Performance limits (tick-based history)
+local MAX_TICKS = 66 -- Keep max 66 ticks of history (~1 second at 66 tick rate)
+local MAX_TIMELINE_SIZE = 200 -- Functions per timeline
+local MAX_CUSTOM_THREADS = 50 -- Custom work items
+local CLEANUP_INTERVAL = 0.5 -- Cleanup frequency
 
 -- Local state (not global)
 local isEnabled = false
@@ -79,11 +79,16 @@ local function cleanupOldRecords()
 	lastCleanupTime = currentTime
 	local functionsRemoved = 0
 
-	-- Clean main timeline - remove records older than MAX_RECORD_TIME
+	-- Tick-based cleanup: keep only last MAX_TICKS worth of data
+	local tickInterval = globals.TickInterval()
+	local maxHistoryTime = MAX_TICKS * tickInterval
+	local cutoffTime = currentTime - maxHistoryTime
+
+	-- Clean main timeline - remove records older than cutoff
 	local i = 1
 	while i <= #mainTimeline do
 		local record = mainTimeline[i]
-		if record.endTime and (currentTime - record.endTime) > MAX_RECORD_TIME then
+		if record.endTime and record.endTime < cutoffTime then
 			table.remove(mainTimeline, i)
 			functionsRemoved = functionsRemoved + 1
 		else
@@ -95,7 +100,7 @@ local function cleanupOldRecords()
 	local j = 1
 	while j <= #customThreads do
 		local thread = customThreads[j]
-		if thread.endTime and (currentTime - thread.endTime) > MAX_RECORD_TIME then
+		if thread.endTime and thread.endTime < cutoffTime then
 			table.remove(customThreads, j)
 			functionsRemoved = functionsRemoved + 1
 		else
@@ -108,7 +113,7 @@ local function cleanupOldRecords()
 		local m = 1
 		while m <= #scriptData.functions do
 			local func = scriptData.functions[m]
-			if func.endTime and (currentTime - func.endTime) > MAX_RECORD_TIME then
+			if func.endTime and func.endTime < cutoffTime then
 				table.remove(scriptData.functions, m)
 				functionsRemoved = functionsRemoved + 1
 			else
@@ -514,8 +519,13 @@ function MicroProfiler.SetPaused(paused)
 		-- Just paused - STOP cleanup to preserve data for navigation
 		print("⏸️ Profiler PAUSED - recording stopped, data preserved for navigation")
 	elseif not paused and wasPaused then
-		-- Just resumed - resume cleanup
-		print("▶️ Profiler RESUMED - recording started, cleanup resumed")
+		-- Just resumed - CLEAR ALL DATA and start fresh recording
+		print("▶️ Profiler RESUMED - clearing old data, starting fresh recording")
+		MicroProfiler.ClearData()
+		-- Reset recording start time for fresh timeline
+		if Shared then
+			Shared.RecordingStartTime = os.clock()
+		end
 		-- Ensure hook is enabled when resuming
 		if isEnabled and not isHooked then
 			enableHook()

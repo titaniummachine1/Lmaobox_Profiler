@@ -41,7 +41,7 @@ local function calculatePath()
 	for i = 1, 5000 do
 		sum = sum + math.sin(i * 0.1)
 	end
-	Profiler.End()
+	Profiler.End("AI.PathCalculation")
 end
 
 local function optimizePath()
@@ -49,7 +49,7 @@ local function optimizePath()
 	for i = 1, 3000 do
 		local _ = math.log(i + 1)
 	end
-	Profiler.End()
+	Profiler.End("AI.PathOptimization")
 end
 
 local function validatePath()
@@ -57,7 +57,7 @@ local function validatePath()
 	for i = 1, 4000 do
 		local _ = math.sqrt(i)
 	end
-	Profiler.End()
+	Profiler.End("AI.PathValidation")
 end
 
 local function doPathfinding()
@@ -68,7 +68,7 @@ local function doPathfinding()
 	optimizePath()
 	validatePath()
 
-	Profiler.End()
+	Profiler.End("AI.Pathfinding")
 end
 
 -- Heavy rendering with sub-tasks
@@ -78,7 +78,7 @@ local function renderGeometry()
 	for i = 1, 8000 do
 		local _ = math.cos(t + i * 0.1)
 	end
-	Profiler.End()
+	Profiler.End("Render.Geometry")
 end
 
 local function renderShadows()
@@ -86,7 +86,7 @@ local function renderShadows()
 	for i = 1, 4000 do
 		local _ = math.tan(i * 0.05)
 	end
-	Profiler.End()
+	Profiler.End("Render.Shadows")
 end
 
 local function renderLighting()
@@ -94,7 +94,7 @@ local function renderLighting()
 	for i = 1, 6000 do
 		local _ = math.exp(i * 0.001)
 	end
-	Profiler.End()
+	Profiler.End("Render.Lighting")
 end
 
 local function renderPostProcess()
@@ -102,7 +102,7 @@ local function renderPostProcess()
 	for i = 1, 3000 do
 		local _ = math.sin(i * 0.08) * math.cos(i * 0.04)
 	end
-	Profiler.End()
+	Profiler.End("Render.PostProcess")
 end
 
 local function doRendering()
@@ -114,7 +114,7 @@ local function doRendering()
 	renderLighting()
 	renderPostProcess()
 
-	Profiler.End()
+	Profiler.End("Render.Frame")
 end
 
 -- Heavy physics with sub-tasks
@@ -123,7 +123,7 @@ local function broadPhase()
 	for i = 1, 2000 do
 		local _ = math.abs(i - 1000)
 	end
-	Profiler.End()
+	Profiler.End("Physics.BroadPhase")
 end
 
 local function narrowPhase()
@@ -131,7 +131,7 @@ local function narrowPhase()
 	for i = 1, 3000 do
 		local _ = math.sqrt(i) * math.log(i + 1)
 	end
-	Profiler.End()
+	Profiler.End("Physics.NarrowPhase")
 end
 
 local function integration()
@@ -139,7 +139,7 @@ local function integration()
 	for i = 1, 5000 do
 		local _ = math.sin(i * 0.05)
 	end
-	Profiler.End()
+	Profiler.End("Physics.Integration")
 end
 
 local function constraintSolver()
@@ -147,7 +147,7 @@ local function constraintSolver()
 	for i = 1, 4000 do
 		local _ = math.cos(i * 0.03)
 	end
-	Profiler.End()
+	Profiler.End("Physics.Constraints")
 end
 
 local function doPhysics()
@@ -159,7 +159,7 @@ local function doPhysics()
 	integration()
 	constraintSolver()
 
-	Profiler.End()
+	Profiler.End("Physics.Step")
 end
 
 -- Heavy networking with sub-tasks
@@ -168,7 +168,7 @@ local function receivePackets()
 	for i = 1, 2000 do
 		local _ = string.format("packet_%d", i)
 	end
-	Profiler.End()
+	Profiler.End("Net.Receive")
 end
 
 local function processPackets()
@@ -176,7 +176,7 @@ local function processPackets()
 	for i = 1, 3000 do
 		local _ = math.floor(i / 16) * 16
 	end
-	Profiler.End()
+	Profiler.End("Net.Process")
 end
 
 local function sendPackets()
@@ -184,7 +184,7 @@ local function sendPackets()
 	for i = 1, 1500 do
 		local _ = string.format("out_%d", i)
 	end
-	Profiler.End()
+	Profiler.End("Net.Send")
 end
 
 local function doNetworking()
@@ -195,7 +195,7 @@ local function doNetworking()
 	processPackets()
 	sendPackets()
 
-	Profiler.End()
+	Profiler.End("Net.PacketProcess")
 end
 
 -- CreateMove callback - runs every tick (shows tick-based ruler with T0, T1, T2...)
@@ -209,7 +209,7 @@ local function onCreateMove(cmd)
 	doPhysics() -- Contains BroadPhase + NarrowPhase + Integration + Constraints
 	doNetworking() -- Contains Receive + Process + Send
 
-	Profiler.End()
+	Profiler.End("TickProcess")
 end
 
 -- Draw callback - runs every frame (shows frame-based ruler with F0, F1, F2...)
@@ -223,7 +223,7 @@ local function onDraw()
 	doPhysics() -- Also do some physics in frame for comparison
 
 	Profiler.Draw() -- Draws the profiler UI
-	Profiler.End()
+	Profiler.End("FrameProcess")
 end
 
 -- Unload callback

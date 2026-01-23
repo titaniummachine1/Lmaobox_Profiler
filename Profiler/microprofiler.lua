@@ -625,6 +625,44 @@ function MicroProfiler.EndCustomWork(name)
 		work.endTime = globals.RealTime()
 		work.memDelta = getMemory() - work.memStart
 		work.duration = work.endTime - work.startTime
+
+		local workRecord = {
+			key = work.name,
+			name = work.name,
+			category = work.category,
+			source = "manual",
+			scriptName = work.scriptName,
+			line = 0,
+			startTime = work.startTime,
+			endTime = work.endTime,
+			duration = work.duration,
+			memDelta = work.memDelta,
+			children = work.children,
+		}
+
+		local parentWork = activeCustomStack[#activeCustomStack]
+		if parentWork then
+			parentWork.children = parentWork.children or {}
+			table.insert(parentWork.children, workRecord)
+		else
+			table.insert(mainTimeline, workRecord)
+			if #mainTimeline > MAX_TIMELINE_SIZE then
+				table.remove(mainTimeline, 1)
+			end
+
+			local timelineKey = work.category or work.scriptName or "Manual Work"
+			if not scriptTimelines[timelineKey] then
+				scriptTimelines[timelineKey] = {
+					name = timelineKey,
+					functions = {},
+					type = "script",
+				}
+			end
+			table.insert(scriptTimelines[timelineKey].functions, workRecord)
+			if #scriptTimelines[timelineKey].functions > MAX_TIMELINE_SIZE then
+				table.remove(scriptTimelines[timelineKey].functions, 1)
+			end
+		end
 	end
 
 	-- Clear API guard

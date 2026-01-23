@@ -205,7 +205,8 @@ local function drawFunctionOnBoard(func, boardX, boardY, boardWidth, screenW, sc
 			local textBoardX = boardX + 4
 			local textBoardY = boardY + 2
 			local textScreenX, textScreenY = boardToScreen(textBoardX, textBoardY)
-			local clampedTextX = math.max(-clampLimit, math.min(clampLimit, textScreenX))
+			-- Clamp to visible screen area to prevent text overflow
+			local clampedTextX = math.max(5, math.min(screenW - 100, textScreenX))
 
 			draw.Color(255, 255, 255, 255)
 			draw.Text(math.floor(clampedTextX), math.floor(textScreenY), name)
@@ -220,7 +221,8 @@ local function drawFunctionOnBoard(func, boardX, boardY, boardWidth, screenW, sc
 			local durationBoardX = boardX + 4
 			local durationBoardY = boardY + FUNCTION_HEIGHT - 12
 			local durationScreenX, durationScreenY = boardToScreen(durationBoardX, durationBoardY)
-			local clampedDurationX = math.max(-clampLimit, math.min(clampLimit, durationScreenX))
+			-- Clamp to visible screen area to prevent text overflow
+			local clampedDurationX = math.max(5, math.min(screenW - 100, durationScreenX))
 
 			draw.Color(255, 255, 100, 255)
 			draw.Text(math.floor(clampedDurationX), math.floor(durationScreenY), durationText)
@@ -439,11 +441,19 @@ local function drawTimeRuler(
 			goto continue_tick
 		end
 
-		-- Estimate end time if we don't have next tick boundary
+		-- Calculate tick end time with minimum duration enforcement
 		if not tickEndTime then
-			-- Use average tick interval from data, or fallback to globals.TickInterval()
-			local avgTickInterval = globals.TickInterval()
-			tickEndTime = tickStartTime + avgTickInterval
+			-- Use globals.TickInterval() as minimum duration
+			local minTickDuration = globals.TickInterval()
+			tickEndTime = tickStartTime + minTickDuration
+		else
+			-- Enforce minimum tick duration even if next tick boundary is recorded
+			local minTickDuration = globals.TickInterval()
+			local actualDuration = tickEndTime - tickStartTime
+			if actualDuration < minTickDuration then
+				-- Tick didn't take long enough, extend to minimum
+				tickEndTime = tickStartTime + minTickDuration
+			end
 		end
 
 		-- Get screen positions of tick boundaries

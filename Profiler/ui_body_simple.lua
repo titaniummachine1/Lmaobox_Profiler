@@ -347,7 +347,8 @@ local function drawScriptOnBoard(scriptName, functions, boardY, dataStartTime, d
 	return boardY + SCRIPT_SPACING
 end
 
--- Draw simple time ruler with tick boundaries and ms labels
+-- Draw time ruler with fixed pixel spacing (works at infinite zoom)
+-- Algorithm: lines are ALWAYS spaced at fixed pixels, we calculate what time each line represents
 local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, dataEndTime)
 	if not draw then
 		return
@@ -357,131 +358,126 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 	draw.Color(30, 30, 30, 255)
 	draw.FilledRect(0, topBarHeight, screenW, topBarHeight + RULER_HEIGHT)
 
-	local frameTime = globals.TickInterval()
-	local timeRange = dataEndTime - dataStartTime
-	if timeRange <= 0 then
-		return
+	local tickInterval = globals.TickInterval()
+	if tickInterval <= 0 then
+		tickInterval = 1 / 66
 	end
 
-	-- Draw tick boundaries
-	local framePixelSpacing = frameTime * TIME_SCALE * boardZoom
-	if framePixelSpacing >= 3 then
-		local tickStart = math.floor(dataStartTime / frameTime) * frameTime
-		local tickTime = tickStart
-		local tickNum = 0
-		local lastDrawnX = -1000
+	-- Fixed pixel spacing between subdivision lines (constant on screen)
+	local PIXEL_SPACING = 80
 
-		while tickTime <= dataEndTime and tickNum < 200 do
-			if tickTime >= dataStartTime then
-				local boardX = timeToBoardX(tickTime, dataStartTime)
-				local screenX, _ = boardToScreen(boardX, 0)
-				local intScreenX = math.floor(screenX + 0.5)
+	-- Get visible time range from screen coordinates
+	-- Screen X=0 corresponds to what board position? Screen X=screenW?
+	local visibleLeftBoardX = boardOffsetX
+	local visibleRightBoardX = boardOffsetX + (screenW / boardZoom)
 
-				if screenX >= 0 and screenX <= screenW and (intScreenX - lastDrawnX) >= 2 then
-					draw.Color(150, 150, 200, 255)
-					draw.Line(intScreenX, topBarHeight, intScreenX, topBarHeight + RULER_HEIGHT)
-					draw.Color(100, 100, 150, 40)
-					draw.Line(intScreenX, topBarHeight + RULER_HEIGHT, intScreenX, screenH)
+	-- Convert board X to time (board X is in pixels at TIME_SCALE)
+	local visibleLeftTime = dataStartTime + (visibleLeftBoardX / TIME_SCALE)
+	local visibleRightTime = dataStartTime + (visibleRightBoardX / TIME_SCALE)
 
-					if framePixelSpacing >= 25 then
-						draw.Color(200, 200, 255, 255)
-						draw.Text(intScreenX + 2, topBarHeight + 2, string.format("T%d", tickNum))
-					end
-					lastDrawnX = intScreenX
-				end
-			end
-			tickTime = tickTime + frameTime
-			tickNum = tickNum + 1
-		end
-	end
+	-- Calculate time per pixel at current zoom
+	local timePerPixel = 1 / (TIME_SCALE * boardZoom)
 
-	-- SECONDARY GRID: Simple linear subdivision
-	-- Fixed density subdivision lines across visible time range
-	local targetPixelSpacing = 50
-	local timeInterval = targetPixelSpacing / (TIME_SCALE * boardZoom)
+	-- Time between each subdivision line (fixed pixel spacing)
+	local timePerLine = PIXEL_SPACING * timePerPixel
 
-	-- Round interval to nice number (1, 2, 5 pattern)
-	local magnitudes = {
-		0.000001,
-		0.000002,
-		0.000005,
-		0.00001,
-		0.00002,
-		0.00005,
-		0.0001,
-		0.0002,
-		0.0005,
-		0.001,
-		0.002,
-		0.005,
-		0.01,
-		0.02,
-		0.05,
-		0.1,
-		0.2,
-		0.5,
-		1.0,
-		2.0,
-		5.0,
-	}
-	local interval = magnitudes[1]
-	for _, mag in ipairs(magnitudes) do
-		if mag >= timeInterval then
-			interval = mag
-			break
-		end
-	end
+	-- Find which ticks are visible
+	local firstVisibleTick = math.floor(visibleLeftTime / tickInterval)
+	local lastVisibleTick = math.ceil(visibleRightTime / tickInterval)
 
-	-- Draw subdivision lines across visible time range
-	local startMark = math.floor(dataStartTime / interval) * interval
-	local time = startMark
+	-- Clamp to reasonable range
+	firstVisibleTick = math.max(0, firstVisibleTick - 1)
+	lastVisibleTick = math.min(firstVisibleTick + 200, lastVisibleTick + 1)
+
 	local lastLabelEndX = -1000
-	local markCount = 0
 
-	while time <= dataEndTime and markCount < 500 do
-		if time >= dataStartTime then
-			local boardX = timeToBoardX(time, dataStartTime)
-			local screenX, _ = boardToScreen(boardX, 0)
+	-- Process each visible tick
+	for tickNum = firstVisibleTick, lastVisibleTick do
+		local tickStartTime = tickNum * tickInterval
+		local tickEndTime = tickStartTime + tickInterval
 
-			if screenX >= 0 and screenX <= screenW then
-				local intScreenX = math.floor(screenX + 0.5)
+		-- Get screen positions of tick boundaries
+		local tickStartBoardX = timeToBoardX(tickStartTime, dataStartTime)
+		local tickEndBoardX = timeToBoardX(tickEndTime, dataStartTime)
+		local tickStartScreenX = (tickStartBoardX - boardOffsetX) * boardZoom
+		local tickEndScreenX = (tickEndBoardX - boardOffsetX) * boardZoom
 
-				-- Subdivision line
-				draw.Color(100, 100, 100, 80)
-				draw.Line(intScreenX, topBarHeight, intScreenX, topBarHeight + RULER_HEIGHT)
-				draw.Color(80, 80, 80, 20)
-				draw.Line(intScreenX, topBarHeight + RULER_HEIGHT, intScreenX, screenH)
+		-- Skip if tick is completely off screen
+		if tickEndScreenX < 0 or tickStartScreenX > screenW then
+			goto continue_tick
+		end
 
-				-- Label with time relative to left edge (positive values)
-				local relativeTime = time - dataStartTime
-				local timeUs = relativeTime * 1000000
-				local label
-				if interval >= 0.1 then
-					-- >= 100ms: show seconds
-					label = string.format("%.1fs", relativeTime)
-				elseif interval >= 0.001 then
-					-- >= 1ms: show milliseconds
-					label = string.format("%.1fms", relativeTime * 1000)
-				elseif interval >= 0.0001 then
-					-- >= 100μs: show μs with no decimals
-					label = string.format("%.0fµs", timeUs)
-				else
-					-- < 100μs: show μs with 1 decimal
-					label = string.format("%.1fµs", timeUs)
+		-- Draw tick boundary line (stronger)
+		if tickStartScreenX >= 0 and tickStartScreenX <= screenW then
+			local intX = math.floor(tickStartScreenX + 0.5)
+			draw.Color(150, 150, 200, 255)
+			draw.Line(intX, topBarHeight, intX, topBarHeight + RULER_HEIGHT)
+			draw.Color(100, 100, 150, 40)
+			draw.Line(intX, topBarHeight + RULER_HEIGHT, intX, screenH)
+
+			-- Tick label (T0, T1, T2...)
+			local tickLabel = string.format("T%d", tickNum)
+			if tickEndScreenX - tickStartScreenX >= 25 then
+				draw.Color(200, 200, 255, 255)
+				draw.Text(intX + 2, topBarHeight + 2, tickLabel)
+			end
+		end
+
+		-- Draw subdivision lines within this tick at fixed pixel spacing
+		-- Start from tick boundary, place lines at PIXEL_SPACING intervals
+		local tickPixelWidth = tickEndScreenX - tickStartScreenX
+
+		-- Only draw subdivisions if tick is wide enough
+		if tickPixelWidth >= PIXEL_SPACING * 0.5 then
+			-- How many subdivision lines fit in this tick?
+			local numLines = math.floor(tickPixelWidth / PIXEL_SPACING)
+
+			for lineIdx = 1, numLines do
+				local lineScreenX = tickStartScreenX + (lineIdx * PIXEL_SPACING)
+
+				-- Skip if outside screen
+				if lineScreenX < 0 or lineScreenX > screenW then
+					goto continue_line
 				end
 
+				local intX = math.floor(lineScreenX + 0.5)
+
+				-- Subdivision line (lighter)
+				draw.Color(100, 100, 100, 80)
+				draw.Line(intX, topBarHeight, intX, topBarHeight + RULER_HEIGHT)
+				draw.Color(80, 80, 80, 20)
+				draw.Line(intX, topBarHeight + RULER_HEIGHT, intX, screenH)
+
+				-- Calculate time at this line (relative to tick start)
+				local timeIntoTick = lineIdx * timePerLine
+				local timeUs = timeIntoTick * 1000000
+
+				-- Format label based on magnitude
+				local label
+				if timeIntoTick >= 0.001 then
+					label = string.format("%.2fms", timeIntoTick * 1000)
+				elseif timeIntoTick >= 0.0001 then
+					label = string.format("%.0fµs", timeUs)
+				elseif timeIntoTick >= 0.00001 then
+					label = string.format("%.1fµs", timeUs)
+				else
+					label = string.format("%.2fµs", timeUs)
+				end
+
+				-- Draw label if space available
 				local textWidth = #label * 7 + 10
-				local textX = intScreenX + 2
-				if textX >= lastLabelEndX + 10 and screenX >= 10 and screenX <= screenW - textWidth then
+				local textX = intX + 2
+				if textX >= lastLabelEndX + 10 and lineScreenX >= 10 and lineScreenX <= screenW - textWidth then
 					draw.Color(150, 150, 150, 200)
 					draw.Text(textX, topBarHeight + 15, label)
 					lastLabelEndX = textX + textWidth
 				end
+
+				::continue_line::
 			end
 		end
 
-		time = time + interval
-		markCount = markCount + 1
+		::continue_tick::
 	end
 end
 

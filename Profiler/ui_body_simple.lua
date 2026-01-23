@@ -18,6 +18,7 @@ local SCRIPT_HEADER_HEIGHT = 25 -- Height of script headers
 local SCRIPT_SPACING = 10 -- Spacing between scripts
 local TIME_SCALE = 50000 -- Pixels per second (horizontal scale) - makes 1ms = 50px
 local RULER_HEIGHT = 30 -- Height of time ruler at top of body
+local MAX_TICKS = 66 -- Maximum ticks of history to display (T1-T66)
 local MEMORY_SCALE_START_MB = 1
 local MEMORY_SCALE_END_MB = 10
 local MEMORY_HEIGHT_MULTIPLIER_MAX = 2
@@ -381,13 +382,16 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 	-- Time between each subdivision line (fixed pixel spacing)
 	local timePerLine = PIXEL_SPACING * timePerPixel
 
+	-- Find first tick in data (for relative numbering T1-T66)
+	local dataFirstTick = math.floor(dataStartTime / tickInterval)
+
 	-- Find which ticks are visible
 	local firstVisibleTick = math.floor(visibleLeftTime / tickInterval)
 	local lastVisibleTick = math.ceil(visibleRightTime / tickInterval)
 
 	-- Clamp to reasonable range
-	firstVisibleTick = math.max(0, firstVisibleTick - 1)
-	lastVisibleTick = math.min(firstVisibleTick + 200, lastVisibleTick + 1)
+	firstVisibleTick = math.max(dataFirstTick, firstVisibleTick - 1)
+	lastVisibleTick = math.min(dataFirstTick + MAX_TICKS, lastVisibleTick + 1)
 
 	local lastLabelEndX = -1000
 
@@ -415,8 +419,9 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 			draw.Color(100, 100, 150, 40)
 			draw.Line(intX, topBarHeight + RULER_HEIGHT, intX, screenH)
 
-			-- Tick label (T0, T1, T2...)
-			local tickLabel = string.format("T%d", tickNum)
+			-- Tick label relative to data start (T1, T2... T66)
+			local relativeTickNum = tickNum - dataFirstTick + 1
+			local tickLabel = string.format("T%d", relativeTickNum)
 			if tickEndScreenX - tickStartScreenX >= 25 then
 				draw.Color(200, 200, 255, 255)
 				draw.Text(intX + 2, topBarHeight + 2, tickLabel)
@@ -424,18 +429,40 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 		end
 
 		-- Draw subdivision lines within this tick at fixed pixel spacing
-		-- Start from tick boundary, place lines at PIXEL_SPACING intervals
+		-- Calculate first and last visible line indices (efficient at any zoom)
 		local tickPixelWidth = tickEndScreenX - tickStartScreenX
 
-		-- Only draw subdivisions if tick is wide enough
-		if tickPixelWidth >= PIXEL_SPACING * 0.5 then
-			-- How many subdivision lines fit in this tick?
-			local numLines = math.floor(tickPixelWidth / PIXEL_SPACING)
+		-- Only draw subdivisions if tick is wide enough for at least partial line
+		if tickPixelWidth >= 1 then
+			-- First visible line index: which line is at screen X=0 or tick start?
+			local firstLineIdx, lastLineIdx
+			if tickStartScreenX >= 0 then
+				-- Tick starts on screen, first line is index 1
+				firstLineIdx = 1
+			else
+				-- Tick starts off-screen left, calculate first visible line
+				-- tickStartScreenX + (lineIdx * PIXEL_SPACING) >= 0
+				-- lineIdx >= -tickStartScreenX / PIXEL_SPACING
+				firstLineIdx = math.ceil(-tickStartScreenX / PIXEL_SPACING)
+			end
 
-			for lineIdx = 1, numLines do
+			-- Last visible line index: which line is at screen X=screenW or tick end?
+			-- tickStartScreenX + (lineIdx * PIXEL_SPACING) <= screenW
+			-- lineIdx <= (screenW - tickStartScreenX) / PIXEL_SPACING
+			lastLineIdx = math.floor((screenW - tickStartScreenX) / PIXEL_SPACING)
+
+			-- Also cap at tick boundary (don't draw past tick end)
+			local maxLineInTick = math.floor(tickPixelWidth / PIXEL_SPACING)
+			lastLineIdx = math.min(lastLineIdx, maxLineInTick)
+
+			-- Clamp to reasonable range
+			firstLineIdx = math.max(1, firstLineIdx)
+			lastLineIdx = math.min(lastLineIdx, 10000)
+
+			for lineIdx = firstLineIdx, lastLineIdx do
 				local lineScreenX = tickStartScreenX + (lineIdx * PIXEL_SPACING)
 
-				-- Skip if outside screen
+				-- Safety check (should always be on screen now)
 				if lineScreenX < 0 or lineScreenX > screenW then
 					goto continue_line
 				end
@@ -452,15 +479,20 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 				local timeIntoTick = lineIdx * timePerLine
 				local timeUs = timeIntoTick * 1000000
 
-				-- Format label based on magnitude
+				-- Format label based on timePerLine (zoom level), not absolute time
+				-- This ensures μs precision at high zoom even for large time values
 				local label
-				if timeIntoTick >= 0.001 then
+				if timePerLine >= 0.001 then
+					-- Low zoom: show ms
 					label = string.format("%.2fms", timeIntoTick * 1000)
-				elseif timeIntoTick >= 0.0001 then
+				elseif timePerLine >= 0.0001 then
+					-- Medium zoom: show μs with no decimals
 					label = string.format("%.0fµs", timeUs)
-				elseif timeIntoTick >= 0.00001 then
+				elseif timePerLine >= 0.00001 then
+					-- High zoom: show μs with 1 decimal
 					label = string.format("%.1fµs", timeUs)
 				else
+					-- Very high zoom: show μs with 2 decimals
 					label = string.format("%.2fµs", timeUs)
 				end
 
@@ -707,9 +739,18 @@ function UIBody.Draw(profilerData, topBarHeight)
 		draw.Color(255, 255, 255, 255)
 		draw.Text(textX, textY, hoveredFunc.name or "unknown")
 
-		local durationMs = (hoveredFunc.endTime - hoveredFunc.startTime) * 1000
+		local durationSec = hoveredFunc.endTime - hoveredFunc.startTime
+		local durationUs = durationSec * 1000000
+		local durationText
+		if durationSec >= 0.001 then
+			-- >= 1ms: show ms with μs precision
+			durationText = string.format("Duration: %.3fms (%.0fµs)", durationSec * 1000, durationUs)
+		else
+			-- < 1ms: show μs with decimals
+			durationText = string.format("Duration: %.2fµs", durationUs)
+		end
 		draw.Color(255, 255, 150, 255)
-		draw.Text(textX, textY + 18, string.format("Duration: %.3fms", durationMs))
+		draw.Text(textX, textY + 18, durationText)
 
 		local memKb = hoveredFunc.memDelta or 0
 		local memMb = memKb / 1024

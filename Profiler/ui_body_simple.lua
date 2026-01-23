@@ -349,8 +349,17 @@ local function drawScriptOnBoard(scriptName, functions, boardY, dataStartTime, d
 end
 
 -- Draw time ruler with fixed pixel spacing (works at infinite zoom)
--- Algorithm: lines are ALWAYS spaced at fixed pixels, we calculate what time each line represents
-local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, dataEndTime)
+-- Uses actual tick boundaries from stored tick counts in profiler data
+local function drawTimeRuler(
+	screenW,
+	screenH,
+	topBarHeight,
+	dataStartTime,
+	dataEndTime,
+	tickBoundaries,
+	minTick,
+	maxTick
+)
 	if not draw then
 		return
 	end
@@ -359,16 +368,10 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 	draw.Color(30, 30, 30, 255)
 	draw.FilledRect(0, topBarHeight, screenW, topBarHeight + RULER_HEIGHT)
 
-	local tickInterval = globals.TickInterval()
-	if tickInterval <= 0 then
-		tickInterval = 1 / 66
-	end
-
 	-- Fixed pixel spacing between subdivision lines (constant on screen)
 	local PIXEL_SPACING = 80
 
 	-- Get visible time range from screen coordinates
-	-- Screen X=0 corresponds to what board position? Screen X=screenW?
 	local visibleLeftBoardX = boardOffsetX
 	local visibleRightBoardX = boardOffsetX + (screenW / boardZoom)
 
@@ -382,23 +385,32 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 	-- Time between each subdivision line (fixed pixel spacing)
 	local timePerLine = PIXEL_SPACING * timePerPixel
 
-	-- Find first tick in data (for relative numbering T1-T66)
-	local dataFirstTick = math.floor(dataStartTime / tickInterval)
-
-	-- Find which ticks are visible
-	local firstVisibleTick = math.floor(visibleLeftTime / tickInterval)
-	local lastVisibleTick = math.ceil(visibleRightTime / tickInterval)
-
-	-- Clamp to reasonable range
-	firstVisibleTick = math.max(dataFirstTick, firstVisibleTick - 1)
-	lastVisibleTick = math.min(dataFirstTick + MAX_TICKS, lastVisibleTick + 1)
+	-- Fallback if no tick data
+	if minTick == math.huge or not tickBoundaries then
+		minTick = 0
+		maxTick = MAX_TICKS
+		tickBoundaries = {}
+	end
 
 	local lastLabelEndX = -1000
 
-	-- Process each visible tick
-	for tickNum = firstVisibleTick, lastVisibleTick do
-		local tickStartTime = tickNum * tickInterval
-		local tickEndTime = tickStartTime + tickInterval
+	-- Process each tick that has data (using actual stored tick counts)
+	for tickNum = minTick, maxTick do
+		-- Get actual time for this tick from stored boundaries, or estimate
+		local tickStartTime = tickBoundaries[tickNum]
+		local tickEndTime = tickBoundaries[tickNum + 1]
+
+		-- Skip ticks we don't have boundary data for
+		if not tickStartTime then
+			goto continue_tick
+		end
+
+		-- Estimate end time if we don't have next tick boundary
+		if not tickEndTime then
+			-- Use average tick interval from data, or fallback to globals.TickInterval()
+			local avgTickInterval = globals.TickInterval()
+			tickEndTime = tickStartTime + avgTickInterval
+		end
 
 		-- Get screen positions of tick boundaries
 		local tickStartBoardX = timeToBoardX(tickStartTime, dataStartTime)
@@ -420,7 +432,7 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 			draw.Line(intX, topBarHeight + RULER_HEIGHT, intX, screenH)
 
 			-- Tick label relative to data start (T1, T2... T66)
-			local relativeTickNum = tickNum - dataFirstTick + 1
+			local relativeTickNum = tickNum - minTick + 1
 			local tickLabel = string.format("T%d", relativeTickNum)
 			if tickEndScreenX - tickStartScreenX >= 25 then
 				draw.Color(200, 200, 255, 255)
@@ -653,6 +665,11 @@ function UIBody.Draw(profilerData, topBarHeight)
 	-- Calculate data time bounds from actual profiler data
 	local dataStartTime = math.huge
 	local dataEndTime = -math.huge
+	local minTick = math.huge
+	local maxTick = -math.huge
+
+	-- Build tick boundary map: tick number -> earliest time seen for that tick
+	local tickBoundaries = {}
 
 	if profilerData.scriptTimelines then
 		for _, scriptData in pairs(profilerData.scriptTimelines) do
@@ -661,6 +678,24 @@ function UIBody.Draw(profilerData, topBarHeight)
 					if func.startTime and func.endTime then
 						dataStartTime = math.min(dataStartTime, func.startTime)
 						dataEndTime = math.max(dataEndTime, func.endTime)
+
+						-- Track tick boundaries from actual stored tick counts
+						if func.startTick then
+							minTick = math.min(minTick, func.startTick)
+							maxTick = math.max(maxTick, func.startTick)
+							if
+								not tickBoundaries[func.startTick]
+								or func.startTime < tickBoundaries[func.startTick]
+							then
+								tickBoundaries[func.startTick] = func.startTime
+							end
+						end
+						if func.endTick then
+							maxTick = math.max(maxTick, func.endTick)
+							if not tickBoundaries[func.endTick] or func.endTime < tickBoundaries[func.endTick] then
+								tickBoundaries[func.endTick] = func.endTime
+							end
+						end
 					end
 				end
 			end
@@ -671,6 +706,8 @@ function UIBody.Draw(profilerData, topBarHeight)
 	if dataStartTime == math.huge then
 		dataStartTime = currentTime - (MAX_TICKS * tickInterval)
 		dataEndTime = currentTime
+		minTick = globals.TickCount() - MAX_TICKS
+		maxTick = globals.TickCount()
 	end
 
 	-- Auto-scroll: keep newest data visible on screen
@@ -688,8 +725,8 @@ function UIBody.Draw(profilerData, topBarHeight)
 		end
 	end
 
-	-- Draw time ruler (includes frame/tick boundaries and ms subdivisions)
-	drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, dataEndTime)
+	-- Draw time ruler using actual tick boundaries from data
+	drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, dataEndTime, tickBoundaries, minTick, maxTick)
 
 	-- Start drawing on virtual board (FIXED position below ruler, not zoom-scaled)
 	-- Content always starts at screenY = topBarHeight + RULER_HEIGHT

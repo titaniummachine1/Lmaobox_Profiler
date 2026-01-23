@@ -278,8 +278,10 @@ local function createFunctionRecord(info)
 		scriptName = scriptName,
 		line = line,
 		startTime = os.clock(),
+		startTick = globals.TickCount(),
 		memStart = getMemory(),
 		endTime = nil,
+		endTick = nil,
 		memDelta = 0,
 		duration = 0,
 		children = {},
@@ -336,6 +338,7 @@ local function profileHook(event)
 
 		-- Complete the record
 		record.endTime = os.clock()
+		record.endTick = globals.TickCount()
 		record.memDelta = getMemory() - record.memStart
 		record.duration = record.endTime - record.startTime
 
@@ -582,8 +585,10 @@ function MicroProfiler.BeginCustomWork(name, category)
 		category = category or nil,
 		scriptName = scriptName,
 		startTime = os.clock(),
+		startTick = globals.TickCount(),
 		memStart = getMemory(),
 		endTime = nil,
+		endTick = nil,
 		memDelta = 0,
 		duration = 0,
 		children = {},
@@ -636,6 +641,7 @@ function MicroProfiler.EndCustomWork(name)
 
 	if work then
 		work.endTime = os.clock()
+		work.endTick = globals.TickCount()
 		work.memDelta = getMemory() - work.memStart
 		work.duration = work.endTime - work.startTime
 
@@ -647,7 +653,9 @@ function MicroProfiler.EndCustomWork(name)
 			scriptName = work.scriptName,
 			line = 0,
 			startTime = work.startTime,
+			startTick = work.startTick,
 			endTime = work.endTime,
+			endTick = work.endTick,
 			duration = work.duration,
 			memDelta = work.memDelta,
 			children = work.children,

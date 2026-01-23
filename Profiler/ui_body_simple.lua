@@ -47,10 +47,10 @@ local MOUSE_LEFT = MOUSE_LEFT or 107
 local KEY_Q = KEY_Q or 18
 local KEY_E = KEY_E or 20
 
--- globals is a global table provided by the environment (RealTime, TickInterval, etc.)
+-- globals is a global table provided by the environment (TickInterval, etc.)
 
 -- Helper functions
--- Use globals.RealTime() directly
+-- Use os.clock() for microsecond-level timing precision
 
 -- Convert time to board X coordinate
 -- startTime is the reference for the current visible window (usually dataStartTime)
@@ -111,8 +111,9 @@ local function drawFunctionOnBoard(func, boardX, boardY, boardWidth, screenW, sc
 	local screenHeight = FUNCTION_HEIGHT
 
 	-- Clamp screen coordinates to prevent overflow at extreme zoom
-	local clampedScreenX = math.max(-50000, math.min(50000, screenX))
-	local clampedScreenWidth = math.max(0, math.min(100000, screenWidth))
+	local clampLimit = math.max(100000, boardZoom * 10000)
+	local clampedScreenX = math.max(-clampLimit, math.min(clampLimit, screenX))
+	local clampedScreenWidth = math.max(0, math.min(clampLimit * 2, screenWidth))
 
 	-- Only draw if visible on screen (use actual screen bounds)
 	if
@@ -161,7 +162,7 @@ local function drawFunctionOnBoard(func, boardX, boardY, boardWidth, screenW, sc
 				local gridBoardX = timeToBoardX(gridTime, func.startTime) + boardX
 				local gridScreenX, _ = boardToScreen(gridBoardX, 0)
 
-				local clampedGridX = math.max(-50000, math.min(50000, gridScreenX))
+				local clampedGridX = math.max(-clampLimit, math.min(clampLimit, gridScreenX))
 				if clampedGridX >= clampedScreenX and clampedGridX <= clampedScreenX + clampedScreenWidth then
 					draw.Color(255, 255, 255, 30)
 					draw.Line(
@@ -193,7 +194,7 @@ local function drawFunctionOnBoard(func, boardX, boardY, boardWidth, screenW, sc
 			local textBoardX = boardX + 4
 			local textBoardY = boardY + 2
 			local textScreenX, textScreenY = boardToScreen(textBoardX, textBoardY)
-			local clampedTextX = math.max(-50000, math.min(50000, textScreenX))
+			local clampedTextX = math.max(-clampLimit, math.min(clampLimit, textScreenX))
 
 			draw.Color(255, 255, 255, 255)
 			draw.Text(math.floor(clampedTextX), math.floor(textScreenY), name)
@@ -208,7 +209,7 @@ local function drawFunctionOnBoard(func, boardX, boardY, boardWidth, screenW, sc
 			local durationBoardX = boardX + 4
 			local durationBoardY = boardY + FUNCTION_HEIGHT - 12
 			local durationScreenX, durationScreenY = boardToScreen(durationBoardX, durationBoardY)
-			local clampedDurationX = math.max(-50000, math.min(50000, durationScreenX))
+			local clampedDurationX = math.max(-clampLimit, math.min(clampLimit, durationScreenX))
 
 			draw.Color(255, 255, 100, 255)
 			draw.Text(math.floor(clampedDurationX), math.floor(durationScreenY), durationText)
@@ -535,14 +536,13 @@ local function drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, data
 						draw.Color(80, 80, 80, math.floor(alpha * 0.2))
 						draw.Line(intScreenX, topBarHeight + RULER_HEIGHT, intScreenX, screenH)
 
-						-- Show time relative to current tick boundary
-						local relativeTime = time - currentTickBoundary
+						-- Show absolute time from RecordingStartTime
+						local absoluteTime = time - recordingStart
 
 						-- Smart unit selection based on interval spacing
-						-- NOTE: Don't go below µs (1µs is maximum timer accuracy)
 						local label
-						local timeInMs = relativeTime * 1000
-						local timeInUs = relativeTime * 1000000
+						local timeInMs = absoluteTime * 1000
+						local timeInUs = absoluteTime * 1000000
 
 						-- Choose unit based on interval size for clean display
 						if interval >= 0.01 then
@@ -720,8 +720,8 @@ function UIBody.Draw(profilerData, topBarHeight)
 	draw.Color(20, 20, 20, 240)
 	draw.FilledRect(0, topBarHeight, screenW, screenH)
 
-	-- Calculate time bounds from all data
-	local dataStartTime = math.huge
+	-- Anchor time bounds to RecordingStartTime for stable positioning
+	local dataStartTime = Shared.RecordingStartTime or 0
 	local dataEndTime = -math.huge
 
 	if profilerData.scriptTimelines then
@@ -729,7 +729,6 @@ function UIBody.Draw(profilerData, topBarHeight)
 			if scriptData.functions then
 				for _, func in ipairs(scriptData.functions) do
 					if func.startTime and func.endTime then
-						dataStartTime = math.min(dataStartTime, func.startTime)
 						dataEndTime = math.max(dataEndTime, func.endTime)
 					end
 				end
@@ -738,14 +737,8 @@ function UIBody.Draw(profilerData, topBarHeight)
 	end
 
 	-- Fallback if no data
-	if dataStartTime == math.huge then
-		if globals and globals.RealTime then
-			dataStartTime = globals.RealTime() - 5
-			dataEndTime = globals.RealTime()
-		else
-			dataStartTime = 0
-			dataEndTime = 5
-		end
+	if dataEndTime == -math.huge then
+		dataEndTime = os.clock()
 	end
 
 	-- Draw time ruler (includes frame/tick boundaries and ms subdivisions)

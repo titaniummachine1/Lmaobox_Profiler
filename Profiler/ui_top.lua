@@ -181,7 +181,7 @@ local function updateFrameRecording()
 		return
 	end
 
-	local currentTime = globals.RealTime()
+	local currentTime = os.clock()
 	local tickInterval = globals.TickInterval()
 	assert(tickInterval and tickInterval > 0, "updateFrameRecording: invalid tick interval")
 

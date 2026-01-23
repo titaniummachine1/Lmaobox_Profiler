@@ -52,7 +52,7 @@ local scriptTimelines = {}
 -- Forward declaration so later calls see the local, not a global
 local autoDisableIfIdle
 
--- Use globals.RealTime() directly
+-- Use os.clock() for microsecond-level timing precision
 
 -- Get memory usage in KB
 local function getMemory()
@@ -69,7 +69,7 @@ local function cleanupOldRecords()
 		return
 	end
 
-	local currentTime = globals.RealTime()
+	local currentTime = os.clock()
 
 	-- Skip if not enough time has passed
 	if currentTime - lastCleanupTime < CLEANUP_INTERVAL then
@@ -272,7 +272,7 @@ local function createFunctionRecord(info)
 		source = source,
 		scriptName = scriptName,
 		line = line,
-		startTime = globals.RealTime(),
+		startTime = os.clock(),
 		memStart = getMemory(),
 		endTime = nil,
 		memDelta = 0,
@@ -293,7 +293,7 @@ local function profileHook(event)
 	end
 
 	-- Only cleanup when NOT paused to keep data available for navigation
-	local currentTime = globals.RealTime()
+	local currentTime = os.clock()
 	if currentTime - lastCleanupTime > CLEANUP_INTERVAL then
 		cleanupOldRecords()
 		autoDisableIfIdle()
@@ -330,7 +330,7 @@ local function profileHook(event)
 		end
 
 		-- Complete the record
-		record.endTime = globals.RealTime()
+		record.endTime = os.clock()
 		record.memDelta = getMemory() - record.memStart
 		record.duration = record.endTime - record.startTime
 
@@ -571,7 +571,7 @@ function MicroProfiler.BeginCustomWork(name, category)
 		name = name,
 		category = category or nil,
 		scriptName = scriptName,
-		startTime = globals.RealTime(),
+		startTime = os.clock(),
 		memStart = getMemory(),
 		endTime = nil,
 		memDelta = 0,
@@ -625,7 +625,7 @@ function MicroProfiler.EndCustomWork(name)
 	end
 
 	if work then
-		work.endTime = globals.RealTime()
+		work.endTime = os.clock()
 		work.memDelta = getMemory() - work.memStart
 		work.duration = work.endTime - work.startTime
 
@@ -746,7 +746,7 @@ function MicroProfiler.GetStats()
 	if not _lastStatsTime then
 		_lastStatsTime = 0
 	end
-	local currentTime = globals.RealTime()
+	local currentTime = os.clock()
 	if (Shared and Shared.DEBUG) and (currentTime - _lastStatsTime > 5.0) then
 		_lastStatsTime = currentTime
 		-- Count script timelines

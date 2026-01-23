@@ -297,14 +297,15 @@ local function drawScriptOnBoard(scriptName, functions, boardY, dataStartTime, d
 	-- Draw functions with stacking (cull functions outside visible time window)
 	local stackLevels = {} -- Track occupied time ranges at each Y level
 
-	for i, func in ipairs(functions) do
+	-- Recursive function to draw a function and its children
+	local function drawFunctionAndChildren(func, parentLevel)
 		-- Cull functions completely outside visible time window
 		if func.startTime and func.endTime and func.endTime >= dataStartTime and func.startTime <= dataEndTime then
 			local boardX = timeToBoardX(func.startTime, dataStartTime)
 			local boardWidth = timeToBoardX(func.endTime, dataStartTime) - boardX
 
-			-- Find available Y level
-			local level = 0
+			-- Find available Y level starting from parentLevel
+			local level = parentLevel
 			local foundLevel = false
 
 			while not foundLevel do
@@ -335,7 +336,19 @@ local function drawScriptOnBoard(scriptName, functions, boardY, dataStartTime, d
 
 			-- Draw function on board
 			drawFunctionOnBoard(func, boardX, functionBoardY, boardWidth, screenW, screenH)
+
+			-- Draw children at next level
+			if func.children and #func.children > 0 then
+				for _, child in ipairs(func.children) do
+					drawFunctionAndChildren(child, level + 1)
+				end
+			end
 		end
+	end
+
+	-- Draw all top-level functions and their children recursively
+	for i, func in ipairs(functions) do
+		drawFunctionAndChildren(func, 0)
 	end
 
 	-- Calculate new Y position after all levels
@@ -780,11 +793,14 @@ function UIBody.Draw(profilerData, topBarHeight)
 		local durationUs = durationSec * 1000000
 		local durationText
 		if durationSec >= 0.001 then
-			-- >= 1ms: show ms with μs precision
-			durationText = string.format("Duration: %.3fms (%.0fµs)", durationSec * 1000, durationUs)
-		else
-			-- < 1ms: show μs with decimals
+			-- >= 1ms: show full μs precision
+			durationText = string.format("Duration: %.3fms (%.3fµs)", durationSec * 1000, durationUs)
+		elseif durationSec >= 0.0001 then
+			-- >= 100μs: show 2 decimals
 			durationText = string.format("Duration: %.2fµs", durationUs)
+		else
+			-- < 100μs: show 3 decimals
+			durationText = string.format("Duration: %.3fµs", durationUs)
 		end
 		draw.Color(255, 255, 150, 255)
 		draw.Text(textX, textY + 18, durationText)

@@ -35,12 +35,12 @@ local function onCreateMove(cmd)
 
 	Profiler.Begin("FastPlayers.Total")
 
-	-- Invalidate cache each tick (forces rebuild)
-	Profiler.Begin("FastPlayers.Invalidate")
-	FastPlayers.Invalidate()
-	Profiler.End("FastPlayers.Invalidate")
+	-- Update cache (triggers rebuild if needed)
+	Profiler.Begin("FastPlayers.Update")
+	FastPlayers.Update()
+	Profiler.End("FastPlayers.Update")
 
-	-- Get all players (triggers full rebuild)
+	-- Get all players (uses cached data)
 	Profiler.Begin("FastPlayers.GetAll")
 	local allPlayers = FastPlayers.GetAll()
 	Profiler.End("FastPlayers.GetAll")

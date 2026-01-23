@@ -52,7 +52,7 @@ local scriptTimelines = {}
 -- Forward declaration so later calls see the local, not a global
 local autoDisableIfIdle
 
--- Use os.clock() for microsecond-level timing precision
+-- Use globals.RealTime() for microsecond-level timing precision
 
 -- Get memory usage in KB
 local function getMemory()
@@ -69,7 +69,7 @@ local function cleanupOldRecords()
 		return
 	end
 
-	local currentTime = os.clock()
+	local currentTime = globals.RealTime()
 
 	-- Skip if not enough time has passed
 	if currentTime - lastCleanupTime < CLEANUP_INTERVAL then
@@ -300,7 +300,7 @@ local function profileHook(event)
 	end
 
 	-- Only cleanup when NOT paused to keep data available for navigation
-	local currentTime = os.clock()
+	local currentTime = globals.RealTime()
 	if currentTime - lastCleanupTime > CLEANUP_INTERVAL then
 		cleanupOldRecords()
 		autoDisableIfIdle()
@@ -337,7 +337,7 @@ local function profileHook(event)
 		end
 
 		-- Complete the record
-		record.endTime = os.clock()
+		record.endTime = globals.RealTime()
 		record.endTick = globals.TickCount()
 		record.memDelta = getMemory() - record.memStart
 		record.duration = record.endTime - record.startTime
@@ -527,7 +527,7 @@ function MicroProfiler.SetPaused(paused)
 		MicroProfiler.ClearData()
 		-- Reset recording start time for fresh timeline
 		if Shared then
-			Shared.RecordingStartTime = os.clock()
+			Shared.RecordingStartTime = globals.RealTime()
 		end
 		-- Ensure hook is enabled when resuming
 		if isEnabled and not isHooked then
@@ -584,7 +584,7 @@ function MicroProfiler.BeginCustomWork(name, category)
 		name = name,
 		category = category or nil,
 		scriptName = scriptName,
-		startTime = os.clock(),
+		startTime = globals.RealTime(),
 		startTick = globals.TickCount(),
 		memStart = getMemory(),
 		endTime = nil,
@@ -640,7 +640,7 @@ function MicroProfiler.EndCustomWork(name)
 	end
 
 	if work then
-		work.endTime = os.clock()
+		work.endTime = globals.RealTime()
 		work.endTick = globals.TickCount()
 		work.memDelta = getMemory() - work.memStart
 		work.duration = work.endTime - work.startTime
@@ -764,7 +764,7 @@ function MicroProfiler.GetStats()
 	if not _lastStatsTime then
 		_lastStatsTime = 0
 	end
-	local currentTime = os.clock()
+	local currentTime = globals.RealTime()
 	if (Shared and Shared.DEBUG) and (currentTime - _lastStatsTime > 5.0) then
 		_lastStatsTime = currentTime
 		-- Count script timelines

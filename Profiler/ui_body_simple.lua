@@ -214,8 +214,8 @@ local function drawFunctionOnBoard(func, boardX, boardY, boardWidth, screenW, sc
 
 		-- Draw duration if there's space (positioned on board, then transformed)
 		if clampedScreenWidth > 120 and screenHeight > 24 then
-			local durationMs = duration * 1000 -- ms
-			local durationText = string.format("%.3fms", durationMs)
+			local durationUs = duration * 1000000 -- µs
+			local durationText = string.format("%.2fµs", durationUs)
 
 			-- Position duration text on board, then transform to screen
 			local durationBoardX = boardX + 4
@@ -441,19 +441,11 @@ local function drawTimeRuler(
 			goto continue_tick
 		end
 
-		-- Calculate tick end time with minimum duration enforcement
+		-- Use actual tick end time without snapping (preserves microsecond precision)
 		if not tickEndTime then
-			-- Use globals.TickInterval() as minimum duration
+			-- Fallback: estimate next tick boundary using tick interval
 			local minTickDuration = globals.TickInterval()
 			tickEndTime = tickStartTime + minTickDuration
-		else
-			-- Enforce minimum tick duration even if next tick boundary is recorded
-			local minTickDuration = globals.TickInterval()
-			local actualDuration = tickEndTime - tickStartTime
-			if actualDuration < minTickDuration then
-				-- Tick didn't take long enough, extend to minimum
-				tickEndTime = tickStartTime + minTickDuration
-			end
 		end
 
 		-- Get screen positions of tick boundaries
@@ -516,7 +508,11 @@ local function drawTimeRuler(
 			lastLineIdx = math.min(lastLineIdx, 10000)
 
 			for lineIdx = firstLineIdx, lastLineIdx do
-				local lineScreenX = tickStartScreenX + (lineIdx * PIXEL_SPACING)
+				-- Calculate line position based on global timeline (not snapped tick)
+				local timeIntoTick = lineIdx * timePerLine
+				local lineAbsoluteTime = tickStartTime + timeIntoTick
+				local lineBoardX = timeToBoardX(lineAbsoluteTime, dataStartTime)
+				local lineScreenX = (lineBoardX - boardOffsetX) * boardZoom
 
 				-- Safety check (should always be on screen now)
 				if lineScreenX < 0 or lineScreenX > screenW then
@@ -531,8 +527,7 @@ local function drawTimeRuler(
 				draw.Color(80, 80, 80, 20)
 				draw.Line(intX, topBarHeight + RULER_HEIGHT, intX, screenH)
 
-				-- Calculate time at this line (relative to tick start)
-				local timeIntoTick = lineIdx * timePerLine
+				-- Calculate time label (relative to tick start, preserving precision)
 				local timeUs = timeIntoTick * 1000000
 
 				-- Format label based on timePerLine (zoom level), not absolute time
@@ -800,8 +795,8 @@ function UIBody.Draw(profilerData, topBarHeight)
 		local mx, my = pos[1] or 0, pos[2] or 0
 		local tooltipX = mx + 15
 		local tooltipY = my + 15
-		local tooltipW = 220
-		local tooltipH = 70
+		local tooltipW = 300
+		local tooltipH = 90
 
 		if tooltipX + tooltipW > screenW then
 			tooltipX = mx - tooltipW - 5
@@ -820,21 +815,32 @@ function UIBody.Draw(profilerData, topBarHeight)
 		draw.Color(255, 255, 255, 255)
 		draw.Text(textX, textY, hoveredFunc.name or "unknown")
 
-		local durationSec = hoveredFunc.endTime - hoveredFunc.startTime
+		-- RAW timing values (full os.clock() precision)
+		local startRaw = hoveredFunc.startTime
+		local endRaw = hoveredFunc.endTime
+		local durationSec = endRaw - startRaw
 		local durationUs = durationSec * 1000000
+
+		-- Show with MAXIMUM precision to detect any hidden variance
 		local durationText
 		if durationSec >= 0.001 then
-			-- >= 1ms: show full μs precision
-			durationText = string.format("Duration: %.3fms (%.3fµs)", durationSec * 1000, durationUs)
+			-- >= 1ms: show 6 decimals in ms + µs
+			durationText = string.format("Duration: %.6fms (%.3fµs)", durationSec * 1000, durationUs)
 		elseif durationSec >= 0.0001 then
-			-- >= 100μs: show 2 decimals
-			durationText = string.format("Duration: %.2fµs", durationUs)
-		else
-			-- < 100μs: show 3 decimals
+			-- >= 100μs: show 3 decimals
 			durationText = string.format("Duration: %.3fµs", durationUs)
+		else
+			-- < 100μs: show 4 decimals
+			durationText = string.format("Duration: %.4fµs", durationUs)
 		end
+
+		-- Add raw timing debug info
+		local debugText = string.format("Raw: %.9f → %.9f", startRaw, endRaw)
+
 		draw.Color(255, 255, 150, 255)
 		draw.Text(textX, textY + 18, durationText)
+		draw.Color(150, 150, 150, 200)
+		draw.Text(textX, textY + 54, debugText)
 
 		local memKb = hoveredFunc.memDelta or 0
 		local memMb = memKb / 1024

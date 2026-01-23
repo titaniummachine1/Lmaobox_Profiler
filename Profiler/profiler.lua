@@ -83,7 +83,7 @@ function ProfilerCore.SetVisible(visible)
 	if visible then
 		-- Set RecordingStartTime when profiling starts for fixed coordinate system
 		if not Shared.RecordingStartTime then
-			Shared.RecordingStartTime = os.clock()
+			Shared.RecordingStartTime = globals.RealTime()
 			print(string.format("📍 Profiler: RecordingStartTime set to %.6f", Shared.RecordingStartTime))
 		end
 		MicroProfiler.Enable()
@@ -282,7 +282,7 @@ function ProfilerCore.Draw()
 	end
 
 	-- Store last draw time
-	Shared.LastDrawTime = os.clock()
+	Shared.LastDrawTime = globals.RealTime()
 end
 
 -- Get profiler data for external use

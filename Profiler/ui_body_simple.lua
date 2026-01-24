@@ -41,6 +41,7 @@ local levelRanges = {}
 local levelHeights = {}
 local levelOffsets = {}
 local funcCache = {}
+local globalTextSizeCache = {}
 
 -- External APIs
 local draw = draw
@@ -65,6 +66,16 @@ local function clearArray(array)
 	for i = #array, 1, -1 do
 		array[i] = nil
 	end
+end
+
+local function getTextSize(text)
+	assert(draw and draw.GetTextSize, "getTextSize: draw.GetTextSize missing")
+	if globalTextSizeCache[text] then
+		return globalTextSizeCache[text].w, globalTextSizeCache[text].h
+	end
+	local w, h = draw.GetTextSize(text)
+	globalTextSizeCache[text] = { w = w, h = h }
+	return w, h
 end
 
 local function getFunctionHeight(func)
@@ -193,9 +204,9 @@ local function drawFunctionOnBoard(func, boardX, boardY, boardWidth, screenW, sc
 			math.floor(screenY + screenHeight)
 		)
 
-		-- Text drawing with intelligent layout
+		-- Text drawing with cached layout using relative offsets
 		local name = func.name or "unknown"
-		if not func._cachedText then
+		if not func._dynamicText then
 			local durationUs = duration * 1000000
 			local durationText
 			if durationUs >= 1000 then
@@ -207,77 +218,85 @@ local function drawFunctionOnBoard(func, boardX, boardY, boardWidth, screenW, sc
 			local memKb = func.memDelta or 0
 			local memMb = memKb / 1024
 			local memText = memMb >= 1 and string.format("%.2f MB", memMb) or string.format("%.1f KB", memKb)
-			func._cachedText = {
+
+			local durationW, durationH = getTextSize(durationText)
+			local memW, memH = getTextSize(memText)
+
+			func._dynamicText = {
 				duration = durationText,
 				memory = memText,
+				durationW = durationW,
+				durationH = durationH,
+				memW = memW,
+				memH = memH,
 			}
 		end
-		local durationText = func._cachedText.duration
-		local memText = func._cachedText.memory
+		local durationText = func._dynamicText.duration
+		local memText = func._dynamicText.memory
+		local durationW = func._dynamicText.durationW
+		local durationH = func._dynamicText.durationH
+		local memW = func._dynamicText.memW
+		local memH = func._dynamicText.memH
 
 		if draw.GetTextSize then
-			if not func._cachedTextSizes then
-				local nameW, nameH = draw.GetTextSize(name)
-				local durationW, durationH = draw.GetTextSize(durationText)
-				local memW, memH = draw.GetTextSize(memText)
-				func._cachedTextSizes = {
-					nameW = nameW,
-					nameH = nameH,
-					durationW = durationW,
-					durationH = durationH,
-					memW = memW,
-					memH = memH,
-				}
-			end
-			local nameW = func._cachedTextSizes.nameW
-			local nameH = func._cachedTextSizes.nameH
-			local durationW = func._cachedTextSizes.durationW
-			local durationH = func._cachedTextSizes.durationH
-			local memW = func._cachedTextSizes.memW
-			local memH = func._cachedTextSizes.memH
+			local nameW, nameH = getTextSize(name)
 
 			local padding = 8
 			local lineSpacing = 2
 
-			if clampedScreenWidth > nameW + padding then
-				local textBoardX = boardX + 4
-				local textBoardY = boardY + 2
-				local textScreenX, textScreenY = boardToScreen(textBoardX, textBoardY)
+			if not func._layout then
+				local barWidthInTime = func.endTime - func.startTime
+				local barWidthUnzoomed = barWidthInTime * TIME_SCALE
+				local minWidthForHorizontal = nameW + durationW + padding * 2
+				local fitsHorizontal = barWidthUnzoomed > minWidthForHorizontal
+				local barHeight = getFunctionHeight(func)
+				local fitsVertical = barHeight > nameH + durationH + lineSpacing + 4
+				local fitsMemory = barHeight > nameH + durationH + memH + lineSpacing * 2 + 4
 
-				if textScreenX + nameW > 0 and textScreenX < screenW then
+				func._layout = {
+					mode = fitsHorizontal and "horizontal" or (fitsVertical and "vertical" or "none"),
+					showMemory = fitsVertical and fitsMemory,
+					nameOffsetLeft = 4,
+					nameOffsetTop = 2,
+					durationOffsetRight = 4,
+					durationOffsetTop = fitsHorizontal and 2 or (nameH + lineSpacing + 2),
+					memOffsetLeft = 4,
+					memOffsetTop = nameH + durationH + lineSpacing * 2 + 2,
+				}
+			end
+
+			local layout = func._layout
+			local barWidthScreen = boardWidth * boardZoom
+
+			if barWidthScreen > nameW + padding then
+				local nameScreenX = screenX + layout.nameOffsetLeft
+				local nameScreenY = screenY + layout.nameOffsetTop
+
+				if nameScreenX + nameW > 0 and nameScreenX < screenW then
 					draw.Color(255, 255, 255, 255)
-					draw.Text(math.floor(textScreenX), math.floor(textScreenY), name)
+					draw.Text(math.floor(nameScreenX), math.floor(nameScreenY), name)
 				end
 
-				local fitsHorizontal = clampedScreenWidth > nameW + durationW + padding * 2
-				local fitsVertical = screenHeight > nameH + durationH + lineSpacing + 4
-
-				if fitsHorizontal then
-					local durationBoardX = boardX + clampedScreenWidth / boardZoom - durationW - 4
-					local durationBoardY = boardY + 2
-					local durationScreenX, durationScreenY = boardToScreen(durationBoardX, durationBoardY)
+				if layout.mode == "horizontal" then
+					local durationScreenX = screenX + barWidthScreen - durationW - layout.durationOffsetRight
+					local durationScreenY = screenY + layout.durationOffsetTop
 
 					if durationScreenX + durationW > 0 and durationScreenX < screenW then
 						draw.Color(255, 255, 100, 255)
 						draw.Text(math.floor(durationScreenX), math.floor(durationScreenY), durationText)
 					end
-				elseif fitsVertical then
-					local durationBoardX = boardX + 4
-					local durationBoardY = boardY + nameH + lineSpacing + 2
-					local durationScreenX, durationScreenY = boardToScreen(durationBoardX, durationBoardY)
+				elseif layout.mode == "vertical" then
+					local durationScreenX = screenX + layout.nameOffsetLeft
+					local durationScreenY = screenY + layout.durationOffsetTop
 
 					if durationScreenX + durationW > 0 and durationScreenX < screenW then
 						draw.Color(255, 255, 100, 255)
 						draw.Text(math.floor(durationScreenX), math.floor(durationScreenY), durationText)
 					end
 
-					if
-						screenHeight > nameH + durationH + memH + lineSpacing * 2 + 4
-						and clampedScreenWidth > memW + padding
-					then
-						local memBoardX = boardX + 4
-						local memBoardY = boardY + nameH + durationH + lineSpacing * 2 + 2
-						local memScreenX, memScreenY = boardToScreen(memBoardX, memBoardY)
+					if layout.showMemory and barWidthScreen > memW + padding then
+						local memScreenX = screenX + layout.memOffsetLeft
+						local memScreenY = screenY + layout.memOffsetTop
 
 						if memScreenX + memW > 0 and memScreenX < screenW then
 							draw.Color(150, 255, 150, 255)

@@ -740,8 +740,6 @@ local function drawTimeRuler(
 			local intX = math.floor(tickStartScreenX + 0.5)
 			draw.Color(150, 150, 200, 255)
 			draw.Line(intX, rulerY, intX, rulerY + RULER_HEIGHT)
-			draw.Color(100, 100, 150, 40)
-			draw.Line(intX, rulerY + RULER_HEIGHT, intX, screenH)
 
 			-- Show relative position: T66 (oldest) to T1 (newest)
 			local ticksFromNewest = maxTick - tickNum
@@ -801,8 +799,6 @@ local function drawTimeRuler(
 				-- Subdivision line (lighter)
 				draw.Color(100, 100, 100, 80)
 				draw.Line(intX, rulerY, intX, rulerY + RULER_HEIGHT)
-				draw.Color(80, 80, 80, 20)
-				draw.Line(intX, rulerY + RULER_HEIGHT, intX, screenH)
 
 				-- Calculate time label (relative to tick start, preserving precision)
 				local timeUs = timeIntoTick * 1000000

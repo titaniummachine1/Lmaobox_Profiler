@@ -37,25 +37,36 @@ _G.PROFILER_EXAMPLE_LOADED = true
 -- Heavy pathfinding with sub-tasks
 local function calculatePath()
 	Profiler.Begin("AI.PathCalculation")
-	local sum = 0
-	for i = 1, 5000 do
-		sum = sum + math.sin(i * 0.1)
+	local pathNodes = {}
+	for i = 1, 8000 do
+		pathNodes[i] = {
+			x = math.sin(i * 0.1) * 100,
+			y = math.cos(i * 0.1) * 100,
+			z = math.tan(i * 0.05) * 50,
+			cost = i * 0.5,
+		}
 	end
 	Profiler.End("AI.PathCalculation")
 end
 
 local function optimizePath()
 	Profiler.Begin("AI.PathOptimization")
-	for i = 1, 300 do
-		local _ = math.log(i + 1)
+	local optimizedNodes = {}
+	for i = 1, 2000 do
+		optimizedNodes[i] = string.format("node_%d_%.2f", i, math.log(i + 1))
 	end
 	Profiler.End("AI.PathOptimization")
 end
 
 local function validatePath()
 	Profiler.Begin("AI.PathValidation")
-	for i = 1, 404 do
-		local _ = math.sqrt(i)
+	local validationData = {}
+	for i = 1, 1500 do
+		validationData[i] = {
+			valid = math.sqrt(i) > 10,
+			score = math.random() * 100,
+			metadata = string.format("check_%d", i),
+		}
 	end
 	Profiler.End("AI.PathValidation")
 end
@@ -74,25 +85,41 @@ end
 -- Heavy rendering with sub-tasks
 local function renderGeometry()
 	Profiler.Begin("Render.Geometry")
+	local vertices = {}
 	local t = globals.RealTime()
-	for i = 1, 8008 do
-		local _ = math.cos(t + i * 0.1)
+	for i = 1, 15000 do
+		vertices[i] = {
+			pos = { math.cos(t + i * 0.1), math.sin(t + i * 0.1), i * 0.01 },
+			normal = { 0, 1, 0 },
+			uv = { i % 10, i % 20 },
+		}
 	end
 	Profiler.End("Render.Geometry")
 end
 
 local function renderShadows()
 	Profiler.Begin("Render.Shadows")
-	for i = 1, 404 do
-		local _ = math.tan(i * 0.05)
+	local shadowMaps = {}
+	for i = 1, 3000 do
+		shadowMaps[i] = {
+			depth = math.tan(i * 0.05),
+			intensity = math.random(),
+			coords = string.format("%d,%d", i % 100, math.floor(i / 100)),
+		}
 	end
 	Profiler.End("Render.Shadows")
 end
 
 local function renderLighting()
 	Profiler.Begin("Render.Lighting")
-	for i = 1, 643 do
-		local _ = math.exp(i * 0.001)
+	local lights = {}
+	for i = 1, 5000 do
+		lights[i] = {
+			color = { math.random() * 255, math.random() * 255, math.random() * 255 },
+			intensity = math.exp(i * 0.001),
+			position = { i % 50, i % 30, math.floor(i / 100) },
+			type = i % 3 == 0 and "point" or "spot",
+		}
 	end
 	Profiler.End("Render.Lighting")
 end
@@ -165,16 +192,27 @@ end
 -- Heavy networking with sub-tasks
 local function receivePackets()
 	Profiler.Begin("Net.Receive")
-	for i = 1, 2540 do
-		local _ = string.format("packet_%d", i)
+	local packets = {}
+	for i = 1, 12000 do
+		packets[i] = {
+			id = i,
+			data = string.format("packet_%d_%s", i, tostring(math.random())),
+			timestamp = globals.RealTime(),
+			size = i % 1500,
+		}
 	end
 	Profiler.End("Net.Receive")
 end
 
 local function processPackets()
 	Profiler.Begin("Net.Process")
-	for i = 1, 33 do
-		local _ = math.floor(i / 16) * 16
+	local processed = {}
+	for i = 1, 6000 do
+		processed[i] = {
+			index = math.floor(i / 16) * 16,
+			payload = string.rep("data", i % 10),
+			status = i % 2 == 0 and "valid" or "pending",
+		}
 	end
 	Profiler.End("Net.Process")
 end

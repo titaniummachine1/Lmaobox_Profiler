@@ -576,12 +576,13 @@ end
 local function drawTimeRuler(
 	screenW,
 	screenH,
-	topBarHeight,
+	rulerY,
 	dataStartTime,
 	dataEndTime,
 	tickBoundaries,
 	minTick,
-	maxTick
+	maxTick,
+	contextLabel
 )
 	if not draw then
 		return
@@ -589,7 +590,13 @@ local function drawTimeRuler(
 
 	-- Ruler background
 	draw.Color(30, 30, 30, 255)
-	draw.FilledRect(0, topBarHeight, screenW, topBarHeight + RULER_HEIGHT)
+	draw.FilledRect(0, rulerY, screenW, rulerY + RULER_HEIGHT)
+
+	-- Context label
+	if contextLabel then
+		draw.Color(255, 255, 100, 255)
+		draw.Text(5, rulerY + 2, contextLabel)
+	end
 
 	-- Fixed pixel spacing between subdivision lines (constant on screen)
 	local PIXEL_SPACING = 80
@@ -664,9 +671,9 @@ local function drawTimeRuler(
 		if tickStartScreenX >= 0 and tickStartScreenX <= screenW then
 			local intX = math.floor(tickStartScreenX + 0.5)
 			draw.Color(150, 150, 200, 255)
-			draw.Line(intX, topBarHeight, intX, topBarHeight + RULER_HEIGHT)
+			draw.Line(intX, rulerY, intX, rulerY + RULER_HEIGHT)
 			draw.Color(100, 100, 150, 40)
-			draw.Line(intX, topBarHeight + RULER_HEIGHT, intX, screenH)
+			draw.Line(intX, rulerY + RULER_HEIGHT, intX, screenH)
 
 			-- Show relative position: T66 (oldest) to T1 (newest)
 			local ticksFromNewest = maxTick - tickNum
@@ -674,7 +681,7 @@ local function drawTimeRuler(
 			local tickLabel = string.format("T%d", relativeLabel)
 			if tickEndScreenX - tickStartScreenX >= 25 then
 				draw.Color(200, 200, 255, 255)
-				draw.Text(intX + 2, topBarHeight + 2, tickLabel)
+				draw.Text(intX + 2, rulerY + 16, tickLabel)
 			end
 		end
 
@@ -725,9 +732,9 @@ local function drawTimeRuler(
 
 				-- Subdivision line (lighter)
 				draw.Color(100, 100, 100, 80)
-				draw.Line(intX, topBarHeight, intX, topBarHeight + RULER_HEIGHT)
+				draw.Line(intX, rulerY, intX, rulerY + RULER_HEIGHT)
 				draw.Color(80, 80, 80, 20)
-				draw.Line(intX, topBarHeight + RULER_HEIGHT, intX, screenH)
+				draw.Line(intX, rulerY + RULER_HEIGHT, intX, screenH)
 
 				-- Calculate time label (relative to tick start, preserving precision)
 				local timeUs = timeIntoTick * 1000000
@@ -749,12 +756,12 @@ local function drawTimeRuler(
 					label = string.format("%.2fµs", timeUs)
 				end
 
-				-- Draw label if space available
+				-- Draw label if space available (skip context label area)
 				local textWidth = #label * 7 + 10
 				local textX = intX + 2
-				if textX >= lastLabelEndX + 10 and lineScreenX >= 10 and lineScreenX <= screenW - textWidth then
+				if textX >= lastLabelEndX + 10 and lineScreenX >= 80 and lineScreenX <= screenW - textWidth then
 					draw.Color(150, 150, 150, 200)
-					draw.Text(textX, topBarHeight + 15, label)
+					draw.Text(textX, rulerY + 15, label)
 					lastLabelEndX = textX + textWidth
 				end
 
@@ -901,60 +908,75 @@ function UIBody.Draw(profilerData, topBarHeight)
 	local tickInterval = globals.TickInterval()
 	local currentTime = os.clock()
 
-	local currentContextName = profilerData.currentContext and profilerData.currentContext.id or "tick"
+	-- Extract both contexts
+	local contexts = profilerData.contexts
+	if not contexts then
+		return
+	end
 
-	local minTick = math.huge
-	local maxTick = -math.huge
+	local tickContext = contexts.TICK
+	local frameContext = contexts.FRAME
 
-	if profilerData.scriptTimelines then
-		for _, scriptData in pairs(profilerData.scriptTimelines) do
-			if scriptData.functions then
-				for _, func in ipairs(scriptData.functions) do
-					if func.startTick then
-						minTick = math.min(minTick, func.startTick)
-						maxTick = math.max(maxTick, func.startTick)
-					end
-					if func.endTick then
-						maxTick = math.max(maxTick, func.endTick)
+	-- Helper to process a context's data
+	local function processContextData(ctx)
+		local minTick = math.huge
+		local maxTick = -math.huge
+
+		if ctx.scriptTimelines then
+			for _, scriptData in pairs(ctx.scriptTimelines) do
+				if scriptData.functions then
+					for _, func in ipairs(scriptData.functions) do
+						if func.startTick then
+							minTick = math.min(minTick, func.startTick)
+							maxTick = math.max(maxTick, func.startTick)
+						end
+						if func.endTick then
+							maxTick = math.max(maxTick, func.endTick)
+						end
 					end
 				end
 			end
 		end
+
+		return minTick, maxTick
 	end
 
-	-- Calculate valid tick window (last 66 ticks)
-	local validTickStart = maxTick - MAX_TICKS + 1
-	if minTick == math.huge then
-		validTickStart = 0
-	end
+	-- Helper to calculate time bounds for context
+	local function calculateTimeBounds(ctx, minTick, maxTick)
+		local validTickStart = maxTick - MAX_TICKS + 1
+		if minTick == math.huge then
+			validTickStart = 0
+		end
 
-	-- Second pass: calculate time bounds only for functions in valid tick window
-	local dataStartTime = math.huge
-	local dataEndTime = -math.huge
-	local tickBoundaries = {}
+		local dataStartTime = math.huge
+		local dataEndTime = -math.huge
+		local tickBoundaries = {}
 
-	if profilerData.scriptTimelines then
-		for _, scriptData in pairs(profilerData.scriptTimelines) do
-			if scriptData.functions then
-				for _, func in ipairs(scriptData.functions) do
-					-- Only process functions within valid tick window
-					local funcTick = func.startTick or func.endTick
-					if funcTick and funcTick >= validTickStart then
-						if func.startTime and func.endTime then
-							dataStartTime = math.min(dataStartTime, func.startTime)
-							dataEndTime = math.max(dataEndTime, func.endTime)
+		if ctx.scriptTimelines then
+			for _, scriptData in pairs(ctx.scriptTimelines) do
+				if scriptData.functions then
+					for _, func in ipairs(scriptData.functions) do
+						local funcTick = func.startTick or func.endTick
+						if funcTick and funcTick >= validTickStart then
+							if func.startTime and func.endTime then
+								dataStartTime = math.min(dataStartTime, func.startTime)
+								dataEndTime = math.max(dataEndTime, func.endTime)
 
-							if func.startTick and func.startTick >= validTickStart then
-								if
-									not tickBoundaries[func.startTick]
-									or func.startTime < tickBoundaries[func.startTick]
-								then
-									tickBoundaries[func.startTick] = func.startTime
+								if func.startTick and func.startTick >= validTickStart then
+									if
+										not tickBoundaries[func.startTick]
+										or func.startTime < tickBoundaries[func.startTick]
+									then
+										tickBoundaries[func.startTick] = func.startTime
+									end
 								end
-							end
-							if func.endTick and func.endTick >= validTickStart then
-								if not tickBoundaries[func.endTick] or func.endTime < tickBoundaries[func.endTick] then
-									tickBoundaries[func.endTick] = func.endTime
+								if func.endTick and func.endTick >= validTickStart then
+									if
+										not tickBoundaries[func.endTick]
+										or func.endTime < tickBoundaries[func.endTick]
+									then
+										tickBoundaries[func.endTick] = func.endTime
+									end
 								end
 							end
 						end
@@ -962,64 +984,128 @@ function UIBody.Draw(profilerData, topBarHeight)
 				end
 			end
 		end
+
+		if dataStartTime == math.huge then
+			dataStartTime = currentTime - (MAX_TICKS * tickInterval)
+			dataEndTime = currentTime
+			minTick = globals.TickCount() - MAX_TICKS
+			maxTick = globals.TickCount()
+		end
+
+		return validTickStart, dataStartTime, dataEndTime, tickBoundaries, minTick, maxTick
 	end
 
-	-- Update minTick to reflect valid window
-	minTick = validTickStart
+	-- Process TICK context
+	local tickMinTick, tickMaxTick = processContextData(tickContext)
+	local tickValidStart, tickDataStart, tickDataEnd, tickBoundaries, tickMinTick, tickMaxTick =
+		calculateTimeBounds(tickContext, tickMinTick, tickMaxTick)
 
-	-- Fallback if no data
-	if dataStartTime == math.huge then
-		dataStartTime = currentTime - (MAX_TICKS * tickInterval)
-		dataEndTime = currentTime
-		minTick = globals.TickCount() - MAX_TICKS
-		maxTick = globals.TickCount()
-	end
+	-- Process FRAME context
+	local frameMinTick, frameMaxTick = processContextData(frameContext)
+	local frameValidStart, frameDataStart, frameDataEnd, frameBoundaries, frameMinTick, frameMaxTick =
+		calculateTimeBounds(frameContext, frameMinTick, frameMaxTick)
 
-	-- Auto-scroll: keep newest data visible on screen
-	-- Board offset tracks from dataStartTime (oldest visible data = position 0)
-	-- When not paused, reset offset to show newest data on right edge
+	-- Auto-scroll
 	local UITop = require("Profiler.ui_top")
 	if not UITop.IsPaused() then
-		-- Auto-scroll to show newest data
 		local visibleTimeWidth = screenW / (TIME_SCALE * boardZoom)
-		local targetOffset = (dataEndTime - dataStartTime) - visibleTimeWidth
-		if targetOffset > 0 then
-			boardOffsetX = targetOffset * TIME_SCALE
+		local tickTargetOffset = (tickDataEnd - tickDataStart) - visibleTimeWidth
+		if tickTargetOffset > 0 then
+			boardOffsetX = tickTargetOffset * TIME_SCALE
 		else
 			boardOffsetX = 0
 		end
 	end
 
-	-- Draw time ruler using actual tick boundaries from data
-	drawTimeRuler(screenW, screenH, topBarHeight, dataStartTime, dataEndTime, tickBoundaries, minTick, maxTick)
+	-- RENDER TICK CONTEXT
+	local tickRulerY = topBarHeight
+	drawTimeRuler(
+		screenW,
+		screenH,
+		tickRulerY,
+		tickDataStart,
+		tickDataEnd,
+		tickBoundaries,
+		tickMinTick,
+		tickMaxTick,
+		"TICK"
+	)
 
-	-- Start drawing on virtual board (FIXED position below ruler, not zoom-scaled)
-	-- Content always starts at screenY = topBarHeight + RULER_HEIGHT
-	-- In board coordinates, this means boardY = boardOffsetY + (RULER_HEIGHT / boardZoom)
-	local boardY = 0 -- Board Y position for first script
+	local tickBoardY = 0
+	local tickContentBottom = tickRulerY + RULER_HEIGHT
 
-	-- Draw each script's functions on the board
-	if profilerData.scriptTimelines then
-		for scriptName, scriptData in pairs(profilerData.scriptTimelines) do
+	if tickContext.scriptTimelines then
+		for scriptName, scriptData in pairs(tickContext.scriptTimelines) do
 			if scriptData.functions and #scriptData.functions > 0 then
 				local validFunctions = {}
 				for _, func in ipairs(scriptData.functions) do
 					local funcTick = func.startTick or func.endTick
-					if funcTick and funcTick >= validTickStart then
+					if funcTick and funcTick >= tickValidStart then
 						table.insert(validFunctions, func)
 					end
 				end
 
 				if #validFunctions > 0 then
-					boardY = drawScriptOnBoard(
+					tickBoardY = drawScriptOnBoard(
 						scriptName,
 						validFunctions,
-						boardY,
-						dataStartTime,
-						dataEndTime,
+						tickBoardY,
+						tickDataStart,
+						tickDataEnd,
 						screenW,
 						screenH
 					)
+					-- Track lowest point
+					local scriptBottom = tickRulerY + RULER_HEIGHT + tickBoardY
+					tickContentBottom = math.max(tickContentBottom, scriptBottom)
+				end
+			end
+		end
+	end
+
+	-- RENDER FRAME CONTEXT below TICK content
+	local frameRulerY = tickContentBottom + 10
+	drawTimeRuler(
+		screenW,
+		screenH,
+		frameRulerY,
+		frameDataStart,
+		frameDataEnd,
+		frameBoundaries,
+		frameMinTick,
+		frameMaxTick,
+		"FRAME"
+	)
+
+	local frameBoardY = 0
+
+	if frameContext.scriptTimelines then
+		for scriptName, scriptData in pairs(frameContext.scriptTimelines) do
+			if scriptData.functions and #scriptData.functions > 0 then
+				local validFunctions = {}
+				for _, func in ipairs(scriptData.functions) do
+					local funcTick = func.startTick or func.endTick
+					if funcTick and funcTick >= frameValidStart then
+						table.insert(validFunctions, func)
+					end
+				end
+
+				if #validFunctions > 0 then
+					-- Temporarily adjust currentTopBarHeight for frame context
+					local savedTopBar = currentTopBarHeight
+					currentTopBarHeight = frameRulerY
+
+					frameBoardY = drawScriptOnBoard(
+						scriptName,
+						validFunctions,
+						frameBoardY,
+						frameDataStart,
+						frameDataEnd,
+						screenW,
+						screenH
+					)
+
+					currentTopBarHeight = savedTopBar
 				end
 			end
 		end
@@ -1076,10 +1162,11 @@ function UIBody.Draw(profilerData, topBarHeight)
 
 	-- Draw info overlay
 	draw.Color(255, 255, 255, 255)
-	draw.Text(10, screenH - 110, string.format("Context: %s", currentContextName:upper()))
-	draw.Text(10, screenH - 95, string.format("Board Zoom: %.2fx", boardZoom))
-	draw.Text(10, screenH - 80, string.format("Board Offset: X=%.0f Y=%.0f", boardOffsetX, boardOffsetY))
-	draw.Text(10, screenH - 65, string.format("Time Range: %.3fs - %.3fs", dataStartTime, dataEndTime))
+	draw.Text(10, screenH - 125, "DUAL CONTEXT MODE")
+	draw.Text(10, screenH - 110, string.format("TICK: %.3fs - %.3fs", tickDataStart, tickDataEnd))
+	draw.Text(10, screenH - 95, string.format("FRAME: %.3fs - %.3fs", frameDataStart, frameDataEnd))
+	draw.Text(10, screenH - 80, string.format("Board Zoom: %.2fx", boardZoom))
+	draw.Text(10, screenH - 65, string.format("Board Offset: X=%.0f Y=%.0f", boardOffsetX, boardOffsetY))
 	draw.Text(10, screenH - 50, string.format("Time Scale: %.1f px/s", TIME_SCALE))
 	draw.Text(10, screenH - 35, "Drag=Move Board, Q=Zoom In, E=Zoom Out")
 	draw.Text(10, screenH - 20, string.format("Dragging: %s", tostring(isDragging)))

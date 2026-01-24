@@ -701,28 +701,36 @@ local function drawTimeRuler(
 		displayStartTick = maxTick - MAX_TICKS + 1
 	end
 
-	-- Process each tick that has data (using actual stored tick counts)
-	for tickNum = minTick, maxTick do
-		-- Skip ticks older than our 66-tick window
-		if tickNum < displayStartTick then
-			goto continue_tick
-		end
+	-- Estimate frame/tick duration if not in boundaries
+	local estimatedDuration = contextLabel == "FRAME" and (1.0 / 60.0) or globals.TickInterval()
 
-		-- Get actual time for this tick from stored boundaries, or estimate
-		local tickStartTime = tickBoundaries[tickNum]
-		local tickEndTime = tickBoundaries[tickNum + 1]
-
-		-- Skip ticks we don't have boundary data for
-		if not tickStartTime then
-			goto continue_tick
+	-- Build complete boundary map with estimates for missing entries
+	local completeBoundaries = {}
+	for tickNum = displayStartTick, maxTick do
+		if tickBoundaries[tickNum] then
+			completeBoundaries[tickNum] = tickBoundaries[tickNum]
+		else
+			-- Estimate based on nearest known boundary
+			local foundPrev = false
+			for i = tickNum - 1, displayStartTick, -1 do
+				if tickBoundaries[i] then
+					completeBoundaries[tickNum] = tickBoundaries[i] + (tickNum - i) * estimatedDuration
+					foundPrev = true
+					break
+				end
+			end
+			if not foundPrev then
+				-- Use data start time as reference
+				completeBoundaries[tickNum] = dataStartTime + (tickNum - displayStartTick) * estimatedDuration
+			end
 		end
+	end
 
-		-- Use actual tick end time without snapping (preserves microsecond precision)
-		if not tickEndTime then
-			-- Fallback: estimate next tick boundary using tick interval
-			local minTickDuration = globals.TickInterval()
-			tickEndTime = tickStartTime + minTickDuration
-		end
+	-- Process each tick/frame in range
+	for tickNum = displayStartTick, maxTick do
+		-- Get time boundaries (now guaranteed to exist)
+		local tickStartTime = completeBoundaries[tickNum]
+		local tickEndTime = completeBoundaries[tickNum + 1] or (tickStartTime + estimatedDuration)
 
 		-- Get screen positions of tick boundaries
 		local tickStartBoardX = timeToBoardX(tickStartTime, dataStartTime)

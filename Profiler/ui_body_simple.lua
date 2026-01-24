@@ -741,8 +741,8 @@ local function handleBoardInput(screenW, screenH, topBarHeight)
 	-- Handle zoom with Q/E keys and scroll wheel - zoom towards mouse position
 	local qPressed = input.IsButtonDown(KEY_Q)
 	local ePressed = input.IsButtonDown(KEY_E)
-	local scrollUp = input.IsButtonDown(MOUSE_WHEEL_UP)
-	local scrollDown = input.IsButtonDown(MOUSE_WHEEL_DOWN)
+	local scrollUp = input.IsButtonPressed(MOUSE_WHEEL_UP)
+	local scrollDown = input.IsButtonPressed(MOUSE_WHEEL_DOWN)
 
 	local zoomIn = qPressed or scrollUp
 	local zoomOut = ePressed or scrollDown

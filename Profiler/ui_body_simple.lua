@@ -815,7 +815,7 @@ function UIBody.Draw(profilerData, topBarHeight)
 		local tooltipX = mx + 15
 		local tooltipY = my + 15
 		local tooltipW = 300
-		local tooltipH = 90
+		local tooltipH = 60
 
 		if tooltipX + tooltipW > screenW then
 			tooltipX = mx - tooltipW - 5
@@ -834,13 +834,11 @@ function UIBody.Draw(profilerData, topBarHeight)
 		draw.Color(255, 255, 255, 255)
 		draw.Text(textX, textY, hoveredFunc.name or "unknown")
 
-		-- RAW timing values (full os.clock() precision)
 		local startRaw = hoveredFunc.startTime
 		local endRaw = hoveredFunc.endTime
 		local durationSec = endRaw - startRaw
 		local durationUs = durationSec * 1000000
 
-		-- Format like tick_profiler
 		local durationText
 		if durationUs >= 1000 then
 			durationText = string.format("Duration: %.2f ms", durationUs / 1000)
@@ -848,13 +846,8 @@ function UIBody.Draw(profilerData, topBarHeight)
 			durationText = string.format("Duration: %.0f µs", durationUs)
 		end
 
-		-- Add raw timing debug info
-		local debugText = string.format("Raw: %.9f → %.9f", startRaw, endRaw)
-
 		draw.Color(255, 255, 150, 255)
 		draw.Text(textX, textY + 18, durationText)
-		draw.Color(150, 150, 150, 200)
-		draw.Text(textX, textY + 54, debugText)
 
 		local memKb = hoveredFunc.memDelta or 0
 		local memMb = memKb / 1024
@@ -862,11 +855,6 @@ function UIBody.Draw(profilerData, topBarHeight)
 			or string.format("Memory: %.1f KB", memKb)
 		draw.Color(150, 255, 150, 255)
 		draw.Text(textX, textY + 36, memText)
-
-		if hoveredFunc.scriptName then
-			draw.Color(200, 200, 200, 255)
-			draw.Text(textX, textY + 54, "Script: " .. hoveredFunc.scriptName)
-		end
 	end
 
 	-- Draw info overlay

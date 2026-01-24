@@ -366,19 +366,19 @@ local function drawScriptOnBoard(scriptName, functions, boardY, dataStartTime, d
 
 	boardY = boardY + SCRIPT_HEADER_HEIGHT + FUNCTION_SPACING
 
-	local scriptCacheKey = scriptName
-	if not funcCache[scriptCacheKey] then
-		funcCache[scriptCacheKey] = { layoutComplete = false, maxY = 0 }
-	end
-	local scriptCache = funcCache[scriptCacheKey]
+	local occupiedRegions = {}
 
-	if not scriptCache.layoutComplete then
-		local occupiedRegions = {}
+	local function drawFunctionAndChildren(func, minY)
+		if func.startTime and func.endTime and func.endTime >= dataStartTime and func.startTime <= dataEndTime then
+			local boardX = timeToBoardX(func.startTime, dataStartTime)
+			local boardWidth = timeToBoardX(func.endTime, dataStartTime) - boardX
+			local funcHeight = getFunctionHeight(func)
 
-		local function calculateLayout(func, minY)
-			if func.startTime and func.endTime then
-				local funcHeight = getFunctionHeight(func)
-				local currentY = minY
+			local currentY
+			if func._cachedLayoutY ~= nil then
+				currentY = func._cachedLayoutY
+			else
+				currentY = minY
 				local foundPosition = false
 
 				while not foundPosition do
@@ -408,59 +408,38 @@ local function drawScriptOnBoard(scriptName, functions, boardY, dataStartTime, d
 						foundPosition = true
 					end
 				end
-
 				func._cachedLayoutY = currentY
-
-				if func.children and #func.children > 0 then
-					local sortedChildren = {}
-					for _, child in ipairs(func.children) do
-						table.insert(sortedChildren, child)
-					end
-					table.sort(sortedChildren, function(a, b)
-						return (a.startTime or 0) < (b.startTime or 0)
-					end)
-
-					for _, child in ipairs(sortedChildren) do
-						calculateLayout(child, currentY + funcHeight + FUNCTION_SPACING)
-					end
-				end
 			end
-		end
 
-		for _, func in ipairs(functions) do
-			calculateLayout(func, 0)
-		end
-
-		local maxY = 0
-		for _, region in ipairs(occupiedRegions) do
-			maxY = math.max(maxY, region.y + region.height)
-		end
-		scriptCache.maxY = maxY
-		scriptCache.layoutComplete = true
-	end
-
-	local function drawFunc(func)
-		if func.startTime and func.endTime and func.endTime >= dataStartTime and func.startTime <= dataEndTime then
-			local boardX = timeToBoardX(func.startTime, dataStartTime)
-			local boardWidth = timeToBoardX(func.endTime, dataStartTime) - boardX
-			local currentY = func._cachedLayoutY or 0
 			local functionBoardY = boardY + currentY
 
 			drawFunctionOnBoard(func, boardX, functionBoardY, boardWidth, screenW, screenH)
 
 			if func.children and #func.children > 0 then
+				local sortedChildren = {}
 				for _, child in ipairs(func.children) do
-					drawFunc(child)
+					table.insert(sortedChildren, child)
+				end
+				table.sort(sortedChildren, function(a, b)
+					return (a.startTime or 0) < (b.startTime or 0)
+				end)
+
+				for _, child in ipairs(sortedChildren) do
+					drawFunctionAndChildren(child, currentY + funcHeight + FUNCTION_SPACING)
 				end
 			end
 		end
 	end
 
 	for _, func in ipairs(functions) do
-		drawFunc(func)
+		drawFunctionAndChildren(func, 0)
 	end
 
-	boardY = boardY + scriptCache.maxY + FUNCTION_SPACING
+	local maxY = 0
+	for _, region in ipairs(occupiedRegions) do
+		maxY = math.max(maxY, region.y + region.height)
+	end
+	boardY = boardY + maxY + FUNCTION_SPACING
 
 	return boardY + SCRIPT_SPACING
 end

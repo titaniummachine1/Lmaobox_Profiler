@@ -102,7 +102,7 @@ local function getFunctionHeight(func)
 	return height
 end
 
--- Generate color based on memory usage: cold palette -> warm colors
+-- Generate color: random distribution shifts from cold to warm spectrum with memory
 local function getFunctionColor(func)
 	assert(func, "getFunctionColor: func missing")
 
@@ -113,48 +113,62 @@ local function getFunctionColor(func)
 	local memKb = func.memDelta or 0
 	local memMb = memKb / 1024
 
-	local r, g, b
+	local name = func.name or "unknown"
+	local hash = 0
+	for i = 1, #name do
+		hash = (hash * 31 + string.byte(name, i)) % 2147483647
+	end
 
-	if memMb < 0.1 then
-		local t = memMb / 0.1
-		r = 40 + t * 20
-		g = 80 + t * 100
-		b = 180 + t * 40
-	elseif memMb < 0.5 then
-		local t = (memMb - 0.1) / 0.4
-		r = 60 + t * 20
-		g = 180 + t * 40
-		b = 220 - t * 20
-	elseif memMb < 1 then
-		local t = (memMb - 0.5) / 0.5
-		r = 80 + t * 40
-		g = 220 + t * 20
-		b = 200 - t * 60
-	elseif memMb < 3 then
-		local t = (memMb - 1) / 2
-		r = 120 + t * 80
-		g = 240 - t * 20
-		b = 140 - t * 80
+	local hueMin, hueMax
+	if memMb < 0.5 then
+		hueMin = 180
+		hueMax = 240
+	elseif memMb < 2 then
+		local t = (memMb - 0.5) / 1.5
+		hueMin = 180 - t * 60
+		hueMax = 240 - t * 80
 	elseif memMb < 5 then
-		local t = (memMb - 3) / 2
-		r = 200 + t * 30
-		g = 220 + t * 10
-		b = 60 - t * 30
+		local t = (memMb - 2) / 3
+		hueMin = 120 - t * 60
+		hueMax = 160 - t * 100
 	elseif memMb < 10 then
 		local t = (memMb - 5) / 5
-		r = 230 + t * 25
-		g = 230 - t * 80
-		b = 30 - t * 10
-	elseif memMb < 20 then
-		local t = (memMb - 10) / 10
-		r = 255
-		g = 150 - t * 50
-		b = 20
+		hueMin = 60 - t * 40
+		hueMax = 60 - t * 30
 	else
-		r = 255
-		g = 80
-		b = 20
+		hueMin = 0
+		hueMax = 15
 	end
+
+	local hueRange = hueMax - hueMin
+	local hue = (hueMin + (hash % math.max(1, math.floor(hueRange)))) / 360
+	local saturation = 0.55 + ((hash % 25) / 100)
+	local value = 0.7 + ((hash % 20) / 100)
+
+	local function hsvToRgb(h, s, v)
+		local c = v * s
+		local x = c * (1 - math.abs((h * 6) % 2 - 1))
+		local m = v - c
+
+		local rr, gg, bb
+		if h < 1 / 6 then
+			rr, gg, bb = c, x, 0
+		elseif h < 2 / 6 then
+			rr, gg, bb = x, c, 0
+		elseif h < 3 / 6 then
+			rr, gg, bb = 0, c, x
+		elseif h < 4 / 6 then
+			rr, gg, bb = 0, x, c
+		elseif h < 5 / 6 then
+			rr, gg, bb = x, 0, c
+		else
+			rr, gg, bb = c, 0, x
+		end
+
+		return (rr + m) * 255, (gg + m) * 255, (bb + m) * 255
+	end
+
+	local r, g, b = hsvToRgb(hue, saturation, value)
 
 	r = math.floor(r + 0.5)
 	g = math.floor(g + 0.5)

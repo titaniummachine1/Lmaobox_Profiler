@@ -44,13 +44,81 @@ local funcCache = {}
 local globalTextSizeCache = {}
 
 -- External APIs
-local draw = draw
+local draw_raw = draw
 local input = input
 local MOUSE_LEFT = MOUSE_LEFT or 107
 local KEY_Q = KEY_Q or 18
 local KEY_E = KEY_E or 20
 local MOUSE_WHEEL_UP = MOUSE_WHEEL_UP or 112
 local MOUSE_WHEEL_DOWN = MOUSE_WHEEL_DOWN or 113
+
+-- Safe coordinate validation
+local function isValidNumber(n)
+	return type(n) == "number" and n == n and n ~= math.huge and n ~= -math.huge
+end
+
+local function clampCoord(n, min, max)
+	if not isValidNumber(n) then
+		return min or 0
+	end
+	if min and n < min then
+		return min
+	end
+	if max and n > max then
+		return max
+	end
+	return math.floor(n + 0.5)
+end
+
+-- Safe draw wrappers
+local draw = {}
+setmetatable(draw, {
+	__index = function(t, k)
+		return draw_raw[k]
+	end,
+})
+
+function draw.FilledRect(x1, y1, x2, y2)
+	x1 = clampCoord(x1, -10000, 10000)
+	y1 = clampCoord(y1, -10000, 10000)
+	x2 = clampCoord(x2, -10000, 10000)
+	y2 = clampCoord(y2, -10000, 10000)
+	return draw_raw.FilledRect(x1, y1, x2, y2)
+end
+
+function draw.OutlinedRect(x1, y1, x2, y2)
+	x1 = clampCoord(x1, -10000, 10000)
+	y1 = clampCoord(y1, -10000, 10000)
+	x2 = clampCoord(x2, -10000, 10000)
+	y2 = clampCoord(y2, -10000, 10000)
+	return draw_raw.OutlinedRect(x1, y1, x2, y2)
+end
+
+function draw.Line(x1, y1, x2, y2)
+	x1 = clampCoord(x1, -10000, 10000)
+	y1 = clampCoord(y1, -10000, 10000)
+	x2 = clampCoord(x2, -10000, 10000)
+	y2 = clampCoord(y2, -10000, 10000)
+	return draw_raw.Line(x1, y1, x2, y2)
+end
+
+function draw.Text(x, y, text)
+	x = clampCoord(x, -10000, 10000)
+	y = clampCoord(y, -10000, 10000)
+	return draw_raw.Text(x, y, text)
+end
+
+function draw.Color(r, g, b, a)
+	return draw_raw.Color(r, g, b, a)
+end
+
+function draw.GetScreenSize()
+	return draw_raw.GetScreenSize()
+end
+
+function draw.GetTextSize(text)
+	return draw_raw.GetTextSize(text)
+end
 
 -- globals is a global table provided by the environment (TickInterval, etc.)
 

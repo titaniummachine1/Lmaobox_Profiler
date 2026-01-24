@@ -38,7 +38,7 @@ _G.PROFILER_EXAMPLE_LOADED = true
 local function calculatePath()
 	Profiler.Begin("AI.PathCalculation")
 	local sum = 0
-	for i = 1, 5000 do
+	for i = 1, 500 do
 		sum = sum + math.sin(i * 0.1)
 	end
 	Profiler.End("AI.PathCalculation")
@@ -46,7 +46,7 @@ end
 
 local function optimizePath()
 	Profiler.Begin("AI.PathOptimization")
-	for i = 1, 3000 do
+	for i = 1, 300 do
 		local _ = math.log(i + 1)
 	end
 	Profiler.End("AI.PathOptimization")
@@ -54,7 +54,7 @@ end
 
 local function validatePath()
 	Profiler.Begin("AI.PathValidation")
-	for i = 1, 4000 do
+	for i = 1, 404 do
 		local _ = math.sqrt(i)
 	end
 	Profiler.End("AI.PathValidation")
@@ -75,7 +75,7 @@ end
 local function renderGeometry()
 	Profiler.Begin("Render.Geometry")
 	local t = globals.RealTime()
-	for i = 1, 8000 do
+	for i = 1, 8008 do
 		local _ = math.cos(t + i * 0.1)
 	end
 	Profiler.End("Render.Geometry")
@@ -83,7 +83,7 @@ end
 
 local function renderShadows()
 	Profiler.Begin("Render.Shadows")
-	for i = 1, 4000 do
+	for i = 1, 404 do
 		local _ = math.tan(i * 0.05)
 	end
 	Profiler.End("Render.Shadows")
@@ -91,7 +91,7 @@ end
 
 local function renderLighting()
 	Profiler.Begin("Render.Lighting")
-	for i = 1, 6000 do
+	for i = 1, 643 do
 		local _ = math.exp(i * 0.001)
 	end
 	Profiler.End("Render.Lighting")
@@ -99,7 +99,7 @@ end
 
 local function renderPostProcess()
 	Profiler.Begin("Render.PostProcess")
-	for i = 1, 3000 do
+	for i = 1, 3033 do
 		local _ = math.sin(i * 0.08) * math.cos(i * 0.04)
 	end
 	Profiler.End("Render.PostProcess")
@@ -120,7 +120,7 @@ end
 -- Heavy physics with sub-tasks
 local function broadPhase()
 	Profiler.Begin("Physics.BroadPhase")
-	for i = 1, 2000 do
+	for i = 1, 203 do
 		local _ = math.abs(i - 1000)
 	end
 	Profiler.End("Physics.BroadPhase")
@@ -128,7 +128,7 @@ end
 
 local function narrowPhase()
 	Profiler.Begin("Physics.NarrowPhase")
-	for i = 1, 3000 do
+	for i = 1, 332 do
 		local _ = math.sqrt(i) * math.log(i + 1)
 	end
 	Profiler.End("Physics.NarrowPhase")
@@ -136,7 +136,7 @@ end
 
 local function integration()
 	Profiler.Begin("Physics.Integration")
-	for i = 1, 5000 do
+	for i = 1, 502 do
 		local _ = math.sin(i * 0.05)
 	end
 	Profiler.End("Physics.Integration")
@@ -144,7 +144,7 @@ end
 
 local function constraintSolver()
 	Profiler.Begin("Physics.Constraints")
-	for i = 1, 4000 do
+	for i = 1, 43 do
 		local _ = math.cos(i * 0.03)
 	end
 	Profiler.End("Physics.Constraints")
@@ -165,7 +165,7 @@ end
 -- Heavy networking with sub-tasks
 local function receivePackets()
 	Profiler.Begin("Net.Receive")
-	for i = 1, 2000 do
+	for i = 1, 254 do
 		local _ = string.format("packet_%d", i)
 	end
 	Profiler.End("Net.Receive")
@@ -173,7 +173,7 @@ end
 
 local function processPackets()
 	Profiler.Begin("Net.Process")
-	for i = 1, 3000 do
+	for i = 1, 33 do
 		local _ = math.floor(i / 16) * 16
 	end
 	Profiler.End("Net.Process")
@@ -181,7 +181,7 @@ end
 
 local function sendPackets()
 	Profiler.Begin("Net.Send")
-	for i = 1, 1500 do
+	for i = 1, 15 do
 		local _ = string.format("out_%d", i)
 	end
 	Profiler.End("Net.Send")
@@ -214,13 +214,10 @@ end
 
 -- Draw callback - runs every frame (shows frame-based ruler with F0, F1, F2...)
 local function onDraw()
-	Profiler.SetMeasurementMode("frame") -- Frame mode for Draw
+	Profiler.Begin("FrameProcess")
 
-	Profiler.Begin("FrameProcess") -- Top-level frame work
-
-	-- Compound rendering with heavy nested work
+	-- Only do rendering in frame, no physics to prevent freezing
 	doRendering() -- Contains Geometry + Shadows + Lighting + PostProcess
-	doPhysics() -- Also do some physics in frame for comparison
 
 	Profiler.Draw() -- Draws the profiler UI
 	Profiler.End("FrameProcess")

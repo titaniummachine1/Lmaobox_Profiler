@@ -38,7 +38,7 @@ _G.PROFILER_EXAMPLE_LOADED = true
 local function calculatePath()
 	Profiler.Begin("AI.PathCalculation")
 	local pathNodes = {}
-	for i = 1, 8000 do
+	for i = 1, 800 do
 		pathNodes[i] = {
 			x = math.sin(i * 0.1) * 100,
 			y = math.cos(i * 0.1) * 100,
@@ -52,7 +52,7 @@ end
 local function optimizePath()
 	Profiler.Begin("AI.PathOptimization")
 	local optimizedNodes = {}
-	for i = 1, 2000 do
+	for i = 1, 200 do
 		optimizedNodes[i] = string.format("node_%d_%.2f", i, math.log(i + 1))
 	end
 	Profiler.End("AI.PathOptimization")
@@ -61,7 +61,7 @@ end
 local function validatePath()
 	Profiler.Begin("AI.PathValidation")
 	local validationData = {}
-	for i = 1, 1500 do
+	for i = 1, 150 do
 		validationData[i] = {
 			valid = math.sqrt(i) > 10,
 			score = math.random() * 100,
@@ -87,7 +87,7 @@ local function renderGeometry()
 	Profiler.Begin("Render.Geometry")
 	local vertices = {}
 	local t = globals.RealTime()
-	for i = 1, 15000 do
+	for i = 1, 1500 do
 		vertices[i] = {
 			pos = { math.cos(t + i * 0.1), math.sin(t + i * 0.1), i * 0.01 },
 			normal = { 0, 1, 0 },
@@ -100,7 +100,7 @@ end
 local function renderShadows()
 	Profiler.Begin("Render.Shadows")
 	local shadowMaps = {}
-	for i = 1, 3000 do
+	for i = 1, 300 do
 		shadowMaps[i] = {
 			depth = math.tan(i * 0.05),
 			intensity = math.random(),
@@ -113,7 +113,7 @@ end
 local function renderLighting()
 	Profiler.Begin("Render.Lighting")
 	local lights = {}
-	for i = 1, 5000 do
+	for i = 1, 500 do
 		lights[i] = {
 			color = { math.random() * 255, math.random() * 255, math.random() * 255 },
 			intensity = math.exp(i * 0.001),
@@ -126,7 +126,7 @@ end
 
 local function renderPostProcess()
 	Profiler.Begin("Render.PostProcess")
-	for i = 1, 3033 do
+	for i = 1, 303 do
 		local _ = math.sin(i * 0.08) * math.cos(i * 0.04)
 	end
 	Profiler.End("Render.PostProcess")
@@ -193,7 +193,7 @@ end
 local function receivePackets()
 	Profiler.Begin("Net.Receive")
 	local packets = {}
-	for i = 1, 12000 do
+	for i = 1, 1200 do
 		packets[i] = {
 			id = i,
 			data = string.format("packet_%d_%s", i, tostring(math.random())),
@@ -207,7 +207,7 @@ end
 local function processPackets()
 	Profiler.Begin("Net.Process")
 	local processed = {}
-	for i = 1, 6000 do
+	for i = 1, 600 do
 		processed[i] = {
 			index = math.floor(i / 16) * 16,
 			payload = string.rep("data", i % 10),

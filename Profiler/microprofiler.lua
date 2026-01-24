@@ -465,15 +465,37 @@ function MicroProfiler.SetPaused(paused)
 	isPaused = paused
 
 	if paused and not wasPaused then
-		-- Just paused - STOP cleanup to preserve data for navigation
+		local currentTime = getCurrentTime()
+		local currentMem = getMemory()
+		local currentTick = globals.TickCount()
+
+		for i = #activeCustomStack, 1, -1 do
+			local work = activeCustomStack[i]
+			if not work.endTime then
+				work.endTime = currentTime
+				work.endTick = currentTick
+				work.memDelta = currentMem - work.memStart
+				work.duration = work.endTime - work.startTime
+			end
+		end
+
+		for i = #callStack, 1, -1 do
+			local record = callStack[i]
+			if not record.endTime then
+				record.endTime = currentTime
+				record.endTick = currentTick
+				record.memDelta = currentMem - record.memStart
+				record.duration = record.endTime - record.startTime
+			end
+		end
+
+		activeCustomStack = {}
+		callStack = {}
 	elseif not paused and wasPaused then
-		-- Just resumed - CLEAR ALL DATA and start fresh recording
 		MicroProfiler.ClearData()
-		-- Reset recording start time for fresh timeline
 		if Shared then
 			Shared.RecordingStartTime = getCurrentTime()
 		end
-		-- Ensure hook is enabled when resuming
 		if isEnabled and not isHooked then
 			enableHook()
 		end

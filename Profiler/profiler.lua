@@ -10,6 +10,8 @@ local config = require("Profiler.config")
 local MicroProfiler = require("Profiler.microprofiler") --[[ Imported by: profiler ]]
 local UITop = require("Profiler.ui_top") --[[ Imported by: profiler ]]
 local UIBody = require("Profiler.ui_body_simple") --[[ Imported by: profiler ]]
+local Timing = require("Profiler.timing")
+local UIWarning = require("Profiler.ui_warning")
 
 -- Module declaration
 local ProfilerCore = {}
@@ -85,7 +87,7 @@ function ProfilerCore.SetVisible(visible)
 	if visible then
 		-- Set RecordingStartTime when profiling starts for fixed coordinate system
 		if not Shared.RecordingStartTime then
-			Shared.RecordingStartTime = os.clock()
+			Shared.RecordingStartTime = Timing.Now()
 			print(string.format("📍 Profiler: RecordingStartTime set to %.6f", Shared.RecordingStartTime))
 		end
 		MicroProfiler.Enable()
@@ -283,8 +285,11 @@ function ProfilerCore.Draw()
 		UIBody.Draw(profilerData, TOP_BAR_HEIGHT)
 	end
 
+	-- Draw timing server warning if needed
+	UIWarning.Draw()
+
 	-- Store last draw time
-	Shared.LastDrawTime = os.clock()
+	Shared.LastDrawTime = Timing.Now()
 end
 
 -- Get profiler data for external use

@@ -6,6 +6,7 @@
 
 -- Imports
 local Shared = require("Profiler.Shared") --[[ Imported by: profiler ]]
+local Timing = require("Profiler.timing")
 
 -- Module declaration
 local MicroProfiler = {}
@@ -52,6 +53,10 @@ local scriptTimelines = {}
 -- Forward declaration so later calls see the local, not a global
 local autoDisableIfIdle
 
+local function getCurrentTime()
+	return Timing.Now()
+end
+
 -- Get memory usage in KB
 local function getMemory()
 	return collectgarbage("count")
@@ -67,7 +72,7 @@ local function cleanupOldRecords()
 		return
 	end
 
-	local currentTime = os.clock()
+	local currentTime = getCurrentTime()
 
 	-- Skip if not enough time has passed
 	if currentTime - lastCleanupTime < CLEANUP_INTERVAL then
@@ -275,7 +280,7 @@ local function createFunctionRecord(info)
 		source = source,
 		scriptName = scriptName,
 		line = line,
-		startTime = os.clock(),
+		startTime = getCurrentTime(),
 		startTick = globals.TickCount(),
 		memStart = getMemory(),
 		endTime = nil,
@@ -298,7 +303,7 @@ local function profileHook(event)
 	end
 
 	-- Only cleanup when NOT paused to keep data available for navigation
-	local currentTime = os.clock()
+	local currentTime = getCurrentTime()
 	if currentTime - lastCleanupTime > CLEANUP_INTERVAL then
 		cleanupOldRecords()
 		autoDisableIfIdle()
@@ -335,7 +340,7 @@ local function profileHook(event)
 		end
 
 		-- Complete the record
-		record.endTime = os.clock()
+		record.endTime = getCurrentTime()
 		record.endTick = globals.TickCount()
 		record.memDelta = getMemory() - record.memStart
 		record.duration = record.endTime - record.startTime
@@ -525,7 +530,7 @@ function MicroProfiler.SetPaused(paused)
 		MicroProfiler.ClearData()
 		-- Reset recording start time for fresh timeline
 		if Shared then
-			Shared.RecordingStartTime = os.clock()
+			Shared.RecordingStartTime = getCurrentTime()
 		end
 		-- Ensure hook is enabled when resuming
 		if isEnabled and not isHooked then
@@ -582,7 +587,7 @@ function MicroProfiler.BeginCustomWork(name, category)
 		name = name,
 		category = category or nil,
 		scriptName = scriptName,
-		startTime = os.clock(),
+		startTime = getCurrentTime(),
 		startTick = globals.TickCount(),
 		memStart = getMemory(),
 		endTime = nil,
@@ -638,7 +643,7 @@ function MicroProfiler.EndCustomWork(name)
 	end
 
 	if work then
-		work.endTime = os.clock()
+		work.endTime = getCurrentTime()
 		work.endTick = globals.TickCount()
 		work.memDelta = getMemory() - work.memStart
 		work.duration = work.endTime - work.startTime
@@ -762,7 +767,7 @@ function MicroProfiler.GetStats()
 	if not _lastStatsTime then
 		_lastStatsTime = 0
 	end
-	local currentTime = os.clock()
+	local currentTime = getCurrentTime()
 	if (Shared and Shared.DEBUG) and (currentTime - _lastStatsTime > 5.0) then
 		_lastStatsTime = currentTime
 		-- Count script timelines

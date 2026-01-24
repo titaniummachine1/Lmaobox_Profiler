@@ -43,6 +43,8 @@ if Shared.ProfilerInstance and Shared.ProfilerLoaded then
 		"Profiler.Shared",
 		"Profiler.config",
 		"Profiler.Main",
+		"Profiler.timing",
+		"Profiler.ui_warning",
 	}
 
 	for _, pkg in ipairs(packagesToClear) do
@@ -209,6 +211,8 @@ function Profiler.Unload()
 		"Profiler.Shared",
 		"Profiler.config",
 		"Profiler.Main",
+		"Profiler.timing",
+		"Profiler.ui_warning",
 	}
 
 	for _, pkg in ipairs(packages) do

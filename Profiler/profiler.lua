@@ -68,6 +68,8 @@ function ProfilerCore.Shutdown()
 	package.loaded["Profiler.ui_body"] = nil
 	package.loaded["Profiler.Shared"] = nil
 	package.loaded["Profiler.config"] = nil
+	package.loaded["Profiler.timing"] = nil
+	package.loaded["Profiler.ui_warning"] = nil
 end
 
 -- Public API -------------------------

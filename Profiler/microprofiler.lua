@@ -52,8 +52,6 @@ local scriptTimelines = {}
 -- Forward declaration so later calls see the local, not a global
 local autoDisableIfIdle
 
--- Use os.clock() for microsecond-level timing precision
-
 -- Get memory usage in KB
 local function getMemory()
 	return collectgarbage("count")

@@ -31,6 +31,9 @@ local Shared = {
 
 	-- Debug settings
 	DEBUG = false,
+
+	-- Timing server status
+	TimingServerAvailable = nil,
 }
 
 -- Return the module

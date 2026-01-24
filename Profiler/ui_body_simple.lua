@@ -1046,7 +1046,7 @@ function UIBody.Draw(profilerData, topBarHeight)
 				end
 
 				if #validFunctions > 0 then
-					tickBoardY = drawScriptOnBoard(
+					local newTickBoardY = drawScriptOnBoard(
 						scriptName,
 						validFunctions,
 						tickBoardY,
@@ -1055,12 +1055,23 @@ function UIBody.Draw(profilerData, topBarHeight)
 						screenW,
 						screenH
 					)
-					-- Track lowest point
-					local scriptBottom = tickRulerY + RULER_HEIGHT + tickBoardY
-					tickContentBottom = math.max(tickContentBottom, scriptBottom)
+					-- Validate return value
+					if newTickBoardY and type(newTickBoardY) == "number" and newTickBoardY == newTickBoardY then
+						tickBoardY = newTickBoardY
+						-- Track lowest point
+						local scriptBottom = tickRulerY + RULER_HEIGHT + tickBoardY
+						if scriptBottom == scriptBottom then
+							tickContentBottom = math.max(tickContentBottom, scriptBottom)
+						end
+					end
 				end
 			end
 		end
+	end
+
+	-- Validate tickContentBottom before using
+	if tickContentBottom ~= tickContentBottom or tickContentBottom == math.huge or tickContentBottom == -math.huge then
+		tickContentBottom = tickRulerY + RULER_HEIGHT
 	end
 
 	-- RENDER FRAME CONTEXT below TICK content

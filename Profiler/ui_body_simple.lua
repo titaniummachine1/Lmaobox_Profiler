@@ -889,24 +889,20 @@ function UIBody.Draw(profilerData, topBarHeight)
 		return
 	end
 
-	-- Reset hovered function at start of frame
 	hoveredFunc = nil
-
-	-- Store topBarHeight for use in boardToScreen
 	currentTopBarHeight = topBarHeight or 60
 
 	local screenW, screenH = draw.GetScreenSize()
 
-	-- Draw background
 	draw.Color(20, 20, 20, 240)
 	draw.FilledRect(0, topBarHeight, screenW, screenH)
 
-	-- Tick-based history: keep max 66 ticks of data
 	local MAX_TICKS = 66
 	local tickInterval = globals.TickInterval()
 	local currentTime = os.clock()
 
-	-- First pass: find min/max tick to calculate valid window
+	local currentContextName = profilerData.currentContext and profilerData.currentContext.id or "tick"
+
 	local minTick = math.huge
 	local maxTick = -math.huge
 
@@ -1080,6 +1076,7 @@ function UIBody.Draw(profilerData, topBarHeight)
 
 	-- Draw info overlay
 	draw.Color(255, 255, 255, 255)
+	draw.Text(10, screenH - 110, string.format("Context: %s", currentContextName:upper()))
 	draw.Text(10, screenH - 95, string.format("Board Zoom: %.2fx", boardZoom))
 	draw.Text(10, screenH - 80, string.format("Board Offset: X=%.0f Y=%.0f", boardOffsetX, boardOffsetY))
 	draw.Text(10, screenH - 65, string.format("Time Range: %.3fs - %.3fs", dataStartTime, dataEndTime))

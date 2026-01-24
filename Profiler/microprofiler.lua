@@ -23,16 +23,36 @@ local MAX_TIMELINE_SIZE = 200 -- Functions per timeline
 local MAX_CUSTOM_THREADS = 50 -- Custom work items
 local CLEANUP_INTERVAL = 0.5 -- Cleanup frequency
 
+-- Context definitions
+local Contexts = {
+	TICK = {
+		id = "tick",
+		last_id = 0,
+		current_record = 1,
+		callStack = {},
+		mainTimeline = {},
+		customThreads = {},
+		activeCustomStack = {},
+		scriptTimelines = {},
+	},
+	FRAME = {
+		id = "frame",
+		last_id = 0,
+		current_record = 1,
+		callStack = {},
+		mainTimeline = {},
+		customThreads = {},
+		activeCustomStack = {},
+		scriptTimelines = {},
+	},
+}
+
 -- Local state (not global)
 local isEnabled = false
 local isHooked = false
 local isPaused = false
-local callStack = {}
-local mainTimeline = {}
-local customThreads = {}
-local activeCustomStack = {}
+local currentContext = Contexts.TICK
 local lastCleanupTime = 0
-local scriptTimelines = {}
 
 -- External APIs (Lua 5.4 compatible)
 -- Use external globals library (RealTime, FrameTime) directly since it's globally available
@@ -44,6 +64,23 @@ local autoDisableIfIdle
 
 local function getCurrentTime()
 	return Timing.Now()
+end
+
+-- Auto-shift context to next record slot when engine count changes
+local function autoShiftContext(ctx)
+	assert(ctx, "autoShiftContext: ctx missing")
+
+	local engine_id
+	if ctx.id == "tick" then
+		engine_id = globals.TickCount()
+	else
+		engine_id = globals.FrameCount()
+	end
+
+	if engine_id ~= ctx.last_id then
+		ctx.current_record = (ctx.current_record % MAX_TICKS) + 1
+		ctx.last_id = engine_id
+	end
 end
 
 -- Get memory usage in KB
@@ -68,6 +105,34 @@ local function filterArray(arr, keepFn)
 	end
 end
 
+-- Cleanup old records for a specific context
+local function cleanupContext(ctx)
+	assert(ctx, "cleanupContext: ctx missing")
+
+	local currentTime = getCurrentTime()
+	local tickInterval = globals.TickInterval()
+	local maxHistoryTime = MAX_TICKS * tickInterval
+	local cutoffTime = currentTime - maxHistoryTime
+
+	filterArray(ctx.mainTimeline, function(record)
+		return not record.endTime or record.endTime >= cutoffTime
+	end)
+
+	filterArray(ctx.customThreads, function(thread)
+		return not thread.endTime or thread.endTime >= cutoffTime
+	end)
+
+	for scriptName, scriptData in pairs(ctx.scriptTimelines) do
+		filterArray(scriptData.functions, function(func)
+			return not func.endTime or func.endTime >= cutoffTime
+		end)
+
+		if #scriptData.functions == 0 then
+			ctx.scriptTimelines[scriptName] = nil
+		end
+	end
+end
+
 -- Cleanup old records - ONLY when NOT paused to preserve navigation data
 local function cleanupOldRecords()
 	if isPaused then
@@ -82,30 +147,8 @@ local function cleanupOldRecords()
 
 	lastCleanupTime = currentTime
 
-	local tickInterval = globals.TickInterval()
-	local maxHistoryTime = MAX_TICKS * tickInterval
-	local cutoffTime = currentTime - maxHistoryTime
-
-	-- Single-pass filter for mainTimeline
-	filterArray(mainTimeline, function(record)
-		return not record.endTime or record.endTime >= cutoffTime
-	end)
-
-	-- Single-pass filter for customThreads
-	filterArray(customThreads, function(thread)
-		return not thread.endTime or thread.endTime >= cutoffTime
-	end)
-
-	-- Clean script timelines
-	for scriptName, scriptData in pairs(scriptTimelines) do
-		filterArray(scriptData.functions, function(func)
-			return not func.endTime or func.endTime >= cutoffTime
-		end)
-
-		if #scriptData.functions == 0 then
-			scriptTimelines[scriptName] = nil
-		end
-	end
+	cleanupContext(Contexts.TICK)
+	cleanupContext(Contexts.FRAME)
 end
 
 -- Check if we should profile this function (FIXED: Not too aggressive)
@@ -263,19 +306,18 @@ local function profileHook(event)
 		return
 	end
 
-	-- Skip profiling if paused
 	if isPaused then
-		return -- Don't profile when paused = instant lag fix
+		return
 	end
 
-	-- Only cleanup when NOT paused to keep data available for navigation
 	local currentTime = getCurrentTime()
 	if currentTime - lastCleanupTime > CLEANUP_INTERVAL then
 		cleanupOldRecords()
 		autoDisableIfIdle()
 	end
 
-	-- MINIMAL info gathering for performance
+	autoShiftContext(currentContext)
+
 	local info = debug.getinfo(2, "nS")
 	if not info then
 		return
@@ -285,61 +327,56 @@ local function profileHook(event)
 		return
 	end
 
+	local ctx = currentContext
+	assert(ctx, "profileHook: currentContext missing")
+
 	if event == "call" then
-		-- Limit call stack depth to prevent excessive nesting overhead
-		if #callStack > 20 then
+		if #ctx.callStack > 20 then
 			return
 		end
 
 		local record = createFunctionRecord(info)
 
-		-- Add to parent if we're nested
-		if #callStack > 0 then
-			table.insert(callStack[#callStack].children, record)
+		if #ctx.callStack > 0 then
+			table.insert(ctx.callStack[#ctx.callStack].children, record)
 		end
 
-		table.insert(callStack, record)
+		table.insert(ctx.callStack, record)
 	elseif event == "return" then
-		local record = table.remove(callStack)
+		local record = table.remove(ctx.callStack)
 		if not record then
 			return
 		end
 
-		-- Complete the record
 		record.endTime = getCurrentTime()
 		record.endTick = globals.TickCount()
 		record.memDelta = getMemory() - record.memStart
 		record.duration = record.endTime - record.startTime
 
-		-- Validate timing
 		if record.duration < 0 then
 			record.duration = 0
 		end
 
-		-- If this is a top-level function, add to both main timeline and script timeline
-		if #callStack == 0 then
-			-- Use circular overwrite when at max size
-			if #mainTimeline >= MAX_TIMELINE_SIZE then
-				-- Shift down by overwriting (single pass)
+		if #ctx.callStack == 0 then
+			if #ctx.mainTimeline >= MAX_TIMELINE_SIZE then
 				for i = 1, MAX_TIMELINE_SIZE - 1 do
-					mainTimeline[i] = mainTimeline[i + 1]
+					ctx.mainTimeline[i] = ctx.mainTimeline[i + 1]
 				end
-				mainTimeline[MAX_TIMELINE_SIZE] = record
+				ctx.mainTimeline[MAX_TIMELINE_SIZE] = record
 			else
-				mainTimeline[#mainTimeline + 1] = record
+				ctx.mainTimeline[#ctx.mainTimeline + 1] = record
 			end
 
-			-- Add to script-specific timeline
 			local scriptName = record.scriptName
-			if not scriptTimelines[scriptName] then
-				scriptTimelines[scriptName] = {
+			if not ctx.scriptTimelines[scriptName] then
+				ctx.scriptTimelines[scriptName] = {
 					name = scriptName,
 					functions = {},
 					type = "script",
 				}
 			end
 
-			local funcs = scriptTimelines[scriptName].functions
+			local funcs = ctx.scriptTimelines[scriptName].functions
 			if #funcs >= MAX_TIMELINE_SIZE then
 				for i = 1, MAX_TIMELINE_SIZE - 1 do
 					funcs[i] = funcs[i + 1]
@@ -350,11 +387,9 @@ local function profileHook(event)
 			end
 		end
 
-		-- Copy to active custom threads if within their timeframe
-		for _, thread in ipairs(activeCustomStack) do
+		for _, thread in ipairs(ctx.activeCustomStack) do
 			if record.startTime >= thread.startTime and (not thread.endTime or record.endTime <= thread.endTime) then
-				-- Create a copy for the custom thread (only if thread isn't full)
-				if #thread.children < 100 then -- Limit children per thread
+				if #thread.children < 100 then
 					local copy = {
 						key = record.key,
 						name = record.name,
@@ -364,7 +399,7 @@ local function profileHook(event)
 						endTime = record.endTime,
 						duration = record.duration,
 						memDelta = record.memDelta,
-						children = record.children, -- Shallow copy of children
+						children = record.children,
 					}
 					table.insert(thread.children, copy)
 				end
@@ -427,10 +462,17 @@ function autoDisableIfIdle()
 	if not isEnabled or isPaused then
 		return
 	end
-	local hasData = (#mainTimeline > 0) or (#customThreads > 0)
-	if not hasData then
-		for _ in pairs(scriptTimelines) do
+	local hasData = false
+	for _, ctx in pairs(Contexts) do
+		if #ctx.mainTimeline > 0 or #ctx.customThreads > 0 then
 			hasData = true
+			break
+		end
+		for _ in pairs(ctx.scriptTimelines) do
+			hasData = true
+			break
+		end
+		if hasData then
 			break
 		end
 	end
@@ -469,28 +511,30 @@ function MicroProfiler.SetPaused(paused)
 		local currentMem = getMemory()
 		local currentTick = globals.TickCount()
 
-		for i = #activeCustomStack, 1, -1 do
-			local work = activeCustomStack[i]
-			if not work.endTime then
-				work.endTime = currentTime
-				work.endTick = currentTick
-				work.memDelta = currentMem - work.memStart
-				work.duration = work.endTime - work.startTime
+		for _, ctx in pairs(Contexts) do
+			for i = #ctx.activeCustomStack, 1, -1 do
+				local work = ctx.activeCustomStack[i]
+				if not work.endTime then
+					work.endTime = currentTime
+					work.endTick = currentTick
+					work.memDelta = currentMem - work.memStart
+					work.duration = work.endTime - work.startTime
+				end
 			end
-		end
 
-		for i = #callStack, 1, -1 do
-			local record = callStack[i]
-			if not record.endTime then
-				record.endTime = currentTime
-				record.endTick = currentTick
-				record.memDelta = currentMem - record.memStart
-				record.duration = record.endTime - record.startTime
+			for i = #ctx.callStack, 1, -1 do
+				local record = ctx.callStack[i]
+				if not record.endTime then
+					record.endTime = currentTime
+					record.endTick = currentTick
+					record.memDelta = currentMem - record.memStart
+					record.duration = record.endTime - record.startTime
+				end
 			end
-		end
 
-		activeCustomStack = {}
-		callStack = {}
+			ctx.activeCustomStack = {}
+			ctx.callStack = {}
+		end
 	elseif not paused and wasPaused then
 		MicroProfiler.ClearData()
 		if Shared then
@@ -512,21 +556,19 @@ function MicroProfiler.BeginCustomWork(name, category)
 		return
 	end
 
-	-- Validate name
 	if not name or name == "" then
 		print("BeginCustomWork: name is required")
 		return
 	end
 
-	-- DOUBLE CHECK: Make sure we're really not paused
 	if isPaused then
 		return
 	end
 
-	-- Set API guard to prevent recursion
+	autoShiftContext(currentContext)
+
 	inProfilerAPI = true
 
-	-- Walk the callstack to find the REAL calling script (not Profiler itself)
 	local scriptName = "Manual Work"
 	for level = 3, 10 do
 		local info = debug.getinfo(level, "S")
@@ -534,12 +576,10 @@ function MicroProfiler.BeginCustomWork(name, category)
 			break
 		end
 		local source = info.source or ""
-		-- Extract script name from source path
 		local fileName = source:match("\\([^\\]-)$") or source:match("/([^/]-)$") or source
 		if fileName:match("%.lua$") then
 			fileName = fileName:gsub("%.lua$", "")
 		end
-		-- Skip profiler internals, use first user script we find
 		if fileName ~= "Profiler" and fileName ~= "" and fileName ~= "[C]" and fileName ~= "[string]" then
 			scriptName = fileName
 			break
@@ -561,27 +601,27 @@ function MicroProfiler.BeginCustomWork(name, category)
 		type = "custom",
 	}
 
-	-- Add to customThreads with size limit
-	if #customThreads >= MAX_CUSTOM_THREADS then
+	local ctx = currentContext
+	assert(ctx, "BeginCustomWork: currentContext missing")
+
+	if #ctx.customThreads >= MAX_CUSTOM_THREADS then
 		for i = 1, MAX_CUSTOM_THREADS - 1 do
-			customThreads[i] = customThreads[i + 1]
+			ctx.customThreads[i] = ctx.customThreads[i + 1]
 		end
-		customThreads[MAX_CUSTOM_THREADS] = work
+		ctx.customThreads[MAX_CUSTOM_THREADS] = work
 	else
-		customThreads[#customThreads + 1] = work
+		ctx.customThreads[#ctx.customThreads + 1] = work
 	end
 
-	-- Add to activeCustomStack with size limit
-	if #activeCustomStack >= 10 then
+	if #ctx.activeCustomStack >= 10 then
 		for i = 1, 9 do
-			activeCustomStack[i] = activeCustomStack[i + 1]
+			ctx.activeCustomStack[i] = ctx.activeCustomStack[i + 1]
 		end
-		activeCustomStack[10] = work
+		ctx.activeCustomStack[10] = work
 	else
-		activeCustomStack[#activeCustomStack + 1] = work
+		ctx.activeCustomStack[#ctx.activeCustomStack + 1] = work
 	end
 
-	-- Clear API guard
 	inProfilerAPI = false
 end
 
@@ -590,24 +630,24 @@ function MicroProfiler.EndCustomWork(name)
 		return
 	end
 
-	-- If no name provided, pop the most-recent active work
+	local ctx = currentContext
+	assert(ctx, "EndCustomWork: currentContext missing")
+
 	if not name or name == "" then
-		if #activeCustomStack == 0 then
+		if #ctx.activeCustomStack == 0 then
 			inProfilerAPI = false
-			return -- nothing to end
+			return
 		end
-		name = activeCustomStack[#activeCustomStack].name
+		name = ctx.activeCustomStack[#ctx.activeCustomStack].name
 	end
 
-	-- Set API guard to prevent recursion
 	inProfilerAPI = true
 
-	-- Find the matching work item by name
 	local work = nil
-	for i = #activeCustomStack, 1, -1 do
-		if activeCustomStack[i].name == name then
-			work = activeCustomStack[i]
-			table.remove(activeCustomStack, i)
+	for i = #ctx.activeCustomStack, 1, -1 do
+		if ctx.activeCustomStack[i].name == name then
+			work = ctx.activeCustomStack[i]
+			table.remove(ctx.activeCustomStack, i)
 			break
 		end
 	end
@@ -634,30 +674,29 @@ function MicroProfiler.EndCustomWork(name)
 			children = work.children,
 		}
 
-		local parentWork = activeCustomStack[#activeCustomStack]
+		local parentWork = ctx.activeCustomStack[#ctx.activeCustomStack]
 		if parentWork then
 			parentWork.children = parentWork.children or {}
 			table.insert(parentWork.children, workRecord)
 		else
-			-- Add to mainTimeline with circular overwrite
-			if #mainTimeline >= MAX_TIMELINE_SIZE then
+			if #ctx.mainTimeline >= MAX_TIMELINE_SIZE then
 				for i = 1, MAX_TIMELINE_SIZE - 1 do
-					mainTimeline[i] = mainTimeline[i + 1]
+					ctx.mainTimeline[i] = ctx.mainTimeline[i + 1]
 				end
-				mainTimeline[MAX_TIMELINE_SIZE] = workRecord
+				ctx.mainTimeline[MAX_TIMELINE_SIZE] = workRecord
 			else
-				mainTimeline[#mainTimeline + 1] = workRecord
+				ctx.mainTimeline[#ctx.mainTimeline + 1] = workRecord
 			end
 
 			local timelineKey = work.category or work.scriptName or "Manual Work"
-			if not scriptTimelines[timelineKey] then
-				scriptTimelines[timelineKey] = {
+			if not ctx.scriptTimelines[timelineKey] then
+				ctx.scriptTimelines[timelineKey] = {
 					name = timelineKey,
 					functions = {},
 					type = "script",
 				}
 			end
-			local funcs = scriptTimelines[timelineKey].functions
+			local funcs = ctx.scriptTimelines[timelineKey].functions
 			if #funcs >= MAX_TIMELINE_SIZE then
 				for i = 1, MAX_TIMELINE_SIZE - 1 do
 					funcs[i] = funcs[i + 1]
@@ -669,46 +708,51 @@ function MicroProfiler.EndCustomWork(name)
 		end
 	end
 
-	-- Clear API guard
 	inProfilerAPI = false
 end
 
 -- Get profiler data
 function MicroProfiler.GetMainTimeline()
-	return mainTimeline
+	return currentContext.mainTimeline
 end
 
 function MicroProfiler.GetCustomThreads()
-	return customThreads
+	return currentContext.customThreads
 end
 
 function MicroProfiler.GetScriptTimelines()
-	return scriptTimelines
+	return currentContext.scriptTimelines
 end
 
 function MicroProfiler.GetCallStack()
-	return callStack
+	return currentContext.callStack
 end
 
 function MicroProfiler.GetProfilerData()
 	return {
-		mainTimeline = mainTimeline,
-		customThreads = customThreads,
-		scriptTimelines = scriptTimelines,
-		callStack = callStack,
+		mainTimeline = currentContext.mainTimeline,
+		customThreads = currentContext.customThreads,
+		scriptTimelines = currentContext.scriptTimelines,
+		callStack = currentContext.callStack,
 		isEnabled = isEnabled,
 		isHooked = isHooked,
-		manualTimeline = mainTimeline,
+		manualTimeline = currentContext.mainTimeline,
+		contexts = Contexts,
+		currentContext = currentContext,
 	}
 end
 
 -- Clear collected data
 function MicroProfiler.ClearData()
-	mainTimeline = {}
-	customThreads = {}
-	activeCustomStack = {}
-	callStack = {}
-	scriptTimelines = {}
+	for _, ctx in pairs(Contexts) do
+		ctx.mainTimeline = {}
+		ctx.customThreads = {}
+		ctx.activeCustomStack = {}
+		ctx.callStack = {}
+		ctx.scriptTimelines = {}
+		ctx.last_id = 0
+		ctx.current_record = 1
+	end
 end
 
 -- Reset profiler state
@@ -720,27 +764,52 @@ function MicroProfiler.Reset()
 	isPaused = false
 	inProfilerAPI = false
 	lastCleanupTime = 0
+	currentContext = Contexts.TICK
+end
+
+-- Set active context for profiling
+function MicroProfiler.SetContext(contextName)
+	assert(contextName == "tick" or contextName == "frame", "SetContext: contextName must be 'tick' or 'frame'")
+
+	if contextName == "tick" then
+		currentContext = Contexts.TICK
+		Shared.CurrentContext = "tick"
+	else
+		currentContext = Contexts.FRAME
+		Shared.CurrentContext = "frame"
+	end
+
+	autoShiftContext(currentContext)
+end
+
+function MicroProfiler.GetCurrentContext()
+	return currentContext.id
 end
 
 -- Get statistics
 function MicroProfiler.GetStats()
-	local totalFunctions = #mainTimeline
-	local totalCustomThreads = #customThreads
-	local activeCustoms = #activeCustomStack
-	local callStackDepth = #callStack
-
-	-- Calculate total time covered
+	local totalFunctions = 0
+	local totalCustomThreads = 0
+	local activeCustoms = 0
+	local callStackDepth = 0
 	local totalTime = 0
 	local totalMemory = 0
 
-	for _, func in ipairs(mainTimeline) do
-		totalTime = totalTime + (func.duration or 0)
-		totalMemory = totalMemory + (func.memDelta or 0)
-	end
+	for _, ctx in pairs(Contexts) do
+		totalFunctions = totalFunctions + #ctx.mainTimeline
+		totalCustomThreads = totalCustomThreads + #ctx.customThreads
+		activeCustoms = activeCustoms + #ctx.activeCustomStack
+		callStackDepth = callStackDepth + #ctx.callStack
 
-	for _, thread in ipairs(customThreads) do
-		totalTime = totalTime + (thread.duration or 0)
-		totalMemory = totalMemory + (thread.memDelta or 0)
+		for _, func in ipairs(ctx.mainTimeline) do
+			totalTime = totalTime + (func.duration or 0)
+			totalMemory = totalMemory + (func.memDelta or 0)
+		end
+
+		for _, thread in ipairs(ctx.customThreads) do
+			totalTime = totalTime + (thread.duration or 0)
+			totalMemory = totalMemory + (thread.memDelta or 0)
+		end
 	end
 
 	return {
@@ -752,6 +821,7 @@ function MicroProfiler.GetStats()
 		totalMemory = totalMemory,
 		isEnabled = isEnabled,
 		isHooked = isHooked,
+		currentContext = currentContext.id,
 	}
 end
 
@@ -795,14 +865,14 @@ function MicroProfiler.PrintTimeline(maxDepth)
 		end
 	end
 
-	print("=== Main Timeline ===")
-	for i, func in ipairs(mainTimeline) do
-		local prefix = (i == #mainTimeline) and "└─ " or "├─ "
+	print("=== Main Timeline (Current Context: " .. currentContext.id .. ") ===")
+	for i, func in ipairs(currentContext.mainTimeline) do
+		local prefix = (i == #currentContext.mainTimeline) and "└─ " or "├─ "
 		printNode(func, 0, prefix)
 	end
 
 	print("=== Custom Threads ===")
-	for i, thread in ipairs(customThreads) do
+	for i, thread in ipairs(currentContext.customThreads) do
 		print("Thread: " .. (thread.name or "Unnamed"))
 		for j, func in ipairs(thread.children) do
 			local prefix = (j == #thread.children) and "└─ " or "├─ "

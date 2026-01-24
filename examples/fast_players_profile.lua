@@ -21,13 +21,13 @@ end
 local Profiler = require("Profiler")
 local FastPlayers = require("fast_players")
 
-Profiler.SetMeasurementMode("tick")
+Profiler.SetVisible(true)
 
 FAST_PLAYERS_PROFILE_LOADED = true
 
 -- CreateMove callback - profile real fast_players usage
 local function onCreateMove(cmd)
-	Profiler.SetMeasurementMode("tick")
+	Profiler.SetContext("tick")
 
 	-- Skip if paused
 	if Profiler.IsPaused and Profiler.IsPaused() then
@@ -80,6 +80,7 @@ end
 
 -- Draw callback
 local function onDraw()
+	Profiler.SetContext("frame")
 	Profiler.Draw()
 end
 

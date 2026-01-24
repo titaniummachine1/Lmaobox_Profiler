@@ -350,12 +350,20 @@ end
 function ProfilerCore.SetMeasurementMode(mode)
 	if mode == "tick" or mode == "frame" then
 		Shared.MeasurementMode = mode
-		-- RecordingStartTime is now set when profiling starts, not when mode changes
 	end
 end
 
 function ProfilerCore.GetMeasurementMode()
 	return Shared.MeasurementMode or "frame"
+end
+
+-- Context switching for dual tick/frame profiling
+function ProfilerCore.SetContext(contextName)
+	MicroProfiler.SetContext(contextName)
+end
+
+function ProfilerCore.GetCurrentContext()
+	return MicroProfiler.GetCurrentContext()
 end
 
 -- Initialize if visible by default

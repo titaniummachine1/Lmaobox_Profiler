@@ -25,6 +25,9 @@ local Shared = {
 	MeasurementMode = "frame", -- "tick" or "frame"
 	RecordingStartTime = nil, -- Start time for tick counting
 
+	-- Context separation for dual tick/frame profiling
+	CurrentContext = "tick", -- "tick" or "frame"
+
 	-- Instance control
 	ProfilerInstance = nil,
 	ProfilerLoaded = false,

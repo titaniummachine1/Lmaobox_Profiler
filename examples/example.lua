@@ -4,8 +4,8 @@
     HOW TO USE:
     1. Load this script
     2. Profiler draws automatically
-    3. Use Profiler.Begin("Name") and Profiler.End() to measure code
-    4. Set mode: Profiler.SetMeasurementMode("tick") or ("frame")
+    3. Use Profiler.SetContext("tick") in CreateMove, SetContext("frame") in Draw
+    4. Use Profiler.Begin("Name") and Profiler.End() to measure code
     
     BASIC PATTERN:
         Profiler.Begin("MyWork")
@@ -28,7 +28,7 @@ end
 -- Load profiler
 local Profiler = require("Profiler")
 
-Profiler.SetMeasurementMode("frame") -- or "tick"
+Profiler.SetVisible(true)
 
 _G.PROFILER_EXAMPLE_LOADED = true
 
@@ -238,7 +238,7 @@ end
 
 -- CreateMove callback - runs every tick (shows tick-based ruler with T0, T1, T2...)
 local function onCreateMove(cmd)
-	Profiler.SetMeasurementMode("tick") -- Tick mode for CreateMove
+	Profiler.SetContext("tick")
 
 	Profiler.Begin("TickProcess") -- Top-level tick work
 
@@ -252,13 +252,16 @@ end
 
 -- Draw callback - runs every frame (shows frame-based ruler with F0, F1, F2...)
 local function onDraw()
+	Profiler.SetContext("frame")
+
 	Profiler.Begin("FrameProcess")
 
 	-- Only do rendering in frame, no physics to prevent freezing
 	doRendering() -- Contains Geometry + Shadows + Lighting + PostProcess
 
-	Profiler.Draw() -- Draws the profiler UI
 	Profiler.End("FrameProcess")
+
+	Profiler.Draw() -- Draws the profiler UI
 end
 
 -- Unload callback
@@ -274,4 +277,4 @@ callbacks.Register("CreateMove", SCRIPT_TAG, onCreateMove)
 callbacks.Register("Draw", SCRIPT_TAG, onDraw)
 callbacks.Register("Unload", SCRIPT_TAG, onUnload)
 
-print("[Profiler Example] loaded. Measuring ticks in CreateMove, frames in Draw.")
+print("[Profiler Example] loaded. TICK context in CreateMove, FRAME context in Draw.")

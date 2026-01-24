@@ -73,14 +73,12 @@ local function getFunctionHeight(func)
 	if memDeltaKb < 0 then
 		memDeltaKb = 0
 	end
-	local memDeltaMb = memDeltaKb / 1024
-	if memDeltaMb <= MEMORY_SCALE_START_MB then
+	if memDeltaKb < 10 then
 		return FUNCTION_HEIGHT
 	end
-	local cappedMb = math.min(memDeltaMb, MEMORY_SCALE_END_MB)
-	local ratio = (cappedMb - MEMORY_SCALE_START_MB) / (MEMORY_SCALE_END_MB - MEMORY_SCALE_START_MB)
-	local scale = 1 + ratio * (MEMORY_HEIGHT_MULTIPLIER_MAX - 1)
-	return FUNCTION_HEIGHT * scale
+	local logScale = math.log(memDeltaKb / 10) / math.log(10)
+	local additionalHeight = logScale * 30
+	return FUNCTION_HEIGHT + additionalHeight
 end
 
 -- Convert board coordinates to screen coordinates
@@ -105,21 +103,10 @@ local function drawFunctionOnBoard(func, boardX, boardY, boardWidth, screenW, sc
 		return
 	end
 
-	-- Calculate height based on memory usage (1B-10MB → 1x-2x height)
-	local memBytes = math.abs(func.memDelta or 0)
-	local heightMultiplier = 1.0
-	if memBytes >= 1 and memBytes <= 10485760 then -- 1B to 10MB
-		-- Linear interpolation: 1B=1x, 10MB=2x
-		heightMultiplier = 1.0 + (memBytes / 10485760)
-	elseif memBytes > 10485760 then
-		heightMultiplier = 2.0
-	end
-
 	-- Convert board coordinates to screen coordinates
 	local screenX, screenY = boardToScreen(boardX, boardY)
 	local screenWidth = boardWidth * boardZoom
-	-- Y is NOT zoom-scaled - height scaled by memory usage
-	local screenHeight = FUNCTION_HEIGHT * heightMultiplier
+	local screenHeight = getFunctionHeight(func)
 
 	-- Clamp screen coordinates to prevent overflow at extreme zoom
 	local clampLimit = math.max(100000, boardZoom * 10000)
@@ -198,39 +185,68 @@ local function drawFunctionOnBoard(func, boardX, boardY, boardWidth, screenW, sc
 			math.floor(screenY + screenHeight)
 		)
 
-		-- Draw function name if it fits (positioned on board, then transformed)
+		-- Text drawing with intelligent layout
 		local name = func.name or "unknown"
-		if clampedScreenWidth > 50 and screenHeight > 12 then
-			-- Position text on board, then transform to screen
-			local textBoardX = boardX + 4
-			local textBoardY = boardY + 2
-			local textScreenX, textScreenY = boardToScreen(textBoardX, textBoardY)
-			-- Clamp to visible screen area to prevent text overflow
-			local clampedTextX = math.max(5, math.min(screenW - 100, textScreenX))
-
-			draw.Color(255, 255, 255, 255)
-			draw.Text(math.floor(clampedTextX), math.floor(textScreenY), name)
+		local durationUs = duration * 1000000
+		local durationText
+		if durationUs >= 1000 then
+			durationText = string.format("%.2f ms", durationUs / 1000)
+		else
+			durationText = string.format("%.0f µs", durationUs)
 		end
 
-		-- Draw duration if there's space (positioned on board, then transformed)
-		if clampedScreenWidth > 120 and screenHeight > 24 then
-			local durationUs = duration * 1000000
-			local durationText
-			if durationUs >= 1000 then
-				durationText = string.format("%.2f ms", durationUs / 1000)
-			else
-				durationText = string.format("%.0f µs", durationUs)
+		local memKb = func.memDelta or 0
+		local memMb = memKb / 1024
+		local memText = memMb >= 1 and string.format("%.2f MB", memMb) or string.format("%.1f KB", memKb)
+
+		if draw.GetTextSize then
+			local nameW, nameH = draw.GetTextSize(name)
+			local durationW, durationH = draw.GetTextSize(durationText)
+			local memW, memH = draw.GetTextSize(memText)
+
+			local padding = 8
+			local lineSpacing = 2
+
+			if clampedScreenWidth > nameW + padding then
+				local textBoardX = boardX + 4
+				local textBoardY = boardY + 2
+				local textScreenX, textScreenY = boardToScreen(textBoardX, textBoardY)
+				local clampedTextX = math.max(5, math.min(screenW - 100, textScreenX))
+
+				draw.Color(255, 255, 255, 255)
+				draw.Text(math.floor(clampedTextX), math.floor(textScreenY), name)
+
+				local fitsHorizontal = clampedScreenWidth > nameW + durationW + padding * 2
+				local fitsVertical = screenHeight > nameH + durationH + lineSpacing + 4
+
+				if fitsHorizontal then
+					local durationBoardX = boardX + clampedScreenWidth / boardZoom - durationW - 4
+					local durationBoardY = boardY + 2
+					local durationScreenX, durationScreenY = boardToScreen(durationBoardX, durationBoardY)
+
+					draw.Color(255, 255, 100, 255)
+					draw.Text(math.floor(durationScreenX), math.floor(durationScreenY), durationText)
+				elseif fitsVertical then
+					local durationBoardX = boardX + 4
+					local durationBoardY = boardY + nameH + lineSpacing + 2
+					local durationScreenX, durationScreenY = boardToScreen(durationBoardX, durationBoardY)
+
+					draw.Color(255, 255, 100, 255)
+					draw.Text(math.floor(durationScreenX), math.floor(durationScreenY), durationText)
+
+					if
+						screenHeight > nameH + durationH + memH + lineSpacing * 2 + 4
+						and clampedScreenWidth > memW + padding
+					then
+						local memBoardX = boardX + 4
+						local memBoardY = boardY + nameH + durationH + lineSpacing * 2 + 2
+						local memScreenX, memScreenY = boardToScreen(memBoardX, memBoardY)
+
+						draw.Color(150, 255, 150, 255)
+						draw.Text(math.floor(memScreenX), math.floor(memScreenY), memText)
+					end
+				end
 			end
-
-			-- Position duration text on board, then transform to screen
-			local durationBoardX = boardX + 4
-			local durationBoardY = boardY + FUNCTION_HEIGHT - 12
-			local durationScreenX, durationScreenY = boardToScreen(durationBoardX, durationBoardY)
-			-- Clamp to visible screen area to prevent text overflow
-			local clampedDurationX = math.max(5, math.min(screenW - 100, durationScreenX))
-
-			draw.Color(255, 255, 100, 255)
-			draw.Text(math.floor(clampedDurationX), math.floor(durationScreenY), durationText)
 		end
 	end
 end
@@ -312,46 +328,49 @@ local function drawScriptOnBoard(scriptName, functions, boardY, dataStartTime, d
 	boardY = boardY + SCRIPT_HEADER_HEIGHT + FUNCTION_SPACING
 
 	-- Draw functions with stacking (cull functions outside visible time window)
-	local stackLevels = {} -- Track occupied time ranges at each Y level
+	local occupiedRegions = {}
 
 	-- Recursive function to draw a function and its children
-	local function drawFunctionAndChildren(func, minLevel)
+	local function drawFunctionAndChildren(func, minY)
 		-- Cull functions completely outside visible time window
 		if func.startTime and func.endTime and func.endTime >= dataStartTime and func.startTime <= dataEndTime then
 			local boardX = timeToBoardX(func.startTime, dataStartTime)
 			local boardWidth = timeToBoardX(func.endTime, dataStartTime) - boardX
+			local funcHeight = getFunctionHeight(func)
 
-			-- Find available Y level starting from minLevel (children must be below parent)
-			-- Earlier-started functions get lower level numbers (visually higher up)
-			local level = minLevel
-			local foundLevel = false
+			-- Find available Y position starting from minY (children must be below parent)
+			local currentY = minY
+			local foundPosition = false
 
-			while not foundLevel do
-				local conflictFound = false
+			while not foundPosition do
+				local collisionFound = false
 
-				if stackLevels[level] then
-					for _, occupiedRange in ipairs(stackLevels[level]) do
-						-- Check for time overlap
-						if not (func.endTime <= occupiedRange.startTime or func.startTime >= occupiedRange.endTime) then
-							conflictFound = true
-							break
-						end
+				for _, region in ipairs(occupiedRegions) do
+					local timeOverlap = not (func.endTime <= region.startTime or func.startTime >= region.endTime)
+					local yOverlap = not (
+						currentY + funcHeight + FUNCTION_SPACING <= region.y
+						or currentY >= region.y + region.height + FUNCTION_SPACING
+					)
+
+					if timeOverlap and yOverlap then
+						collisionFound = true
+						currentY = region.y + region.height + FUNCTION_SPACING
+						break
 					end
 				end
 
-				if not conflictFound then
-					if not stackLevels[level] then
-						stackLevels[level] = {}
-					end
-					table.insert(stackLevels[level], { startTime = func.startTime, endTime = func.endTime })
-					foundLevel = true
-				else
-					level = level + 1
+				if not collisionFound then
+					table.insert(occupiedRegions, {
+						startTime = func.startTime,
+						endTime = func.endTime,
+						y = currentY,
+						height = funcHeight,
+					})
+					foundPosition = true
 				end
 			end
 
-			-- Calculate Y position on board (higher level = further down screen)
-			local functionBoardY = boardY + (level * (FUNCTION_HEIGHT + FUNCTION_SPACING))
+			local functionBoardY = boardY + currentY
 
 			-- Draw function on board
 			drawFunctionOnBoard(func, boardX, functionBoardY, boardWidth, screenW, screenH)
@@ -368,7 +387,7 @@ local function drawScriptOnBoard(scriptName, functions, boardY, dataStartTime, d
 				end)
 
 				for _, child in ipairs(sortedChildren) do
-					drawFunctionAndChildren(child, level + 1)
+					drawFunctionAndChildren(child, currentY + funcHeight + FUNCTION_SPACING)
 				end
 			end
 		end
@@ -379,12 +398,12 @@ local function drawScriptOnBoard(scriptName, functions, boardY, dataStartTime, d
 		drawFunctionAndChildren(func, 0)
 	end
 
-	-- Calculate new Y position after all levels
-	local maxLevel = 0
-	for level, _ in pairs(stackLevels) do
-		maxLevel = math.max(maxLevel, level)
+	-- Calculate new Y position after all regions
+	local maxY = 0
+	for _, region in ipairs(occupiedRegions) do
+		maxY = math.max(maxY, region.y + region.height)
 	end
-	boardY = boardY + ((maxLevel + 1) * (FUNCTION_HEIGHT + FUNCTION_SPACING))
+	boardY = boardY + maxY + FUNCTION_SPACING
 
 	return boardY + SCRIPT_SPACING
 end

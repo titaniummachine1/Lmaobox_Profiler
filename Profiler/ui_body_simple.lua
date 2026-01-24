@@ -435,8 +435,22 @@ local function drawTimeRuler(
 
 	local lastLabelEndX = -1000
 
+	-- Calculate total tick count and sliding window
+	local totalTicks = maxTick - minTick + 1
+	local displayStartTick = minTick
+
+	-- If more than 66 ticks, only show the last 66
+	if totalTicks > MAX_TICKS then
+		displayStartTick = maxTick - MAX_TICKS + 1
+	end
+
 	-- Process each tick that has data (using actual stored tick counts)
 	for tickNum = minTick, maxTick do
+		-- Skip ticks older than our 66-tick window
+		if tickNum < displayStartTick then
+			goto continue_tick
+		end
+
 		-- Get actual time for this tick from stored boundaries, or estimate
 		local tickStartTime = tickBoundaries[tickNum]
 		local tickEndTime = tickBoundaries[tickNum + 1]
@@ -472,8 +486,8 @@ local function drawTimeRuler(
 			draw.Color(100, 100, 150, 40)
 			draw.Line(intX, topBarHeight + RULER_HEIGHT, intX, screenH)
 
-			-- Tick label relative to data start (T1, T2... T66)
-			local relativeTickNum = tickNum - minTick + 1
+			-- Tick label relative to display window (T1, T2... T66)
+			local relativeTickNum = tickNum - displayStartTick + 1
 			local tickLabel = string.format("T%d", relativeTickNum)
 			if tickEndScreenX - tickStartScreenX >= 25 then
 				draw.Color(200, 200, 255, 255)

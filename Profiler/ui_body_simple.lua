@@ -49,6 +49,8 @@ local input = input
 local MOUSE_LEFT = MOUSE_LEFT or 107
 local KEY_Q = KEY_Q or 18
 local KEY_E = KEY_E or 20
+local MOUSE_WHEEL_UP = MOUSE_WHEEL_UP or 112
+local MOUSE_WHEEL_DOWN = MOUSE_WHEEL_DOWN or 113
 
 -- globals is a global table provided by the environment (TickInterval, etc.)
 
@@ -736,46 +738,49 @@ local function handleBoardInput(screenW, screenH, topBarHeight)
 		isDragging = false
 	end
 
-	-- Handle zoom with Q/E keys - zoom towards mouse position
-	if input.IsButtonDown then
-		local qPressed = input.IsButtonDown(KEY_Q)
-		local ePressed = input.IsButtonDown(KEY_E)
+	-- Handle zoom with Q/E keys and scroll wheel - zoom towards mouse position
+	local qPressed = input.IsButtonDown(KEY_Q)
+	local ePressed = input.IsButtonDown(KEY_E)
+	local scrollUp = input.IsButtonDown(MOUSE_WHEEL_UP)
+	local scrollDown = input.IsButtonDown(MOUSE_WHEEL_DOWN)
 
-		if qPressed or ePressed then
-			local oldZoom = boardZoom
+	local zoomIn = qPressed or scrollUp
+	local zoomOut = ePressed or scrollDown
 
-			if qPressed then
-				boardZoom = boardZoom * 1.1 -- Zoom in
-			elseif ePressed then
-				boardZoom = boardZoom / 1.1 -- Zoom out
-			end
+	if zoomIn or zoomOut then
+		local oldZoom = boardZoom
 
-			-- Clamp zoom based on RealTime precision
-			-- Lua doubles have ~15-17 significant digits
-			-- At 4722s, smallest delta is ~0.0001s (100μs precision)
-			-- Max useful zoom: 3px = 0.0001s * TIME_SCALE * zoom
-			-- zoom = 3 / (0.0001 * 50000) = 0.6 is too low
-			-- Use 100μs precision -> max zoom ~1000x for 3px spacing at 100μs
-			local maxZoom = 1000.0
-			boardZoom = math.max(0.01, math.min(maxZoom, boardZoom))
-
-			-- Zoom towards mouse position - keep the point under mouse cursor fixed
-			-- Convert mouse screen position to board position BEFORE zoom change
-			local mouseBoardX = (mx / oldZoom) + boardOffsetX
-			local mouseBoardY = (bodyMy / oldZoom) + boardOffsetY
-
-			-- No Y scrolling - lock Y offset to 0
-			local newOffsetY = 0
-
-			-- Adjust offset so the same board point stays under the mouse cursor
-			local newOffsetX = mouseBoardX - (mx / boardZoom)
-
-			-- No horizontal clamping - allow moving left/right freely
-
-			-- Apply clamped offsets
-			boardOffsetX = newOffsetX
-			boardOffsetY = newOffsetY
+		if zoomIn then
+			boardZoom = boardZoom * 1.1 -- Zoom in
+		elseif zoomOut then
+			boardZoom = boardZoom / 1.1 -- Zoom out
 		end
+
+		-- Clamp zoom based on RealTime precision
+		-- Lua doubles have ~15-17 significant digits
+		-- At 4722s, smallest delta is ~0.0001s (100μs precision)
+		-- Max useful zoom: 3px = 0.0001s * TIME_SCALE * zoom
+		-- zoom = 3 / (0.0001 * 50000) = 0.6 is too low
+		-- Use 100μs precision -> max zoom ~1000x for 3px spacing at 100μs
+		local maxZoom = 1000.0
+		boardZoom = math.max(0.01, math.min(maxZoom, boardZoom))
+
+		-- Zoom towards mouse position - keep the point under mouse cursor fixed
+		-- Convert mouse screen position to board position BEFORE zoom change
+		local mouseBoardX = (mx / oldZoom) + boardOffsetX
+		local mouseBoardY = (bodyMy / oldZoom) + boardOffsetY
+
+		-- No Y scrolling - lock Y offset to 0
+		local newOffsetY = 0
+
+		-- Adjust offset so the same board point stays under the mouse cursor
+		local newOffsetX = mouseBoardX - (mx / boardZoom)
+
+		-- No horizontal clamping - allow moving left/right freely
+
+		-- Apply clamped offsets
+		boardOffsetX = newOffsetX
+		boardOffsetY = newOffsetY
 	end
 end
 
@@ -924,15 +929,25 @@ function UIBody.Draw(profilerData, topBarHeight)
 	if profilerData.scriptTimelines then
 		for scriptName, scriptData in pairs(profilerData.scriptTimelines) do
 			if scriptData.functions and #scriptData.functions > 0 then
-				boardY = drawScriptOnBoard(
-					scriptName,
-					scriptData.functions,
-					boardY,
-					dataStartTime,
-					dataEndTime,
-					screenW,
-					screenH
-				)
+				local validFunctions = {}
+				for _, func in ipairs(scriptData.functions) do
+					local funcTick = func.startTick or func.endTick
+					if funcTick and funcTick >= validTickStart then
+						table.insert(validFunctions, func)
+					end
+				end
+
+				if #validFunctions > 0 then
+					boardY = drawScriptOnBoard(
+						scriptName,
+						validFunctions,
+						boardY,
+						dataStartTime,
+						dataEndTime,
+						screenW,
+						screenH
+					)
+				end
 			end
 		end
 	end

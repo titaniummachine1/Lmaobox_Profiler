@@ -248,7 +248,7 @@ local function drawOverlay()
 		formatMemory(totalMeasuredMem),
 		formatMemory(ratePerSec)
 	)
-	draw.Text(curX, yIdx + padding, globalStr)
+	draw.Text(curX, curY + rowHeight, globalStr) -- Draw at bottom, after all data rows
 end
 
 -- Public API -----

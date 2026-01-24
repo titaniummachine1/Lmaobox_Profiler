@@ -385,79 +385,108 @@ local function drawScriptOnBoard(scriptName, functions, boardY, dataStartTime, d
 
 	boardY = boardY + SCRIPT_HEADER_HEIGHT + FUNCTION_SPACING
 
-	local occupiedRegions = {}
+	local scriptCacheKey = scriptName
+	if not funcCache[scriptCacheKey] then
+		funcCache[scriptCacheKey] = {}
+	end
+	local scriptLayoutCache = funcCache[scriptCacheKey]
 
-	local function drawFunctionAndChildren(func, minY)
-		if func.startTime and func.endTime and func.endTime >= dataStartTime and func.startTime <= dataEndTime then
-			local boardX = timeToBoardX(func.startTime, dataStartTime)
-			local boardWidth = timeToBoardX(func.endTime, dataStartTime) - boardX
-			local funcHeight = getFunctionHeight(func)
+	local needsLayoutCalc = false
+	for _, func in ipairs(functions) do
+		if func._cachedLayoutY == nil then
+			needsLayoutCalc = true
+			break
+		end
+	end
 
-			local currentY
-			if func._cachedLayoutY ~= nil then
-				currentY = func._cachedLayoutY
-			else
-				currentY = minY
-				local foundPosition = false
+	if needsLayoutCalc then
+		local occupiedRegions = {}
 
-				while not foundPosition do
-					local collisionFound = false
-
-					for _, region in ipairs(occupiedRegions) do
-						local timeOverlap = not (func.endTime <= region.startTime or func.startTime >= region.endTime)
-						local yOverlap = not (
-							currentY + funcHeight + FUNCTION_SPACING <= region.y
-							or currentY >= region.y + region.height + FUNCTION_SPACING
-						)
-
-						if timeOverlap and yOverlap then
-							collisionFound = true
-							currentY = region.y + region.height + FUNCTION_SPACING
-							break
-						end
-					end
-
-					if not collisionFound then
-						table.insert(occupiedRegions, {
-							startTime = func.startTime,
-							endTime = func.endTime,
-							y = currentY,
-							height = funcHeight,
-						})
-						foundPosition = true
-					end
-				end
-				func._cachedLayoutY = currentY
+		local function calculateLayout(func, minY)
+			if not func.startTime or not func.endTime then
+				return
 			end
 
-			local functionBoardY = boardY + currentY
+			local funcHeight = getFunctionHeight(func)
+			local currentY = minY
+			local foundPosition = false
 
-			drawFunctionOnBoard(func, boardX, functionBoardY, boardWidth, screenW, screenH)
+			while not foundPosition do
+				local collisionFound = false
+
+				for _, region in ipairs(occupiedRegions) do
+					local timeOverlap = not (func.endTime <= region.startTime or func.startTime >= region.endTime)
+					local yOverlap = not (
+						currentY + funcHeight + FUNCTION_SPACING <= region.y
+						or currentY >= region.y + region.height + FUNCTION_SPACING
+					)
+
+					if timeOverlap and yOverlap then
+						collisionFound = true
+						currentY = region.y + region.height + FUNCTION_SPACING
+						break
+					end
+				end
+
+				if not collisionFound then
+					table.insert(occupiedRegions, {
+						startTime = func.startTime,
+						endTime = func.endTime,
+						y = currentY,
+						height = funcHeight,
+					})
+					foundPosition = true
+				end
+			end
+
+			func._cachedLayoutY = currentY
 
 			if func.children and #func.children > 0 then
-				local sortedChildren = {}
 				for _, child in ipairs(func.children) do
-					table.insert(sortedChildren, child)
+					calculateLayout(child, currentY + funcHeight + FUNCTION_SPACING)
 				end
-				table.sort(sortedChildren, function(a, b)
-					return (a.startTime or 0) < (b.startTime or 0)
-				end)
+			end
+		end
 
-				for _, child in ipairs(sortedChildren) do
-					drawFunctionAndChildren(child, currentY + funcHeight + FUNCTION_SPACING)
-				end
+		for _, func in ipairs(functions) do
+			calculateLayout(func, 0)
+		end
+
+		local maxY = 0
+		for _, region in ipairs(occupiedRegions) do
+			maxY = math.max(maxY, region.y + region.height)
+		end
+		scriptLayoutCache.maxY = maxY
+	end
+
+	local function drawFunc(func)
+		if not func.startTime or not func.endTime or not func._cachedLayoutY then
+			return
+		end
+
+		if func.endTime < dataStartTime or func.startTime > dataEndTime then
+			return
+		end
+
+		local boardX = timeToBoardX(func.startTime, dataStartTime)
+		local boardWidth = timeToBoardX(func.endTime, dataStartTime) - boardX
+		local currentY = func._cachedLayoutY
+		local functionBoardY = boardY + currentY
+
+		drawFunctionOnBoard(func, boardX, functionBoardY, boardWidth, screenW, screenH)
+
+		if func.children and #func.children > 0 then
+			for _, child in ipairs(func.children) do
+				drawFunc(child)
 			end
 		end
 	end
 
 	for _, func in ipairs(functions) do
-		drawFunctionAndChildren(func, 0)
+		drawFunc(func)
 	end
 
-	local maxY = 0
-	for _, region in ipairs(occupiedRegions) do
-		maxY = math.max(maxY, region.y + region.height)
-	end
+	local maxY = scriptLayoutCache.maxY or 0
 	boardY = boardY + maxY + FUNCTION_SPACING
 
 	return boardY + SCRIPT_SPACING
@@ -560,9 +589,10 @@ local function drawTimeRuler(
 			draw.Color(100, 100, 150, 40)
 			draw.Line(intX, topBarHeight + RULER_HEIGHT, intX, screenH)
 
-			-- Tick label relative to display window (T1, T2... T66)
-			local relativeTickNum = tickNum - displayStartTick + 1
-			local tickLabel = string.format("T%d", relativeTickNum)
+			-- Show relative position: T66 (oldest) to T1 (newest)
+			local ticksFromNewest = maxTick - tickNum
+			local relativeLabel = MAX_TICKS - ticksFromNewest
+			local tickLabel = string.format("T%d", relativeLabel)
 			if tickEndScreenX - tickStartScreenX >= 25 then
 				draw.Color(200, 200, 255, 255)
 				draw.Text(intX + 2, topBarHeight + 2, tickLabel)
@@ -794,38 +824,60 @@ function UIBody.Draw(profilerData, topBarHeight)
 	local tickInterval = globals.TickInterval()
 	local currentTime = os.clock()
 
-	-- Calculate data time bounds from actual profiler data
-	local dataStartTime = math.huge
-	local dataEndTime = -math.huge
+	-- First pass: find min/max tick to calculate valid window
 	local minTick = math.huge
 	local maxTick = -math.huge
 
-	-- Build tick boundary map: tick number -> earliest time seen for that tick
+	if profilerData.scriptTimelines then
+		for _, scriptData in pairs(profilerData.scriptTimelines) do
+			if scriptData.functions then
+				for _, func in ipairs(scriptData.functions) do
+					if func.startTick then
+						minTick = math.min(minTick, func.startTick)
+						maxTick = math.max(maxTick, func.startTick)
+					end
+					if func.endTick then
+						maxTick = math.max(maxTick, func.endTick)
+					end
+				end
+			end
+		end
+	end
+
+	-- Calculate valid tick window (last 66 ticks)
+	local validTickStart = maxTick - MAX_TICKS + 1
+	if minTick == math.huge then
+		validTickStart = 0
+	end
+
+	-- Second pass: calculate time bounds only for functions in valid tick window
+	local dataStartTime = math.huge
+	local dataEndTime = -math.huge
 	local tickBoundaries = {}
 
 	if profilerData.scriptTimelines then
 		for _, scriptData in pairs(profilerData.scriptTimelines) do
 			if scriptData.functions then
 				for _, func in ipairs(scriptData.functions) do
-					if func.startTime and func.endTime then
-						dataStartTime = math.min(dataStartTime, func.startTime)
-						dataEndTime = math.max(dataEndTime, func.endTime)
+					-- Only process functions within valid tick window
+					local funcTick = func.startTick or func.endTick
+					if funcTick and funcTick >= validTickStart then
+						if func.startTime and func.endTime then
+							dataStartTime = math.min(dataStartTime, func.startTime)
+							dataEndTime = math.max(dataEndTime, func.endTime)
 
-						-- Track tick boundaries from actual stored tick counts
-						if func.startTick then
-							minTick = math.min(minTick, func.startTick)
-							maxTick = math.max(maxTick, func.startTick)
-							if
-								not tickBoundaries[func.startTick]
-								or func.startTime < tickBoundaries[func.startTick]
-							then
-								tickBoundaries[func.startTick] = func.startTime
+							if func.startTick and func.startTick >= validTickStart then
+								if
+									not tickBoundaries[func.startTick]
+									or func.startTime < tickBoundaries[func.startTick]
+								then
+									tickBoundaries[func.startTick] = func.startTime
+								end
 							end
-						end
-						if func.endTick then
-							maxTick = math.max(maxTick, func.endTick)
-							if not tickBoundaries[func.endTick] or func.endTime < tickBoundaries[func.endTick] then
-								tickBoundaries[func.endTick] = func.endTime
+							if func.endTick and func.endTick >= validTickStart then
+								if not tickBoundaries[func.endTick] or func.endTime < tickBoundaries[func.endTick] then
+									tickBoundaries[func.endTick] = func.endTime
+								end
 							end
 						end
 					end
@@ -833,6 +885,9 @@ function UIBody.Draw(profilerData, topBarHeight)
 			end
 		end
 	end
+
+	-- Update minTick to reflect valid window
+	minTick = validTickStart
 
 	-- Fallback if no data
 	if dataStartTime == math.huge then

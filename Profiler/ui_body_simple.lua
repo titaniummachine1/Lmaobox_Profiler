@@ -102,7 +102,7 @@ local function getFunctionHeight(func)
 	return height
 end
 
--- Generate consistent color for function based on name hash
+-- Generate color based on memory usage: cold palette -> warm colors
 local function getFunctionColor(func)
 	assert(func, "getFunctionColor: func missing")
 
@@ -110,48 +110,35 @@ local function getFunctionColor(func)
 		return func._cachedColor.r, func._cachedColor.g, func._cachedColor.b
 	end
 
-	local name = func.name or "unknown"
-	local hash = 0
-	for i = 1, #name do
-		hash = (hash * 31 + string.byte(name, i)) % 2147483647
-	end
+	local memKb = func.memDelta or 0
+	local memMb = memKb / 1024
 
-	local hue = (hash % 360) / 360
-	local saturation = 0.6 + ((hash % 40) / 100)
-	local value = 0.7 + ((hash % 30) / 100)
+	local r, g, b
 
-	local function hsvToRgb(h, s, v)
-		local c = v * s
-		local x = c * (1 - math.abs((h * 6) % 2 - 1))
-		local m = v - c
-
-		local r, g, b
-		if h < 1 / 6 then
-			r, g, b = c, x, 0
-		elseif h < 2 / 6 then
-			r, g, b = x, c, 0
-		elseif h < 3 / 6 then
-			r, g, b = 0, c, x
-		elseif h < 4 / 6 then
-			r, g, b = 0, x, c
-		elseif h < 5 / 6 then
-			r, g, b = x, 0, c
-		else
-			r, g, b = c, 0, x
-		end
-
-		return (r + m) * 255, (g + m) * 255, (b + m) * 255
-	end
-
-	local r, g, b = hsvToRgb(hue, saturation, value)
-
-	local memMb = (func.memDelta or 0) / 1024
-	if memMb > 10 then
-		local blend = math.min(1, (memMb - 10) / 50)
-		local targetR, targetG, targetB = 255, 100, 50
-		r = r + (targetR - r) * blend
-		g = g + (targetG - g) * blend
-		b = b + (targetB - b) * blend
+	if memMb < 1 then
+		local t = memMb / 1
+		r = 50 + t * 30
+		g = 150 + t * 50
+		b = 200 + t * 55
+	elseif memMb < 5 then
+		local t = (memMb - 1) / 4
+		r = 80 + t * 70
+		g = 200 + t * 55
+		b = 255 - t * 100
+	elseif memMb < 10 then
+		local t = (memMb - 5) / 5
+		r = 150 + t * 55
+		g = 255 - t * 105
+		b = 155 - t * 105
+	elseif memMb < 30 then
+		local t = (memMb - 10) / 20
+		r = 205 + t * 50
+		g = 150 - t * 70
+		b = 50 - t * 30
+	else
+		r = 255
+		g = 80
+		b = 20
 	end
 
 	r = math.floor(r + 0.5)

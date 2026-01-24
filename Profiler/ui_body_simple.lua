@@ -102,6 +102,66 @@ local function getFunctionHeight(func)
 	return height
 end
 
+-- Generate consistent color for function based on name hash
+local function getFunctionColor(func)
+	assert(func, "getFunctionColor: func missing")
+
+	if func._cachedColor then
+		return func._cachedColor.r, func._cachedColor.g, func._cachedColor.b
+	end
+
+	local name = func.name or "unknown"
+	local hash = 0
+	for i = 1, #name do
+		hash = (hash * 31 + string.byte(name, i)) % 2147483647
+	end
+
+	local hue = (hash % 360) / 360
+	local saturation = 0.6 + ((hash % 40) / 100)
+	local value = 0.7 + ((hash % 30) / 100)
+
+	local function hsvToRgb(h, s, v)
+		local c = v * s
+		local x = c * (1 - math.abs((h * 6) % 2 - 1))
+		local m = v - c
+
+		local r, g, b
+		if h < 1 / 6 then
+			r, g, b = c, x, 0
+		elseif h < 2 / 6 then
+			r, g, b = x, c, 0
+		elseif h < 3 / 6 then
+			r, g, b = 0, c, x
+		elseif h < 4 / 6 then
+			r, g, b = 0, x, c
+		elseif h < 5 / 6 then
+			r, g, b = x, 0, c
+		else
+			r, g, b = c, 0, x
+		end
+
+		return (r + m) * 255, (g + m) * 255, (b + m) * 255
+	end
+
+	local r, g, b = hsvToRgb(hue, saturation, value)
+
+	local memMb = (func.memDelta or 0) / 1024
+	if memMb > 10 then
+		local blend = math.min(1, (memMb - 10) / 50)
+		local targetR, targetG, targetB = 255, 100, 50
+		r = r + (targetR - r) * blend
+		g = g + (targetG - g) * blend
+		b = b + (targetB - b) * blend
+	end
+
+	r = math.floor(r + 0.5)
+	g = math.floor(g + 0.5)
+	b = math.floor(b + 0.5)
+
+	func._cachedColor = { r = r, g = g, b = b }
+	return r, g, b
+end
+
 -- Convert board coordinates to screen coordinates
 -- X is zoom-scaled, Y is NOT zoom-scaled (fixed vertical layout)
 local function boardToScreen(boardX, boardY)
@@ -157,11 +217,12 @@ local function drawFunctionOnBoard(func, boardX, boardY, boardWidth, screenW, sc
 			end
 		end
 
-		-- Draw function bar (highlight if hovered)
+		-- Draw function bar with fancy colors (highlight if hovered)
+		local r, g, b = getFunctionColor(func)
 		if isHovered then
-			draw.Color(150, 200, 255, 220)
+			draw.Color(math.min(255, r + 50), math.min(255, g + 50), math.min(255, b + 50), 220)
 		else
-			draw.Color(100, 150, 200, 180)
+			draw.Color(r, g, b, 180)
 		end
 		draw.FilledRect(
 			math.floor(clampedScreenX),

@@ -7,7 +7,6 @@ local TIMING_SERVER = "http://127.0.0.1:9876"
 local serverAvailable = nil
 local lastFailTime = 0
 local RETRY_COOLDOWN = 5
-local nextTimerId = 1
 
 local function tryTimingServer(endpoint)
 	local success, result = pcall(function()
@@ -29,12 +28,6 @@ local function tryTimingServer(endpoint)
 	end
 
 	return nil
-end
-
-local function generateTimerId()
-	local id = nextTimerId
-	nextTimerId = nextTimerId + 1
-	return tostring(id)
 end
 
 function Timing.Now()

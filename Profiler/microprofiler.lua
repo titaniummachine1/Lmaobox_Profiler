@@ -12,17 +12,6 @@ local Timing = require("Profiler.timing")
 local MicroProfiler = {}
 
 -- Local constants / utilities --------
--- Immutable constants (Lua 5.4 compatible)
-local PROFILER_SOURCES = {
-	"profiler.lua",
-	"microprofiler.lua",
-	"ui_top.lua",
-	"ui_body.lua",
-	"Main.lua",
-	"globals.lua",
-	"config.lua",
-	"Profiler.lua", -- Bundled version
-}
 
 -- API guard to prevent recursion
 local inProfilerAPI = false
@@ -62,77 +51,60 @@ local function getMemory()
 	return collectgarbage("count")
 end
 
--- Track when profiler was paused for cleanup reference
-local pauseStartTime = nil
+-- Filter array in single pass - O(n) instead of O(n^2) from repeated table.remove
+local function filterArray(arr, keepFn)
+	local writeIdx = 1
+	for readIdx = 1, #arr do
+		if keepFn(arr[readIdx]) then
+			if writeIdx ~= readIdx then
+				arr[writeIdx] = arr[readIdx]
+			end
+			writeIdx = writeIdx + 1
+		end
+	end
+	-- Nil out remaining slots
+	for i = writeIdx, #arr do
+		arr[i] = nil
+	end
+end
 
 -- Cleanup old records - ONLY when NOT paused to preserve navigation data
 local function cleanupOldRecords()
-	-- DON'T cleanup when paused - keep ALL data for navigation
 	if isPaused then
 		return
 	end
 
 	local currentTime = getCurrentTime()
 
-	-- Skip if not enough time has passed
 	if currentTime - lastCleanupTime < CLEANUP_INTERVAL then
 		return
 	end
 
 	lastCleanupTime = currentTime
-	local functionsRemoved = 0
 
-	-- Tick-based cleanup: keep only last MAX_TICKS worth of data
 	local tickInterval = globals.TickInterval()
 	local maxHistoryTime = MAX_TICKS * tickInterval
 	local cutoffTime = currentTime - maxHistoryTime
 
-	-- Clean main timeline - remove records older than cutoff
-	local i = 1
-	while i <= #mainTimeline do
-		local record = mainTimeline[i]
-		if record.endTime and record.endTime < cutoffTime then
-			table.remove(mainTimeline, i)
-			functionsRemoved = functionsRemoved + 1
-		else
-			i = i + 1
-		end
-	end
+	-- Single-pass filter for mainTimeline
+	filterArray(mainTimeline, function(record)
+		return not record.endTime or record.endTime >= cutoffTime
+	end)
 
-	-- Clean custom threads
-	local j = 1
-	while j <= #customThreads do
-		local thread = customThreads[j]
-		if thread.endTime and thread.endTime < cutoffTime then
-			table.remove(customThreads, j)
-			functionsRemoved = functionsRemoved + 1
-		else
-			j = j + 1
-		end
-	end
+	-- Single-pass filter for customThreads
+	filterArray(customThreads, function(thread)
+		return not thread.endTime or thread.endTime >= cutoffTime
+	end)
 
 	-- Clean script timelines
 	for scriptName, scriptData in pairs(scriptTimelines) do
-		local m = 1
-		while m <= #scriptData.functions do
-			local func = scriptData.functions[m]
-			if func.endTime and func.endTime < cutoffTime then
-				table.remove(scriptData.functions, m)
-				functionsRemoved = functionsRemoved + 1
-			else
-				m = m + 1
-			end
-		end
+		filterArray(scriptData.functions, function(func)
+			return not func.endTime or func.endTime >= cutoffTime
+		end)
 
-		-- Remove empty script timelines
 		if #scriptData.functions == 0 then
 			scriptTimelines[scriptName] = nil
 		end
-	end
-
-	-- Only report if significant cleanup happened
-	if functionsRemoved > 10 then
-		print(string.format("🧹 Cleanup: removed %d old functions while running", functionsRemoved))
 	end
 end
 
@@ -209,12 +181,6 @@ local function shouldProfile(info)
 	-- STRICT FILTERING: Only allow actual user scripts, block profiler completely
 	if scriptName:find("Profiler", 1, true) or scriptName == "Local" then
 		return false -- Skip profiler-related scripts
-	end
-
-	-- Allow ALL user scripts (including unknown ones) for auto-hooking
-	-- Debug: Show what scripts we're profiling (always show for debugging)
-	if scriptName ~= "Unknown" then
-		print(string.format("🔍 Auto-profiling script: %s (function: %s)", scriptName, name or "unnamed"))
 	end
 
 	-- Skip internal profiler functions by name
@@ -352,28 +318,15 @@ local function profileHook(event)
 
 		-- If this is a top-level function, add to both main timeline and script timeline
 		if #callStack == 0 then
-			table.insert(mainTimeline, record)
-
-			-- DEBUG: Print when we add functions to timeline
-			if not _timelineDebugCount then
-				_timelineDebugCount = 0
-			end
-			_timelineDebugCount = _timelineDebugCount + 1
-
-			if _timelineDebugCount <= 3 then -- Show first 3 functions added
-				print(
-					string.format(
-						"✅ Added to timeline: %s (%.3fms) from %s",
-						record.name or "unnamed",
-						record.duration * 1000,
-						record.scriptName or "unknown"
-					)
-				)
-			end
-
-			-- Limit timeline size more aggressively
-			if #mainTimeline > MAX_TIMELINE_SIZE then
-				table.remove(mainTimeline, 1)
+			-- Use circular overwrite when at max size
+			if #mainTimeline >= MAX_TIMELINE_SIZE then
+				-- Shift down by overwriting (single pass)
+				for i = 1, MAX_TIMELINE_SIZE - 1 do
+					mainTimeline[i] = mainTimeline[i + 1]
+				end
+				mainTimeline[MAX_TIMELINE_SIZE] = record
+			else
+				mainTimeline[#mainTimeline + 1] = record
 			end
 
 			-- Add to script-specific timeline
@@ -386,24 +339,14 @@ local function profileHook(event)
 				}
 			end
 
-			-- Add copy to script timeline
-			local scriptRecord = {
-				key = record.key,
-				name = record.name,
-				source = record.source,
-				scriptName = record.scriptName,
-				line = record.line,
-				startTime = record.startTime,
-				endTime = record.endTime,
-				duration = record.duration,
-				memDelta = record.memDelta,
-				children = record.children, -- Reference to same children
-			}
-			table.insert(scriptTimelines[scriptName].functions, scriptRecord)
-
-			-- Limit script timeline size
-			if #scriptTimelines[scriptName].functions > MAX_TIMELINE_SIZE then
-				table.remove(scriptTimelines[scriptName].functions, 1)
+			local funcs = scriptTimelines[scriptName].functions
+			if #funcs >= MAX_TIMELINE_SIZE then
+				for i = 1, MAX_TIMELINE_SIZE - 1 do
+					funcs[i] = funcs[i + 1]
+				end
+				funcs[MAX_TIMELINE_SIZE] = record
+			else
+				funcs[#funcs + 1] = record
 			end
 		end
 
@@ -523,10 +466,8 @@ function MicroProfiler.SetPaused(paused)
 
 	if paused and not wasPaused then
 		-- Just paused - STOP cleanup to preserve data for navigation
-		print("⏸️ Profiler PAUSED - recording stopped, data preserved for navigation")
 	elseif not paused and wasPaused then
 		-- Just resumed - CLEAR ALL DATA and start fresh recording
-		print("▶️ Profiler RESUMED - clearing old data, starting fresh recording")
 		MicroProfiler.ClearData()
 		-- Reset recording start time for fresh timeline
 		if Shared then
@@ -598,17 +539,24 @@ function MicroProfiler.BeginCustomWork(name, category)
 		type = "custom",
 	}
 
-	table.insert(customThreads, work)
-	table.insert(activeCustomStack, work)
-
-	-- Limit custom work items more aggressively
-	while #customThreads > MAX_CUSTOM_THREADS do
-		table.remove(customThreads, 1)
+	-- Add to customThreads with size limit
+	if #customThreads >= MAX_CUSTOM_THREADS then
+		for i = 1, MAX_CUSTOM_THREADS - 1 do
+			customThreads[i] = customThreads[i + 1]
+		end
+		customThreads[MAX_CUSTOM_THREADS] = work
+	else
+		customThreads[#customThreads + 1] = work
 	end
 
-	-- Clean up if we have too many active work items
-	if #activeCustomStack > 10 then
-		table.remove(activeCustomStack, 1)
+	-- Add to activeCustomStack with size limit
+	if #activeCustomStack >= 10 then
+		for i = 1, 9 do
+			activeCustomStack[i] = activeCustomStack[i + 1]
+		end
+		activeCustomStack[10] = work
+	else
+		activeCustomStack[#activeCustomStack + 1] = work
 	end
 
 	-- Clear API guard
@@ -669,9 +617,14 @@ function MicroProfiler.EndCustomWork(name)
 			parentWork.children = parentWork.children or {}
 			table.insert(parentWork.children, workRecord)
 		else
-			table.insert(mainTimeline, workRecord)
-			if #mainTimeline > MAX_TIMELINE_SIZE then
-				table.remove(mainTimeline, 1)
+			-- Add to mainTimeline with circular overwrite
+			if #mainTimeline >= MAX_TIMELINE_SIZE then
+				for i = 1, MAX_TIMELINE_SIZE - 1 do
+					mainTimeline[i] = mainTimeline[i + 1]
+				end
+				mainTimeline[MAX_TIMELINE_SIZE] = workRecord
+			else
+				mainTimeline[#mainTimeline + 1] = workRecord
 			end
 
 			local timelineKey = work.category or work.scriptName or "Manual Work"
@@ -682,9 +635,14 @@ function MicroProfiler.EndCustomWork(name)
 					type = "script",
 				}
 			end
-			table.insert(scriptTimelines[timelineKey].functions, workRecord)
-			if #scriptTimelines[timelineKey].functions > MAX_TIMELINE_SIZE then
-				table.remove(scriptTimelines[timelineKey].functions, 1)
+			local funcs = scriptTimelines[timelineKey].functions
+			if #funcs >= MAX_TIMELINE_SIZE then
+				for i = 1, MAX_TIMELINE_SIZE - 1 do
+					funcs[i] = funcs[i + 1]
+				end
+				funcs[MAX_TIMELINE_SIZE] = workRecord
+			else
+				funcs[#funcs + 1] = workRecord
 			end
 		end
 	end
@@ -761,30 +719,6 @@ function MicroProfiler.GetStats()
 	for _, thread in ipairs(customThreads) do
 		totalTime = totalTime + (thread.duration or 0)
 		totalMemory = totalMemory + (thread.memDelta or 0)
-	end
-
-	-- DEBUG: Print status every 5 seconds (guarded by DEBUG)
-	if not _lastStatsTime then
-		_lastStatsTime = 0
-	end
-	local currentTime = getCurrentTime()
-	if (Shared and Shared.DEBUG) and (currentTime - _lastStatsTime > 5.0) then
-		_lastStatsTime = currentTime
-		-- Count script timelines
-		local scriptCount = 0
-		for _ in pairs(scriptTimelines) do
-			scriptCount = scriptCount + 1
-		end
-
-		print(
-			string.format(
-				"📊 Profiler Status: %d functions in timeline, %d script timelines, enabled=%s, hooked=%s",
-				totalFunctions,
-				scriptCount,
-				tostring(isEnabled),
-				tostring(isHooked)
-			)
-		)
 	end
 
 	return {

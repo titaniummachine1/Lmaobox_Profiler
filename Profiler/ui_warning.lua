@@ -2,7 +2,6 @@ local Shared = require("Profiler.Shared")
 
 local UIWarning = {}
 
-local WARNING_FADE_TIME = 2
 local lastCheckTime = 0
 local warningVisible = false
 

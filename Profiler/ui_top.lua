@@ -21,25 +21,25 @@ local BUTTON_HEIGHT = 18
 local BUTTON_SPACING = 3
 local MAX_FRAMES = 150 -- Reduced frame storage
 
--- Global variables for retained mode (not local)
-frames = frames or {} -- { dt = tickInterval, timestamp = realTime }
-selectedFrameIndex = selectedFrameIndex or nil
-isPaused = isPaused or false
-isCapturingKey = isCapturingKey or false
-bodyKey = bodyKey or nil
-totalRecordedTime = totalRecordedTime or 0
+-- Local state variables
+local frames = {}
+local selectedFrameIndex = nil
+local isPaused = false
+local isCapturingKey = false
+local bodyKey = nil
+local totalRecordedTime = 0
 local lastFrameTimestamp = 0
 
--- Key constants with fallbacks (Lua 5.4 compatible)
+-- Key constants
 local KEY_P = KEY_P or 26
 local MOUSE_LEFT = MOUSE_LEFT or 107
 
--- Click state tracking (global for retained mode)
-clickState = clickState or {}
-keyState = keyState or {}
+-- Click/key state tracking
+local clickState = {}
+local keyState = {}
 
--- Font (global for retained mode)
-topBarFont = topBarFont or nil
+-- Font
+local topBarFont = nil
 
 -- Private helpers --------------------
 
@@ -190,23 +190,19 @@ local function updateFrameRecording()
 	end
 
 	lastFrameTimestamp = currentTime
-	local dt = tickInterval
-	local timestamp = currentTime
 
-	-- Add new frame
-	table.insert(frames, {
-		dt = dt,
-		timestamp = timestamp,
-		index = #frames + 1,
-	})
-
-	totalRecordedTime = totalRecordedTime + dt
-
-	-- Remove frames older than FRAME_RECORDING_TIME seconds
-	while totalRecordedTime > FRAME_RECORDING_TIME and #frames > 0 do
-		local removedFrame = table.remove(frames, 1)
-		totalRecordedTime = totalRecordedTime - removedFrame.dt
-
+	-- Add new frame with circular buffer approach
+	if #frames >= MAX_FRAMES then
+		-- Shift all frames left by one (single pass)
+		totalRecordedTime = totalRecordedTime - frames[1].dt
+		for i = 1, MAX_FRAMES - 1 do
+			frames[i] = frames[i + 1]
+		end
+		frames[MAX_FRAMES] = {
+			dt = tickInterval,
+			timestamp = currentTime,
+			index = MAX_FRAMES,
+		}
 		-- Adjust selected frame index
 		if selectedFrameIndex then
 			selectedFrameIndex = selectedFrameIndex - 1
@@ -214,21 +210,15 @@ local function updateFrameRecording()
 				selectedFrameIndex = nil
 			end
 		end
+	else
+		frames[#frames + 1] = {
+			dt = tickInterval,
+			timestamp = currentTime,
+			index = #frames + 1,
+		}
 	end
 
-	-- Also enforce MAX_FRAMES limit for performance
-	while #frames > MAX_FRAMES do
-		local removedFrame = table.remove(frames, 1)
-		totalRecordedTime = totalRecordedTime - removedFrame.dt
-
-		-- Adjust selected frame index
-		if selectedFrameIndex then
-			selectedFrameIndex = selectedFrameIndex - 1
-			if selectedFrameIndex <= 0 then
-				selectedFrameIndex = nil
-			end
-		end
-	end
+	totalRecordedTime = totalRecordedTime + tickInterval
 
 	-- Auto-select latest frame if none selected
 	if not selectedFrameIndex and #frames > 0 then

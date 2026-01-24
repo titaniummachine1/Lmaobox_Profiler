@@ -13,7 +13,6 @@ if _G.SIMPLE_PROFILER_TEST_LOADED then
 end
 
 local Profiler = require("Profiler")
-Profiler.SetVisible(true)
 
 _G.SIMPLE_PROFILER_TEST_LOADED = true
 

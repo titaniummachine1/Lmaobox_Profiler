@@ -21,7 +21,6 @@ end
 local Profiler = require("Profiler")
 local FastPlayers = require("fast_players")
 
-Profiler.SetVisible(true)
 Profiler.SetMeasurementMode("tick")
 
 FAST_PLAYERS_PROFILE_LOADED = true

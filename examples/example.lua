@@ -27,7 +27,6 @@ end
 
 -- Load profiler
 local Profiler = require("Profiler")
-Profiler.SetVisible(true)
 Profiler.SetMeasurementMode("frame") -- or "tick"
 
 _G.PROFILER_EXAMPLE_LOADED = true

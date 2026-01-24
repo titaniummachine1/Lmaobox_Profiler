@@ -34,6 +34,9 @@ local function initialize()
 	UITop.Initialize()
 	UIBody.Initialize()
 
+	-- Start with body hidden (will show when paused)
+	UIBody.SetVisible(false)
+
 	isInitialized = true
 end
 
@@ -95,9 +98,8 @@ function ProfilerCore.SetVisible(visible)
 		MicroProfiler.Disable()
 		-- Reset RecordingStartTime when profiling stops so next session starts fresh
 		Shared.RecordingStartTime = nil
+		UIBody.SetVisible(false)
 	end
-
-	UIBody.SetVisible(visible)
 end
 
 function ProfilerCore.ToggleVisibility()

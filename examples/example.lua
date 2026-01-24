@@ -27,6 +27,7 @@ end
 
 -- Load profiler
 local Profiler = require("Profiler")
+
 Profiler.SetMeasurementMode("frame") -- or "tick"
 
 _G.PROFILER_EXAMPLE_LOADED = true
@@ -37,7 +38,7 @@ _G.PROFILER_EXAMPLE_LOADED = true
 local function calculatePath()
 	Profiler.Begin("AI.PathCalculation")
 	local sum = 0
-	for i = 1, 500 do
+	for i = 1, 5000 do
 		sum = sum + math.sin(i * 0.1)
 	end
 	Profiler.End("AI.PathCalculation")
@@ -164,7 +165,7 @@ end
 -- Heavy networking with sub-tasks
 local function receivePackets()
 	Profiler.Begin("Net.Receive")
-	for i = 1, 254 do
+	for i = 1, 2540 do
 		local _ = string.format("packet_%d", i)
 	end
 	Profiler.End("Net.Receive")

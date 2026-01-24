@@ -115,26 +115,41 @@ local function getFunctionColor(func)
 
 	local r, g, b
 
-	if memMb < 1 then
-		local t = memMb / 1
-		r = 50 + t * 30
-		g = 150 + t * 50
-		b = 200 + t * 55
+	if memMb < 0.1 then
+		local t = memMb / 0.1
+		r = 40 + t * 20
+		g = 80 + t * 100
+		b = 180 + t * 40
+	elseif memMb < 0.5 then
+		local t = (memMb - 0.1) / 0.4
+		r = 60 + t * 20
+		g = 180 + t * 40
+		b = 220 - t * 20
+	elseif memMb < 1 then
+		local t = (memMb - 0.5) / 0.5
+		r = 80 + t * 40
+		g = 220 + t * 20
+		b = 200 - t * 60
+	elseif memMb < 3 then
+		local t = (memMb - 1) / 2
+		r = 120 + t * 80
+		g = 240 - t * 20
+		b = 140 - t * 80
 	elseif memMb < 5 then
-		local t = (memMb - 1) / 4
-		r = 80 + t * 70
-		g = 200 + t * 55
-		b = 255 - t * 100
+		local t = (memMb - 3) / 2
+		r = 200 + t * 30
+		g = 220 + t * 10
+		b = 60 - t * 30
 	elseif memMb < 10 then
 		local t = (memMb - 5) / 5
-		r = 150 + t * 55
-		g = 255 - t * 105
-		b = 155 - t * 105
-	elseif memMb < 30 then
-		local t = (memMb - 10) / 20
-		r = 205 + t * 50
-		g = 150 - t * 70
-		b = 50 - t * 30
+		r = 230 + t * 25
+		g = 230 - t * 80
+		b = 30 - t * 10
+	elseif memMb < 20 then
+		local t = (memMb - 10) / 10
+		r = 255
+		g = 150 - t * 50
+		b = 20
 	else
 		r = 255
 		g = 80

@@ -368,6 +368,15 @@ local function handleInput(screenW, buttonX, pauseY, bindY)
 		-- Sync pause state with microprofiler
 		local MicroProfiler = require("Profiler.microprofiler")
 		MicroProfiler.SetPaused(isPaused)
+
+		-- Auto-hide body when starting recording, auto-show when pausing
+		local UIBody = require("Profiler.ui_body_simple")
+		if isPaused then
+			UIBody.SetVisible(true)
+		else
+			UIBody.SetVisible(false)
+		end
+
 		return -- Don't process frame selection when clicking buttons
 	end
 
@@ -426,6 +435,14 @@ local function handleKeys()
 		-- Sync pause state with microprofiler
 		local MicroProfiler = require("Profiler.microprofiler")
 		MicroProfiler.SetPaused(isPaused)
+
+		-- Auto-hide body when starting recording, auto-show when pausing
+		local UIBody = require("Profiler.ui_body_simple")
+		if isPaused then
+			UIBody.SetVisible(true)
+		else
+			UIBody.SetVisible(false)
+		end
 	end
 
 	-- Body visibility shortcut

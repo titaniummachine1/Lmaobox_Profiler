@@ -292,6 +292,10 @@ function ProfilerCore.Draw()
 
 	-- Store last draw time
 	Shared.LastDrawTime = Timing.Now()
+
+	-- Auto-reset to tick context after drawing
+	-- This allows frame context to be set just for Draw callback work
+	MicroProfiler.SetContext("tick")
 end
 
 -- Get profiler data for external use

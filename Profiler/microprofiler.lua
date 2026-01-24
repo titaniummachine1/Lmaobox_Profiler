@@ -66,20 +66,23 @@ local function getCurrentTime()
 	return Timing.Now()
 end
 
--- Auto-shift context to next record slot when engine count changes
-local function autoShiftContext(ctx)
+-- Auto-shift context to next record slot
+local function autoShiftContext(ctx, forceIncrement)
 	assert(ctx, "autoShiftContext: ctx missing")
 
-	local engine_id
 	if ctx.id == "tick" then
-		engine_id = globals.TickCount()
+		-- Tick context uses engine tick count
+		local engine_id = globals.TickCount()
+		if engine_id ~= ctx.last_id then
+			ctx.current_record = (ctx.current_record % MAX_TICKS) + 1
+			ctx.last_id = engine_id
+		end
 	else
-		engine_id = globals.FrameCount()
-	end
-
-	if engine_id ~= ctx.last_id then
-		ctx.current_record = (ctx.current_record % MAX_TICKS) + 1
-		ctx.last_id = engine_id
+		-- Frame context increments on every SetContext call
+		if forceIncrement then
+			ctx.current_record = (ctx.current_record % MAX_TICKS) + 1
+			ctx.last_id = (ctx.last_id or 0) + 1
+		end
 	end
 end
 
@@ -565,8 +568,6 @@ function MicroProfiler.BeginCustomWork(name, category)
 		return
 	end
 
-	autoShiftContext(currentContext)
-
 	inProfilerAPI = true
 
 	local scriptName = "Manual Work"
@@ -774,12 +775,13 @@ function MicroProfiler.SetContext(contextName)
 	if contextName == "tick" then
 		currentContext = Contexts.TICK
 		Shared.CurrentContext = "tick"
+		autoShiftContext(currentContext, false)
 	else
 		currentContext = Contexts.FRAME
 		Shared.CurrentContext = "frame"
+		-- Force increment for frames (every SetContext call = new frame)
+		autoShiftContext(currentContext, true)
 	end
-
-	autoShiftContext(currentContext)
 end
 
 function MicroProfiler.GetCurrentContext()

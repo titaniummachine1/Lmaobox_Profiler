@@ -11,10 +11,11 @@
             {
                 "match": "\\.lua$",
                 "isAsync": true,
-                "cmd": "\"${workspaceFolder}\\BundleAndDeploy.bat\"",
-                "message": "Deploying ${fileBasename} to LocalAppData...",
-                "autoShowOutputPanel": true
+                "cmd": "${workspaceFolder}/BundleAndDeploy.bat",
+                "message": "Attempting to run default build task for ${fileBasename}...",
+                "autoShowOutputPanel": "error"
             }
         ]
-    }
+    },
+    "stylua.targetReleaseVersion": "latest"
 }

@@ -3,15 +3,17 @@
     Real-world test showing natural microsecond variance
 ]]
 
+_G.FAST_PLAYERS_PROFILE_LOADED = nil
+
 local SCRIPT_TAG = "fast_players_profile"
 
 -- Unload existing instance
-if _G.FAST_PLAYERS_PROFILE_LOADED then
+if FAST_PLAYERS_PROFILE_LOADED then
 	print("[FastPlayers Profile] Unloading previous instance...")
 	callbacks.Unregister("CreateMove", SCRIPT_TAG)
 	callbacks.Unregister("Draw", SCRIPT_TAG)
 	callbacks.Unregister("Unload", SCRIPT_TAG)
-	_G.FAST_PLAYERS_PROFILE_LOADED = false
+	FAST_PLAYERS_PROFILE_LOADED = false
 	collectgarbage("collect")
 end
 
@@ -22,7 +24,7 @@ local FastPlayers = require("fast_players")
 Profiler.SetVisible(true)
 Profiler.SetMeasurementMode("tick")
 
-_G.FAST_PLAYERS_PROFILE_LOADED = true
+FAST_PLAYERS_PROFILE_LOADED = true
 
 -- CreateMove callback - profile real fast_players usage
 local function onCreateMove(cmd)
@@ -87,7 +89,7 @@ local function onUnload()
 	print("[FastPlayers Profile] unloaded")
 	Profiler.SetVisible(false)
 	Profiler.Shutdown()
-	_G.FAST_PLAYERS_PROFILE_LOADED = false
+	FAST_PLAYERS_PROFILE_LOADED = false
 end
 
 -- Register callbacks

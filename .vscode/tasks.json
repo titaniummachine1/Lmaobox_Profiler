@@ -2,17 +2,13 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "deploy-sentry-rider",
+            "label": "Run BundleAndDeploy.bat",
             "type": "shell",
-            "command": "\"${workspaceFolder}\\BundleAndDeploy.bat\"",
+            "command": "${workspaceFolder}/BundleAndDeploy.bat",
             "group": {
                 "kind": "build",
                 "isDefault": true
-            },
-            "presentation": {
-                "reveal": "always"
-            },
-            "problemMatcher": []
+            }
         }
     ]
 }

@@ -165,6 +165,7 @@ local function drawOverlay()
 	draw.OutlinedRect(x, yIdx, x + totalWidth + padding * 2, yIdx + totalHeight)
 
 	local curX, curY = x + padding, yIdx + padding
+	local globalHeaderY = curY -- Save position for global header
 
 	-- 1. Reserve Space for Global Header (Drawn at end)
 	curY = curY + rowHeight
@@ -248,7 +249,7 @@ local function drawOverlay()
 		formatMemory(totalMeasuredMem),
 		formatMemory(ratePerSec)
 	)
-	draw.Text(curX, curY + rowHeight, globalStr) -- Draw at bottom, after all data rows
+	draw.Text(curX, globalHeaderY, globalStr)
 end
 
 -- Public API -----

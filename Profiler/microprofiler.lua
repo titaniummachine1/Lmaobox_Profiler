@@ -487,26 +487,6 @@ local function trackFrameBoundary()
 	end
 
 	local ctx = Contexts.FRAME
-	local lastRecordedFrame = ctx.last_id or 0
-	local lastBoundary = ctx.callbackBoundaries[lastRecordedFrame]
-
-	if lastBoundary then
-		local missedFrames = currentFrameCount - lastRecordedFrame - 1
-
-		if missedFrames > 0 and missedFrames < 100 then
-			local reconstructTime = lastBoundary.startTime + lastBoundary.duration
-
-			for i = 1, missedFrames do
-				local frameNum = lastRecordedFrame + i
-				ctx.callbackBoundaries[frameNum] = {
-					startTime = reconstructTime,
-					duration = frameDuration,
-				}
-				reconstructTime = reconstructTime + frameDuration
-			end
-		end
-	end
-
 	ctx.last_id = currentFrameCount
 	ctx.callbackBoundaries[currentFrameCount] = {
 		startTime = currentFrameTime,

@@ -523,6 +523,11 @@ local function registerBoundaryTracking()
 		return
 	end
 
+	if callbacks.Unregister then
+		callbacks.Unregister("CreateMove", "ProfilerBoundaryTrack_Tick")
+		callbacks.Unregister("Draw", "ProfilerBoundaryTrack_Frame")
+	end
+
 	callbacks.Register("CreateMove", "ProfilerBoundaryTrack_Tick", trackTickBoundary)
 	callbacks.Register("Draw", "ProfilerBoundaryTrack_Frame", trackFrameBoundary)
 	boundaryTrackingRegistered = true

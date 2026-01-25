@@ -707,8 +707,14 @@ local function drawTimeRuler(
 	-- Build complete boundary map using actual stored durations
 	local completeBoundaries = {}
 	for tickNum = displayStartTick, maxTick do
-		if tickBoundaries[tickNum] and tickBoundaries[tickNum].startTime then
-			completeBoundaries[tickNum] = tickBoundaries[tickNum]
+		local boundary = tickBoundaries[tickNum]
+		if boundary and type(boundary) == "table" and boundary.startTime then
+			completeBoundaries[tickNum] = boundary
+		elseif boundary and type(boundary) == "number" then
+			completeBoundaries[tickNum] = {
+				startTime = boundary,
+				duration = fallbackDuration,
+			}
 		else
 			local foundPrev = false
 			for i = tickNum - 1, displayStartTick, -1 do
@@ -1022,12 +1028,25 @@ function UIBody.Draw(profilerData, topBarHeight)
 
 		if ctx.callbackBoundaries then
 			for tickNum, boundary in pairs(ctx.callbackBoundaries) do
-				if tickNum >= validTickStart and boundary.startTime then
-					tickBoundaries[tickNum] = boundary
-					dataStartTime = math.min(dataStartTime, boundary.startTime)
-					local endTime = boundary.startTime + (boundary.duration or 0)
+				if tickNum >= validTickStart then
+					local startTime, duration
+					if type(boundary) == "table" and boundary.startTime then
+						startTime = boundary.startTime
+						duration = boundary.duration
+						tickBoundaries[tickNum] = boundary
+					elseif type(boundary) == "number" then
+						startTime = boundary
+						duration = nil
+						tickBoundaries[tickNum] = { startTime = boundary, duration = nil }
+					else
+						goto continue_boundary
+					end
+
+					dataStartTime = math.min(dataStartTime, startTime)
+					local endTime = startTime + (duration or 0)
 					dataEndTime = math.max(dataEndTime, endTime)
 				end
+				::continue_boundary::
 			end
 		end
 

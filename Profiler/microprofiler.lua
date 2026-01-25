@@ -138,8 +138,9 @@ local function cleanupContext(ctx)
 	end
 
 	local boundariesToRemove = {}
-	for tickNum, timestamp in pairs(ctx.callbackBoundaries) do
-		if timestamp < cutoffTime then
+	for tickNum, boundary in pairs(ctx.callbackBoundaries) do
+		local boundaryTime = boundary.startTime or boundary
+		if type(boundaryTime) == "number" and boundaryTime < cutoffTime then
 			table.insert(boundariesToRemove, tickNum)
 		end
 	end
@@ -456,10 +457,67 @@ local function disableHook()
 	end
 end
 
+-- Internal boundary tracking callbacks (always active for ruler accuracy)
+local function trackTickBoundary(cmd)
+	if isPaused then
+		return
+	end
+
+	local tickNum = globals.TickCount()
+	local entryTime = getCurrentTime()
+
+	Contexts.TICK.callbackBoundaries[tickNum] = {
+		startTime = entryTime,
+		duration = globals.TickInterval(),
+	}
+end
+
+local function trackFrameBoundary()
+	if isPaused then
+		return
+	end
+
+	local frameDuration = globals.AbsoluteFrameTime()
+	local entryTime = getCurrentTime()
+
+	Contexts.FRAME.last_id = (Contexts.FRAME.last_id or 0) + 1
+	Contexts.FRAME.callbackBoundaries[Contexts.FRAME.last_id] = {
+		startTime = entryTime,
+		duration = frameDuration > 0 and frameDuration or (1.0 / 60.0),
+	}
+end
+
+local function registerBoundaryTracking()
+	if boundaryTrackingRegistered then
+		return
+	end
+
+	if not callbacks or not callbacks.Register then
+		return
+	end
+
+	callbacks.Register("CreateMove", "ProfilerBoundaryTrack_Tick", trackTickBoundary)
+	callbacks.Register("Draw", "ProfilerBoundaryTrack_Frame", trackFrameBoundary)
+	boundaryTrackingRegistered = true
+end
+
+local function unregisterBoundaryTracking()
+	if not boundaryTrackingRegistered then
+		return
+	end
+
+	if callbacks and callbacks.Unregister then
+		callbacks.Unregister("CreateMove", "ProfilerBoundaryTrack_Tick")
+		callbacks.Unregister("Draw", "ProfilerBoundaryTrack_Frame")
+	end
+	boundaryTrackingRegistered = false
+end
+
 -- Public API -------------------------
 
 function MicroProfiler.Enable()
 	isEnabled = true
+	registerBoundaryTracking()
 	if autoHookDesired then
 		enableHook()
 	else

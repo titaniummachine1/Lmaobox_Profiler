@@ -21,7 +21,8 @@ end
 local Profiler = require("Profiler")
 local FastPlayers = require("fast_players")
 
-Profiler.SetVisible(true)
+-- Trace mask constants
+local MASK_SHOT_HULL = 0x40040000
 
 FAST_PLAYERS_PROFILE_LOADED = true
 
@@ -40,6 +41,21 @@ local function onCreateMove(cmd)
 	Profiler.Begin("FastPlayers.Update")
 	FastPlayers.Update()
 	Profiler.End("FastPlayers.Update")
+
+	Profiler.Begin("XDtest")
+	variable = 1 + 1
+	Profiler.End("XDtest")
+
+	-- Trace line performance test (safe version)
+
+	local me = entities.GetLocalPlayer()
+	if me then
+		local source = me:GetAbsOrigin() + me:GetPropVector("localdata", "m_vecViewOffset[0]")
+		local destination = source + engine.GetViewAngles():Forward() * 1000
+		Profiler.Begin("TraceLine")
+		local trace = engine.TraceLine(source, destination, MASK_SHOT_HULL)
+		Profiler.End("TraceLine")
+	end
 
 	-- Get all players (uses cached data)
 	Profiler.Begin("FastPlayers.GetAll")

@@ -34,6 +34,7 @@ local Contexts = {
 		customThreads = {},
 		activeCustomStack = {},
 		scriptTimelines = {},
+		callbackBoundaries = {},
 	},
 	FRAME = {
 		id = "frame",
@@ -44,6 +45,7 @@ local Contexts = {
 		customThreads = {},
 		activeCustomStack = {},
 		scriptTimelines = {},
+		callbackBoundaries = {},
 	},
 }
 
@@ -133,6 +135,16 @@ local function cleanupContext(ctx)
 		if #scriptData.functions == 0 then
 			ctx.scriptTimelines[scriptName] = nil
 		end
+	end
+
+	local boundariesToRemove = {}
+	for tickNum, timestamp in pairs(ctx.callbackBoundaries) do
+		if timestamp < cutoffTime then
+			table.insert(boundariesToRemove, tickNum)
+		end
+	end
+	for _, tickNum in ipairs(boundariesToRemove) do
+		ctx.callbackBoundaries[tickNum] = nil
 	end
 end
 
@@ -751,6 +763,7 @@ function MicroProfiler.ClearData()
 		ctx.activeCustomStack = {}
 		ctx.callStack = {}
 		ctx.scriptTimelines = {}
+		ctx.callbackBoundaries = {}
 		ctx.last_id = 0
 		ctx.current_record = 1
 	end
@@ -772,15 +785,19 @@ end
 function MicroProfiler.SetContext(contextName)
 	assert(contextName == "tick" or contextName == "frame", "SetContext: contextName must be 'tick' or 'frame'")
 
+	local entryTime = getCurrentTime()
+	local currentTickCount = globals.TickCount()
+
 	if contextName == "tick" then
 		currentContext = Contexts.TICK
 		Shared.CurrentContext = "tick"
 		autoShiftContext(currentContext, false)
+		currentContext.callbackBoundaries[currentTickCount] = entryTime
 	else
 		currentContext = Contexts.FRAME
 		Shared.CurrentContext = "frame"
-		-- Force increment for frames (every SetContext call = new frame)
 		autoShiftContext(currentContext, true)
+		currentContext.callbackBoundaries[currentContext.last_id] = entryTime
 	end
 end
 

@@ -1008,6 +1008,16 @@ function UIBody.Draw(profilerData, topBarHeight)
 		local dataEndTime = -math.huge
 		local tickBoundaries = {}
 
+		if ctx.callbackBoundaries then
+			for tickNum, timestamp in pairs(ctx.callbackBoundaries) do
+				if tickNum >= validTickStart then
+					tickBoundaries[tickNum] = timestamp
+					dataStartTime = math.min(dataStartTime, timestamp)
+					dataEndTime = math.max(dataEndTime, timestamp)
+				end
+			end
+		end
+
 		if ctx.scriptTimelines then
 			for _, scriptData in pairs(ctx.scriptTimelines) do
 				if scriptData.functions then
@@ -1019,18 +1029,12 @@ function UIBody.Draw(profilerData, topBarHeight)
 								dataEndTime = math.max(dataEndTime, func.endTime)
 
 								if func.startTick and func.startTick >= validTickStart then
-									if
-										not tickBoundaries[func.startTick]
-										or func.startTime < tickBoundaries[func.startTick]
-									then
+									if not tickBoundaries[func.startTick] then
 										tickBoundaries[func.startTick] = func.startTime
 									end
 								end
 								if func.endTick and func.endTick >= validTickStart then
-									if
-										not tickBoundaries[func.endTick]
-										or func.endTime < tickBoundaries[func.endTick]
-									then
+									if not tickBoundaries[func.endTick] then
 										tickBoundaries[func.endTick] = func.endTime
 									end
 								end

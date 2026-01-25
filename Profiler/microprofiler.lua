@@ -792,12 +792,19 @@ function MicroProfiler.SetContext(contextName)
 		currentContext = Contexts.TICK
 		Shared.CurrentContext = "tick"
 		autoShiftContext(currentContext, false)
-		currentContext.callbackBoundaries[currentTickCount] = entryTime
+		currentContext.callbackBoundaries[currentTickCount] = {
+			startTime = entryTime,
+			duration = globals.TickInterval(),
+		}
 	else
+		local frameDuration = globals.AbsoluteFrameTime()
 		currentContext = Contexts.FRAME
 		Shared.CurrentContext = "frame"
 		autoShiftContext(currentContext, true)
-		currentContext.callbackBoundaries[currentContext.last_id] = entryTime
+		currentContext.callbackBoundaries[currentContext.last_id] = {
+			startTime = entryTime,
+			duration = frameDuration > 0 and frameDuration or (1.0 / 60.0),
+		}
 	end
 end
 

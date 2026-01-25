@@ -701,36 +701,48 @@ local function drawTimeRuler(
 		displayStartTick = maxTick - MAX_TICKS + 1
 	end
 
-	-- Estimate frame/tick duration if not in boundaries
-	local estimatedDuration = contextLabel == "FRAME" and (1.0 / 60.0) or globals.TickInterval()
+	-- Fallback duration if boundary missing
+	local fallbackDuration = contextLabel == "FRAME" and (1.0 / 60.0) or globals.TickInterval()
 
-	-- Build complete boundary map with estimates for missing entries
+	-- Build complete boundary map using actual stored durations
 	local completeBoundaries = {}
 	for tickNum = displayStartTick, maxTick do
-		if tickBoundaries[tickNum] then
+		if tickBoundaries[tickNum] and tickBoundaries[tickNum].startTime then
 			completeBoundaries[tickNum] = tickBoundaries[tickNum]
 		else
-			-- Estimate based on nearest known boundary
 			local foundPrev = false
 			for i = tickNum - 1, displayStartTick, -1 do
-				if tickBoundaries[i] then
-					completeBoundaries[tickNum] = tickBoundaries[i] + (tickNum - i) * estimatedDuration
+				if completeBoundaries[i] then
+					local prevBoundary = completeBoundaries[i]
+					local prevDuration = prevBoundary.duration or fallbackDuration
+					completeBoundaries[tickNum] = {
+						startTime = prevBoundary.startTime + (tickNum - i) * prevDuration,
+						duration = prevDuration,
+					}
 					foundPrev = true
 					break
 				end
 			end
 			if not foundPrev then
-				-- Use data start time as reference
-				completeBoundaries[tickNum] = dataStartTime + (tickNum - displayStartTick) * estimatedDuration
+				completeBoundaries[tickNum] = {
+					startTime = dataStartTime + (tickNum - displayStartTick) * fallbackDuration,
+					duration = fallbackDuration,
+				}
 			end
 		end
 	end
 
 	-- Process each tick/frame in range
 	for tickNum = displayStartTick, maxTick do
-		-- Get time boundaries (now guaranteed to exist)
-		local tickStartTime = completeBoundaries[tickNum]
-		local tickEndTime = completeBoundaries[tickNum + 1] or (tickStartTime + estimatedDuration)
+		local boundary = completeBoundaries[tickNum]
+		if not boundary then
+			goto continue_tick
+		end
+
+		local tickStartTime = boundary.startTime
+		local duration = boundary.duration or fallbackDuration
+		local nextBoundary = completeBoundaries[tickNum + 1]
+		local tickEndTime = nextBoundary and nextBoundary.startTime or (tickStartTime + duration)
 
 		-- Get screen positions of tick boundaries
 		local tickStartBoardX = timeToBoardX(tickStartTime, dataStartTime)
@@ -1009,11 +1021,12 @@ function UIBody.Draw(profilerData, topBarHeight)
 		local tickBoundaries = {}
 
 		if ctx.callbackBoundaries then
-			for tickNum, timestamp in pairs(ctx.callbackBoundaries) do
-				if tickNum >= validTickStart then
-					tickBoundaries[tickNum] = timestamp
-					dataStartTime = math.min(dataStartTime, timestamp)
-					dataEndTime = math.max(dataEndTime, timestamp)
+			for tickNum, boundary in pairs(ctx.callbackBoundaries) do
+				if tickNum >= validTickStart and boundary.startTime then
+					tickBoundaries[tickNum] = boundary
+					dataStartTime = math.min(dataStartTime, boundary.startTime)
+					local endTime = boundary.startTime + (boundary.duration or 0)
+					dataEndTime = math.max(dataEndTime, endTime)
 				end
 			end
 		end

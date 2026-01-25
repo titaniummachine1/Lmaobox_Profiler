@@ -75,11 +75,11 @@ local function onCreateMove(cmd)
 	-- Iterate through all players (simulates real usage)
 	Profiler.Begin("FastPlayers.Iteration")
 	local validCount = 0
-	for i = 1, #allPlayers do
+	local maxIterations = math.max(1, math.floor(#allPlayers / 10))
+	for i = 1, maxIterations do
 		local ply = allPlayers[i]
 		if ply and ply:IsValid() and ply:IsAlive() then
 			validCount = validCount + 1
-			-- Simulate some work
 			local _ = ply:GetAbsOrigin()
 			local _ = ply:GetHealth()
 		end

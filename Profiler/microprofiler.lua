@@ -55,7 +55,6 @@ local isHooked = false
 local isPaused = false
 local currentContext = Contexts.TICK
 local lastCleanupTime = 0
-local boundaryTrackingRegistered = false
 
 -- External APIs (Lua 5.4 compatible)
 -- Use external globals library (RealTime, FrameTime) directly since it's globally available
@@ -458,78 +457,10 @@ local function disableHook()
 	end
 end
 
--- Internal boundary tracking callbacks (always active for ruler accuracy)
-local function trackTickBoundary(cmd)
-	if isPaused then
-		return
-	end
-
-	local tickNum = globals.TickCount()
-	local entryTime = getCurrentTime()
-
-	Contexts.TICK.callbackBoundaries[tickNum] = {
-		startTime = entryTime,
-		duration = globals.TickInterval(),
-	}
-end
-
-local function trackFrameBoundary()
-	if isPaused then
-		return
-	end
-
-	local currentFrameTime = getCurrentTime()
-	local currentFrameCount = globals.FrameCount()
-	local frameDuration = globals.AbsoluteFrameTime()
-
-	if frameDuration <= 0 or frameDuration > 1.0 then
-		frameDuration = 1.0 / 60.0
-	end
-
-	local ctx = Contexts.FRAME
-	ctx.last_id = currentFrameCount
-	ctx.callbackBoundaries[currentFrameCount] = {
-		startTime = currentFrameTime,
-		duration = frameDuration,
-	}
-end
-
-local function registerBoundaryTracking()
-	if boundaryTrackingRegistered then
-		return
-	end
-
-	if not callbacks or not callbacks.Register then
-		return
-	end
-
-	if callbacks.Unregister then
-		callbacks.Unregister("CreateMove", "ProfilerBoundaryTrack_Tick")
-		callbacks.Unregister("Draw", "ProfilerBoundaryTrack_Frame")
-	end
-
-	callbacks.Register("CreateMove", "ProfilerBoundaryTrack_Tick", trackTickBoundary)
-	callbacks.Register("Draw", "ProfilerBoundaryTrack_Frame", trackFrameBoundary)
-	boundaryTrackingRegistered = true
-end
-
-local function unregisterBoundaryTracking()
-	if not boundaryTrackingRegistered then
-		return
-	end
-
-	if callbacks and callbacks.Unregister then
-		callbacks.Unregister("CreateMove", "ProfilerBoundaryTrack_Tick")
-		callbacks.Unregister("Draw", "ProfilerBoundaryTrack_Frame")
-	end
-	boundaryTrackingRegistered = false
-end
-
 -- Public API -------------------------
 
 function MicroProfiler.Enable()
 	isEnabled = true
-	registerBoundaryTracking()
 	if autoHookDesired then
 		enableHook()
 	else
@@ -540,7 +471,6 @@ end
 function MicroProfiler.Disable()
 	isEnabled = false
 	disableHook()
-	unregisterBoundaryTracking()
 end
 
 -- Auto-disable when idle (no data and not paused) - to avoid lingering hooks
@@ -857,24 +787,32 @@ function MicroProfiler.SetContext(contextName)
 	assert(contextName == "tick" or contextName == "frame", "SetContext: contextName must be 'tick' or 'frame'")
 
 	local entryTime = getCurrentTime()
-	local currentTickCount = globals.TickCount()
 
 	if contextName == "tick" then
+		local tickNum = globals.TickCount()
 		currentContext = Contexts.TICK
 		Shared.CurrentContext = "tick"
 		autoShiftContext(currentContext, false)
-		currentContext.callbackBoundaries[currentTickCount] = {
+
+		currentContext.callbackBoundaries[tickNum] = {
 			startTime = entryTime,
 			duration = globals.TickInterval(),
 		}
 	else
+		local frameNum = globals.FrameCount()
 		local frameDuration = globals.AbsoluteFrameTime()
+		if frameDuration <= 0 or frameDuration > 1.0 then
+			frameDuration = 1.0 / 60.0
+		end
+
 		currentContext = Contexts.FRAME
 		Shared.CurrentContext = "frame"
 		autoShiftContext(currentContext, true)
-		currentContext.callbackBoundaries[currentContext.last_id] = {
+
+		Contexts.FRAME.last_id = frameNum
+		Contexts.FRAME.callbackBoundaries[frameNum] = {
 			startTime = entryTime,
-			duration = frameDuration > 0 and frameDuration or (1.0 / 60.0),
+			duration = frameDuration,
 		}
 	end
 end

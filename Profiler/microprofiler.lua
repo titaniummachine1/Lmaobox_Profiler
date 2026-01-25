@@ -55,6 +55,7 @@ local isHooked = false
 local isPaused = false
 local currentContext = Contexts.TICK
 local lastCleanupTime = 0
+local boundaryTrackingRegistered = false
 
 -- External APIs (Lua 5.4 compatible)
 -- Use external globals library (RealTime, FrameTime) directly since it's globally available
@@ -477,13 +478,39 @@ local function trackFrameBoundary()
 		return
 	end
 
+	local currentFrameTime = getCurrentTime()
+	local currentFrameCount = globals.FrameCount()
 	local frameDuration = globals.AbsoluteFrameTime()
-	local entryTime = getCurrentTime()
 
-	Contexts.FRAME.last_id = (Contexts.FRAME.last_id or 0) + 1
-	Contexts.FRAME.callbackBoundaries[Contexts.FRAME.last_id] = {
-		startTime = entryTime,
-		duration = frameDuration > 0 and frameDuration or (1.0 / 60.0),
+	if frameDuration <= 0 or frameDuration > 1.0 then
+		frameDuration = 1.0 / 60.0
+	end
+
+	local ctx = Contexts.FRAME
+	local lastRecordedFrame = ctx.last_id or 0
+	local lastBoundary = ctx.callbackBoundaries[lastRecordedFrame]
+
+	if lastBoundary then
+		local missedFrames = currentFrameCount - lastRecordedFrame - 1
+
+		if missedFrames > 0 and missedFrames < 100 then
+			local reconstructTime = lastBoundary.startTime + lastBoundary.duration
+
+			for i = 1, missedFrames do
+				local frameNum = lastRecordedFrame + i
+				ctx.callbackBoundaries[frameNum] = {
+					startTime = reconstructTime,
+					duration = frameDuration,
+				}
+				reconstructTime = reconstructTime + frameDuration
+			end
+		end
+	end
+
+	ctx.last_id = currentFrameCount
+	ctx.callbackBoundaries[currentFrameCount] = {
+		startTime = currentFrameTime,
+		duration = frameDuration,
 	}
 end
 
@@ -528,6 +555,7 @@ end
 function MicroProfiler.Disable()
 	isEnabled = false
 	disableHook()
+	unregisterBoundaryTracking()
 end
 
 -- Auto-disable when idle (no data and not paused) - to avoid lingering hooks

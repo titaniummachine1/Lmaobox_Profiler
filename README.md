@@ -7,48 +7,272 @@
 
 [![Download Latest](https://img.shields.io/badge/Download%20Latest-Profiler.lua-brightgreen?style=for-the-badge&logo=download)](https://github.com/titaniummachine1/Lmaobox_Profiler/releases/latest/download/Profiler.lua)
 
-A lightweight, real-time performance profiler that shows you exactly what's eating your CPU and memory. Features both manual profiling and automatic function hooking for comprehensive performance analysis.
+A lightweight, microsecond-precision performance profiler that shows exactly what's consuming your CPU and memory. Features dual-context tick/frame profiling, automatic function hooking, and a visual timeline with accurate ruler boundaries.
+
+## ⚡ Timing Server (Recommended)
+
+The profiler **works without** the timing server but uses `os.clock()` which has limited precision (~10ms). For **microsecond-level accuracy**, run the timing server:
+
+### Using Pre-built Binary (Quick)
+
+```bash
+cd timing_server
+timing_server.exe  # Runs on http://127.0.0.1:9876
+```
+
+### Compile Yourself (Trustless)
+
+**If you don't trust random executables**, rebuild everything yourself - the repo contains complete source:
+
+```bash
+cd timing_server
+cargo build --release
+# Binary: target/release/timing_server.exe
+```
+
+**Requirements:** Rust toolchain ([rustup.rs](https://rustup.rs))
+
+The timing server provides nanosecond-precision timestamps via HTTP. The profiler automatically detects and uses it when available, falling back to `os.clock()` gracefully.
+
+## 📦 Installation
+
+**Option 1: Download from releases** (easiest)
+
+1. Download `Profiler.lua` from [latest release](https://github.com/titaniummachine1/Lmaobox_Profiler/releases/latest)
+2. Place in `%LOCALAPPDATA%\lua\`
+3. Load: `lua_load Profiler` or `require("Profiler")` in your script
+
+**Option 2: Build from source** (full transparency)
+
+```bash
+git clone https://github.com/titaniummachine1/Lmaobox_Profiler.git
+cd Lmaobox_Profiler
+node bundle.js  # Requires Node.js
+# Output: Profiler.lua (automatically copied to %LOCALAPPDATA%\lua\)
+```
+
+Everything is open source - no hidden code, full auditability.
 
 ## 🚀 Quick Start
 
-### Automatic Function Profiling (NEW!)
-
-The profiler now automatically hooks and profiles all user functions, similar to Roblox's microprofiler:
+### Simple Task: Profile One Function
 
 ```lua
 local Profiler = require("Profiler")
 Profiler.SetVisible(true)
 
--- That's it! All your functions are automatically profiled
--- No need to manually wrap code - just run your scripts normally
+-- In your code:
+Profiler.Begin("MyFunction")
+-- Your expensive code here
+Profiler.End("MyFunction")
 ```
 
-### Manual Profiling API
+**That's it!** The profiler shows timing, memory, and visual bars.
+
+### Medium Task: Profile Multiple Functions
 
 ```lua
 local Profiler = require("Profiler")
 Profiler.SetVisible(true)
 
--- Explicit systems, Begin for components
-Profiler.BeginSystem("aimbot")
-    Profiler.Begin("targeting")
-    -- ... your code ...
-    Profiler.End() -- Ends component
-Profiler.EndSystem() -- Ends system
+-- Tick context (CreateMove callback)
+local function onCreateMove(cmd)
+    Profiler.SetContext("tick")  -- Switch to tick context
+
+    Profiler.Begin("Aimbot")
+    -- Aimbot logic
+    Profiler.End("Aimbot")
+
+    Profiler.Begin("Movement")
+    -- Movement logic
+    Profiler.End("Movement")
+end
+
+-- Frame context (Draw callback)
+local function onDraw()
+    Profiler.SetContext("frame")  -- Switch to frame context
+    Profiler.Draw()  -- Render profiler UI
+end
+
+callbacks.Register("CreateMove", "profiler_test", onCreateMove)
+callbacks.Register("Draw", "profiler_draw", onDraw)
 ```
 
-### Original API (Still Supported)
+**Dual context profiling**: Separate tick work (game logic) from frame work (rendering) for accurate performance tracking.
+
+### Advanced: Automatic Function Profiling
+
+```lua
+local Profiler = require("Profiler")
+Profiler.SetVisible(true)
+Profiler.SetAutoHookEnabled(true)  -- Enable automatic function hooks
+
+-- All your functions are now automatically profiled!
+-- No manual Begin/End calls needed
+```
+
+**Automatic profiling** hooks all user functions and shows hierarchical call graphs, just like Roblox's microprofiler.
+
+## 📖 Usage Patterns
+
+### Pattern 1: Quick Performance Check (30 seconds)
+
+**Use case:** "Is this function slow?"
 
 ```lua
 local Profiler = require("Profiler")
 Profiler.SetVisible(true)
 
--- Measure your code
-Profiler.StartSystem("aimbot")
-    Profiler.StartComponent("targeting")
-    -- ... your code ...
-    Profiler.EndComponent("targeting")
-Profiler.EndSystem("aimbot")
+-- Wrap the suspicious function
+Profiler.Begin("SuspiciousFunction")
+SuspiciousFunction()
+Profiler.End("SuspiciousFunction")
+
+-- Look at the profiler UI - if the bar is wide, it's slow!
+```
+
+### Pattern 2: Find Bottlenecks (5 minutes)
+
+**Use case:** "Which part of my script is slow?"
+
+```lua
+local Profiler = require("Profiler")
+Profiler.SetVisible(true)
+
+function myScript()
+    Profiler.Begin("Part1")
+    -- First part
+    Profiler.End("Part1")
+
+    Profiler.Begin("Part2")
+    -- Second part
+    Profiler.End("Part2")
+
+    Profiler.Begin("Part3")
+    -- Third part
+    Profiler.End("Part3")
+end
+
+-- The widest bar in the profiler is your bottleneck
+```
+
+### Pattern 3: Production Monitoring (Always On)
+
+**Use case:** "Monitor performance during gameplay"
+
+```lua
+local Profiler = require("Profiler")
+Profiler.SetVisible(true)
+
+callbacks.Register("CreateMove", "monitor", function(cmd)
+    Profiler.SetContext("tick")
+
+    Profiler.Begin("GameLogic")
+    RunAllGameLogic()
+    Profiler.End("GameLogic")
+end)
+
+callbacks.Register("Draw", "ui", function()
+    Profiler.SetContext("frame")
+    Profiler.Draw()
+end)
+
+-- Press P to pause/resume
+-- Drag to pan, Q/E to zoom
+```
+
+### Pattern 4: Deep Analysis (Automatic Profiling)
+
+**Use case:** "Show me everything that's running"
+
+```lua
+local Profiler = require("Profiler")
+Profiler.SetVisible(true)
+Profiler.SetAutoHookEnabled(true)  -- Hook all functions
+
+-- Run your script normally
+-- The profiler automatically shows:
+--   • All function calls
+--   • Call hierarchy (which function called what)
+--   • Per-script breakdown
+--   • Memory allocation per function
+
+-- No manual Begin/End needed!
+```
+
+## 🔧 API Reference
+
+### Core Functions
+
+| Function           | Description                       | Example                       |
+| ------------------ | --------------------------------- | ----------------------------- |
+| `SetVisible(bool)` | Show/hide profiler UI             | `Profiler.SetVisible(true)`   |
+| `Begin(name)`      | Start measuring                   | `Profiler.Begin("Aimbot")`    |
+| `End(name)`        | Stop measuring                    | `Profiler.End("Aimbot")`      |
+| `Draw()`           | Render UI (call in Draw callback) | `Profiler.Draw()`             |
+| `SetContext(ctx)`  | Switch context ("tick"/"frame")   | `Profiler.SetContext("tick")` |
+| `TogglePause()`    | Pause/resume recording            | `Profiler.TogglePause()`      |
+| `Reset()`          | Clear all data                    | `Profiler.Reset()`            |
+
+### Context Switching
+
+The profiler has **two separate contexts** to accurately measure tick work vs frame work:
+
+```lua
+-- TICK context: Game logic, physics, aimbot, etc.
+callbacks.Register("CreateMove", "logic", function(cmd)
+    Profiler.SetContext("tick")  -- Record to tick timeline
+
+    Profiler.Begin("MyGameLogic")
+    -- This work appears in the TICK ruler
+    Profiler.End("MyGameLogic")
+end)
+
+-- FRAME context: Rendering, UI drawing, ESP, etc.
+callbacks.Register("Draw", "render", function()
+    Profiler.SetContext("frame")  -- Record to frame timeline
+
+    Profiler.Begin("MyRendering")
+    -- This work appears in the FRAME ruler
+    Profiler.End("MyRendering")
+
+    Profiler.Draw()  -- Always render profiler in Draw
+end)
+```
+
+**Why contexts matter:**
+
+- Ticks run at 66 Hz (game tick rate)
+- Frames run at your FPS (60-300 Hz)
+- Mixing them shows inaccurate performance data
+- Separate contexts = accurate ruler boundaries
+
+### Configuration
+
+```lua
+Profiler.Setup({
+    visible = true,
+    smoothingSpeed = 2.5,        -- Bar animation speed (1-50)
+    smoothingDecay = 1.5,        -- Peak decay speed (1-50)
+    textUpdateInterval = 20,     -- Text refresh rate (frames)
+    systemMemoryMode = "system", -- "system" or "components"
+})
+```
+
+### Advanced Features
+
+```lua
+-- Automatic function hooking
+Profiler.SetAutoHookEnabled(true)   -- Enable microprofiler mode
+Profiler.IsAutoHookEnabled()         -- Check status
+
+-- Pause/resume
+Profiler.TogglePause()               -- Toggle pause
+Profiler.IsPaused()                  -- Check if paused
+
+-- Camera control
+Profiler.ResetCamera()               -- Reset pan/zoom
+Profiler.SetZoom(2.0)                -- Set zoom level
 ```
 
 ## 🎮 Controls
@@ -310,23 +534,108 @@ Profiler.EndSystem() -- Ends system
 
 ### Module Structure
 
-- **Main.lua**: Entry point and API
-- **Shared.lua**: Shared runtime data (renamed from globals.lua)
-- **microprofiler.lua**: Automatic function hooking system
-- **ui_body_simple.lua**: Virtual board UI system
-- **ui_top.lua**: Top bar with frame timeline
-- **config.lua**: Configuration settings
+```
+Profiler/
+├── Main.lua              # Entry point, public API
+├── Shared.lua            # Shared runtime data
+├── microprofiler.lua     # Automatic function hooking, context management
+├── profiler.lua          # Core profiling logic
+├── ui_body_simple.lua    # Visual timeline with rulers
+├── ui_top.lua            # Top bar UI
+├── ui_warning.lua        # Timing server warnings
+├── timing.lua            # High-precision timing (uses timing server if available)
+├── config.lua            # Default settings
+└── globals.lua           # Legacy compatibility
 
-### External Dependencies
+timing_server/           # Optional nanosecond timing server
+├── src/main.rs          # Rust source code
+├── Cargo.toml           # Rust dependencies
+└── target/release/      # Compiled binaries
+```
 
-The profiler safely imports the external `globals` library (providing `RealTime()` and `FrameTime()`) using `pcall` to prevent errors if the library isn't available.
+### Building from Source
+
+**Profiler library:**
+
+```bash
+# Requirements: Node.js
+npm install              # Install bundler dependencies
+node bundle.js           # Bundle Profiler.lua
+# Output: Profiler.lua (auto-copied to %LOCALAPPDATA%\lua\)
+```
+
+**Timing server:**
+
+```bash
+# Requirements: Rust toolchain (rustup.rs)
+cd timing_server
+cargo build --release
+# Output: target/release/timing_server.exe
+```
+
+**Everything is open source** - audit the code yourself before use.
+
+### How It Works
+
+1. **Timing**: Uses timing server (nanosecond precision) or falls back to `os.clock()` (~10ms precision)
+2. **Context Switching**: `SetContext("tick"/"frame")` records callback entry timestamps for accurate ruler boundaries
+3. **Boundary Tracking**: Rulers show actual callback invocations using `globals.TickCount()` and `globals.FrameCount()`
+4. **Dual Timelines**: Separate tick/frame timelines prevent mixing 66 Hz game logic with variable FPS rendering
+5. **Virtual Board**: 2000x2000px coordinate system allows infinite zoom/pan with pixel-perfect alignment
 
 ### Performance Impact
 
-- **Automatic profiling**: Minimal overhead, hooks only user functions
-- **Manual profiling**: Near-zero overhead when disabled
-- **UI rendering**: Optimized for 60fps with configurable update rates
+| Mode                  | Overhead                    | Use Case              |
+| --------------------- | --------------------------- | --------------------- |
+| **Manual profiling**  | ~1-5 μs per Begin/End       | Production monitoring |
+| **Auto-hook enabled** | ~10-50 μs per function call | Deep debugging        |
+| **UI rendering**      | ~100-500 μs per frame       | Always-on, optimized  |
+
+Profiler uses **zero-allocation paths** in hot code and defers cleanup to cooldown periods.
+
+### Precision Comparison
+
+| Timing Source   | Precision        | Profiler Behavior         |
+| --------------- | ---------------- | ------------------------- |
+| `timing_server` | **1 nanosecond** | Microsecond-accurate bars |
+| `os.clock()`    | ~10 milliseconds | Works but less detailed   |
+
+**Recommendation**: Run timing server for accurate profiling, use `os.clock()` for quick checks.
 
 ---
 
-**Made with ❤️ by titaniummachine1**
+## 📚 Examples in Repo
+
+- **`examples/example.lua`**: Basic manual profiling
+- **`examples/fast_players_profile.lua`**: Real-world module profiling with dual contexts
+- **`examples/simple_test.lua`**: Ultra-aggressive test (50-100ms functions)
+
+## 🐛 Troubleshooting
+
+**"Profiler shows nothing"**
+
+- Add `Profiler.Begin()` / `Profiler.End()` around your code
+- Check that `Profiler.SetVisible(true)` is called
+- Ensure `Profiler.Draw()` is in your Draw callback
+
+**"Timing seems wrong"**
+
+- Run `timing_server.exe` for microsecond precision
+- Verify `Profiler.SetContext("tick")` is in CreateMove
+- Verify `Profiler.SetContext("frame")` is in Draw
+
+**"Duplicate registration error"**
+
+- Profiler auto-unregisters on reload (fixed in latest version)
+
+**"Bars too small to see"**
+
+- Press `Q` to zoom in
+- Check if functions actually take measurable time (>1μs)
+
+---
+
+**Made with passion by titaniummachine1**
+
+**Repository:** [github.com/titaniummachine1/Lmaobox_Profiler](https://github.com/titaniummachine1/Lmaobox_Profiler)  
+**License:** MIT - Free to use, modify, and distribute

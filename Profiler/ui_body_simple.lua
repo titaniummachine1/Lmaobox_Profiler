@@ -809,24 +809,8 @@ local function drawTimeRuler(
 				draw.Line(intX, rulerY, intX, rulerY + RULER_HEIGHT)
 
 				-- Calculate time label (relative to tick start, preserving precision)
-				local timeUs = timeIntoTick * 1000000
-
-				-- Format label based on timePerLine (zoom level), not absolute time
-				-- This ensures μs precision at high zoom even for large time values
-				local label
-				if timePerLine >= 0.001 then
-					-- Low zoom: show ms
-					label = string.format("%.2fms", timeIntoTick * 1000)
-				elseif timePerLine >= 0.0001 then
-					-- Medium zoom: show μs with no decimals
-					label = string.format("%.0fµs", timeUs)
-				elseif timePerLine >= 0.00001 then
-					-- High zoom: show μs with 1 decimal
-					label = string.format("%.1fµs", timeUs)
-				else
-					-- Very high zoom: show μs with 2 decimals
-					label = string.format("%.2fµs", timeUs)
-				end
+				local Timing = require("Profiler.timing")
+				local label = Timing.FormatDuration(timeIntoTick)
 
 				-- Draw label if space available (skip context label area)
 				local textWidth = #label * 7 + 10
@@ -1223,14 +1207,9 @@ function UIBody.Draw(profilerData, topBarHeight)
 		local startRaw = hoveredFunc.startTime
 		local endRaw = hoveredFunc.endTime
 		local durationSec = endRaw - startRaw
-		local durationUs = durationSec * 1000000
 
-		local durationText
-		if durationUs >= 1000 then
-			durationText = string.format("Duration: %.2f ms", durationUs / 1000)
-		else
-			durationText = string.format("Duration: %.0f µs", durationUs)
-		end
+		local Timing = require("Profiler.timing")
+		local durationText = "Duration: " .. Timing.FormatDuration(durationSec)
 
 		draw.Color(255, 255, 150, 255)
 		draw.Text(textX, textY + 18, durationText)

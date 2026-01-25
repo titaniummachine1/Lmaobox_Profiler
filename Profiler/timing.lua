@@ -57,4 +57,49 @@ function Timing.IsServerAvailable()
 	return serverAvailable == true
 end
 
+-- Smart time formatting: chooses best unit based on magnitude
+-- Input: duration in seconds
+-- Output: formatted string with appropriate unit
+function Timing.FormatDuration(durationSeconds)
+	if not durationSeconds or durationSeconds ~= durationSeconds then
+		return "0ns"
+	end
+
+	local ns = durationSeconds * 1000000000
+
+	-- Choose unit based on magnitude
+	if ns < 1000 then
+		-- Less than 1µs: show nanoseconds
+		return string.format("%.0fns", ns)
+	elseif ns < 1000000 then
+		-- Less than 1ms: show microseconds
+		local us = ns / 1000
+		if us < 10 then
+			return string.format("%.2fµs", us)
+		elseif us < 100 then
+			return string.format("%.1fµs", us)
+		else
+			return string.format("%.0fµs", us)
+		end
+	elseif ns < 1000000000 then
+		-- Less than 1s: show milliseconds
+		local ms = ns / 1000000
+		if ms < 10 then
+			return string.format("%.3fms", ms)
+		elseif ms < 100 then
+			return string.format("%.2fms", ms)
+		else
+			return string.format("%.1fms", ms)
+		end
+	else
+		-- 1s or more: show seconds
+		local s = ns / 1000000000
+		if s < 10 then
+			return string.format("%.3fs", s)
+		else
+			return string.format("%.2fs", s)
+		end
+	end
+end
+
 return Timing

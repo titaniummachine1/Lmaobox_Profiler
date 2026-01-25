@@ -251,32 +251,19 @@ end)
 - Mixing them shows inaccurate performance data
 - Separate contexts = accurate ruler boundaries
 
-### Configuration
-
-```lua
-Profiler.Setup({
-    visible = true,
-    smoothingSpeed = 2.5,        -- Bar animation speed (1-50)
-    smoothingDecay = 1.5,        -- Peak decay speed (1-50)
-    textUpdateInterval = 20,     -- Text refresh rate (frames)
-    systemMemoryMode = "system", -- "system" or "components"
-})
-```
-
 ### Advanced Features
 
 ```lua
--- Automatic function hooking
-Profiler.SetAutoHookEnabled(true)   -- Enable microprofiler mode
-Profiler.IsAutoHookEnabled()         -- Check status
+-- Pause/resume recording
+Profiler.TogglePause()               -- Press P or call this
+Profiler.IsPaused()                  -- Check pause state
 
--- Pause/resume
-Profiler.TogglePause()               -- Toggle pause
-Profiler.IsPaused()                  -- Check if paused
+-- Camera controls
+Profiler.ResetCamera()               -- Reset pan/zoom to default
+Profiler.SetZoom(2.0)                -- Set specific zoom level
 
--- Camera control
-Profiler.ResetCamera()               -- Reset pan/zoom
-Profiler.SetZoom(2.0)                -- Set zoom level
+-- Clear all data
+Profiler.Reset()                     -- Wipe timeline, start fresh
 ```
 
 ## 🎮 Controls
@@ -330,209 +317,64 @@ With the current time scale (100 px/s):
 - **100ms function**: 10 pixels wide (very visible)
 - **Multiple functions**: Overlapping bars with different colors
 
-## ⚙️ Configuration
-
-```lua
--- Quick setup
-Profiler.Setup({
-    visible = true,
-    smoothingSpeed = 2.5,        -- Percentage per frame (1-50, higher = more responsive)
-    smoothingDecay = 1.5,        -- Percentage per frame when decaying (1-50)
-    systemMemoryMode = "system", -- "system" or "components"
-    compensateOverhead = true    -- Subtract profiler's own memory usage
-})
-
--- Individual settings
-Profiler.SetSmoothingSpeed(2.5)              -- Animation speed (1-50% per frame)
-Profiler.SetSmoothingDecay(1.5)              -- Decay speed (1-50% per frame)
-Profiler.SetSystemMemoryMode("system")       -- Memory calculation
-Profiler.SetOverheadCompensation(true)       -- Enable overhead compensation
-Profiler.SetTextUpdateInterval(15)           -- Text update rate
-Profiler.Reset()                             -- Clear all data
-```
-
 ## 🎨 What You See
 
-### Automatic Profiling View
+### Timeline View
 
-- **Script Headers** (green bars): Each script gets its own section
-- **Function Bars** (colored): Individual functions with timing and names
-- **Function Count**: Shows how many functions were profiled per script
-- **Time Scale**: 100 pixels per second (configurable)
-- **Zoom Level**: Current zoom factor displayed
+- **TICK ruler** (top): Shows game ticks at 66 Hz with work bars
+- **FRAME ruler** (bottom): Shows rendered frames with work bars
+- **Colored bars**: Your profiled work (Begin/End calls)
+- **Ruler lines**: Vertical lines marking tick/frame boundaries
+- **Time scale**: Horizontal spacing (50,000 pixels per second = 1ms = 50px)
+- **Zoom**: Use Q/E to zoom in/out, drag to pan
 
-### Manual Profiling View
+### What the Bars Mean
 
-- **System bars** (grey, full width): Complete systems like "aimbot", "movement"
-- **Component bars** (colored, nested): Individual parts within systems
-- **Memory values**: Real KB usage for each part
-- **Timing info**: Millisecond timing with red highlights
+- **Wide bars**: Slow code (taking more time)
+- **Narrow bars**: Fast code
+- **Gaps**: Code not running (frame drops, skipped ticks, etc.)
+- **Overlapping**: Multiple things profiled in same tick/frame
 
-## 📊 Settings Reference
+## 📝 Real Example
 
-### New Smoothing System
-
-The profiler now uses a **percentage-based smoothing system** that's more predictable and responsive:
-
-- **smoothingSpeed**: Percentage of remaining distance to move per frame (1-50%)
-- **smoothingDecay**: Percentage to move when bars are shrinking (1-50%)
-- **Additional filtering**: Multi-frame weighted average reduces jitter
-
-### Animation Speed
-
-```
-smoothingSpeed:  5.0 ←────────────→ 30.0
-                smooth   balanced   responsive
-                 🐌        🎯        ⚡
-              (gradual)  (default)  (snappy)
-```
-
-### Peak Decay
-
-```
-smoothingDecay:  3.0 ←────────────→ 20.0
-                slow    balanced    fast
-                 📈        🎯        📉
-              (peaks stay) (default) (peaks fade)
-```
-
-### Text Updates
-
-```
-textUpdateInterval: 6 ←──────────→ 30 frames
-                   10/sec  4/sec  2/sec
-                    📱      🎯      📺
-                  (jittery) (smooth) (stable)
-```
-
-### Memory Modes
-
-```
-"system":     [████████████████] 25.3KB  ← actual system memory
-"components": [██████████]       18.7KB  ← sum of components
-```
-
-### Complete Settings Table
-
-| Setting              | Default  | Range                       | Visual Guide                |
-| -------------------- | -------- | --------------------------- | --------------------------- |
-| `smoothingSpeed`     | 2.5      | 1.0-50.0                    | 🐌 ←→ ⚡ (spike response)   |
-| `smoothingDecay`     | 1.5      | 1.0-50.0                    | 📈 ←→ 📉 (peak persistence) |
-| `textUpdateInterval` | 20       | 1-120                       | 📱 ←→ 📺 (update frequency) |
-| `windowSize`         | 60       | 1-300                       | ⚡ ←→ 🧘 (averaging window) |
-| `sortMode`           | "size"   | "size", "static", "reverse" | 📊 📋 🔄                    |
-| `systemMemoryMode`   | "system" | "system", "components"      | 🎯 ➕                       |
-| `compensateOverhead` | true     | true, false                 | 📏 ❌ (accuracy vs raw)     |
-
-## 💡 Tips
-
-**For Performance Hunting:**
-
-```lua
-Profiler.Setup({
-    smoothingSpeed = 12.0,   -- Fast spike detection
-    smoothingDecay = 3.0,    -- Keep peaks visible longer
-    systemMemoryMode = "system"
-})
-```
-
-**For Smooth Monitoring:**
-
-```lua
-Profiler.Setup({
-    smoothingSpeed = 2.5,    -- Very smooth animations (default)
-    smoothingDecay = 1.5,    -- Slow decay (default)
-    systemMemoryMode = "components"
-})
-```
-
-**For Function Analysis:**
-
-```lua
--- The automatic profiling will show you:
--- - Which functions are taking the most time
--- - Function call hierarchies
--- - Memory usage per function
--- - Script-by-script breakdown
-```
-
-## 📝 Examples
-
-### Automatic Profiling (Recommended)
+Check `examples/fast_players_profile.lua` for a complete real-world example:
 
 ```lua
 local Profiler = require("Profiler")
+local FastPlayers = require("fast_players")
+
 Profiler.SetVisible(true)
 
--- Just run your code normally - everything is automatically profiled!
-function MyExpensiveFunction()
-    -- This function will automatically appear in the profiler
-    for i = 1, 1000000 do
-        math.sin(i) * math.cos(i)
-    end
-end
+callbacks.Register("CreateMove", "profiler_tick", function(cmd)
+    Profiler.SetContext("tick")  -- Switch to tick timeline
 
--- Call it normally
-MyExpensiveFunction()
-```
+    Profiler.Begin("FastPlayers.Total")
 
-### Manual Profiling Examples
+    Profiler.Begin("FastPlayers.Update")
+    FastPlayers.Update()
+    Profiler.End("FastPlayers.Update")
 
-**Simplified Usage:**
+    Profiler.Begin("FastPlayers.GetAll")
+    local allPlayers = FastPlayers.GetAll()
+    Profiler.End("FastPlayers.GetAll")
 
-```lua
-local Profiler = require("Profiler")
-Profiler.SetVisible(true)
+    -- More profiled work...
 
--- In your aimbot - clean and explicit!
-Profiler.BeginSystem("aimbot")
-    local targets
-
-    Profiler.Begin("get_targets")
-    targets = GetTargets()
-    Profiler.End() -- Ends component
-
-    Profiler.Begin("calculate_aim")
-    local angles = CalculateAim(targets[1])
-    Profiler.End() -- Ends component
-Profiler.EndSystem() -- Ends system
-```
-
-**Multiple Systems:**
-
-```lua
-local Profiler = require("Profiler")
-Profiler.SetVisible(true)
-
--- Multiple systems - no names needed when ending
-Profiler.BeginSystem("movement")
-    Profiler.Begin("bhop")
-    -- ... bhop code ...
-    Profiler.End() -- Ends component
-Profiler.EndSystem() -- Ends system
-
-Profiler.BeginSystem("esp")
-    Profiler.Begin("players")
-    -- ... player ESP ...
-    Profiler.End() -- Ends component
-Profiler.EndSystem() -- Ends system
-```
-
-**Quick Function Timing:**
-
-```lua
--- Using the Time helper (works with both APIs)
-local result = Profiler.Time("calculations", "pathfinding", function()
-    return ExpensiveFunction()
+    Profiler.End("FastPlayers.Total")
 end)
 
--- Or with the new simplified API
-Profiler.BeginSystem("calculations")
-    Profiler.Begin("pathfinding")
-    ExpensiveFunction()
-    Profiler.End() -- Ends component
-Profiler.EndSystem() -- Ends system
+callbacks.Register("Draw", "profiler_frame", function()
+    Profiler.SetContext("frame")  -- Switch to frame timeline
+    Profiler.Draw()  -- Render profiler UI
+end)
 ```
+
+**Key points:**
+
+- `SetContext("tick")` in CreateMove → records to TICK timeline
+- `SetContext("frame")` in Draw → records to FRAME timeline
+- `Draw()` renders the profiler UI
+- Nested Begin/End calls show hierarchy
 
 ## 🔧 Technical Details
 

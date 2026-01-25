@@ -6,6 +6,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/titaniummachine1/Lmaobox_Profiler.svg)](https://github.com/titaniummachine1/Lmaobox_Profiler/stargazers)
 
 [![Download Latest](https://img.shields.io/badge/Download%20Latest-Profiler.lua-brightgreen?style=for-the-badge&logo=download)](https://github.com/titaniummachine1/Lmaobox_Profiler/releases/latest/download/Profiler.lua)
+
 [![Download Timing Server](https://img.shields.io/badge/Download-Timing%20Server-blue?style=for-the-badge&logo=download)](https://github.com/titaniummachine1/Lmaobox_Profiler/releases/download/v1.3.0/timing_server.exe)
 
 A lightweight, microsecond-precision performance profiler that shows exactly what's consuming your CPU and memory. Features dual-context tick/frame profiling, automatic function hooking, and a visual timeline with accurate ruler boundaries.

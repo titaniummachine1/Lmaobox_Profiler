@@ -263,6 +263,11 @@ end
 -- Create function record with script separation
 local function createFunctionRecord(info)
 	local name = info.name or "anonymous"
+
+	if name ~= "anonymous" and name:find("%.") then
+		name = name:match("([^%.]+)$") or name
+	end
+
 	local source = info.short_src or "unknown"
 	local line = info.linedefined or 0
 

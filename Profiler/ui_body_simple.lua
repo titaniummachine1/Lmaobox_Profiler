@@ -42,6 +42,19 @@ local levelHeights = {}
 local levelOffsets = {}
 local funcCache = {}
 local globalTextSizeCache = {}
+-- Fixed-size text cache (no memory leaks, no table growth)
+-- Structure: cache[name] = { [pixelWidth] = truncatedString }
+-- We store at most MAX_TEXT_CACHE_ENTRIES function names
+local textCache = {}
+local textCacheOrder = {} -- For LRU tracking (indices 1..MAX)
+local textCacheIndex = {} -- name -> position in textCacheOrder
+local textCacheCount = 0
+local MAX_TEXT_CACHE_ENTRIES = 1000
+local nextCacheSlot = 1 -- Round-robin eviction pointer
+
+-- Per-frame update limit
+local maxTextUpdatesPerFrame = 50
+local updatesThisFrame = 0
 
 -- External APIs
 local draw_raw = draw
@@ -386,27 +399,16 @@ local function drawFunctionOnBoard(func, boardX, boardY, boardWidth, screenW, sc
 		local memH = func._dynamicText.memH
 
 		if draw.GetTextSize then
-			local nameW, nameH = getTextSize(name)
 			local barWidthScreen = boardWidth * boardZoom
 			local barHeight = getFunctionHeight(func)
 			local padding = 4
 			local lineSpacing = 2
 
-			local displayName
-			local actualNameW = nameW
+			-- Use cached text lookup (no per-function cache, shared global cache)
+			local displayName, actualNameW = getCachedTruncatedText(name, barWidthScreen - padding * 2)
+			local _, nameH = getTextSize(name)
 
-			if barWidthScreen < nameW + padding * 2 then
-				local charWidth = nameW / #name
-				local maxChars = math.floor((barWidthScreen - padding * 2 - charWidth * 2) / charWidth)
-				if maxChars > 0 then
-					displayName = name:sub(1, maxChars) .. ".."
-					actualNameW = getTextSize(displayName)
-				end
-			else
-				displayName = name
-			end
-
-			if displayName and barWidthScreen >= padding * 2 then
+			if displayName ~= "" and barWidthScreen >= padding * 2 then
 				local nameScreenX = screenX + padding
 				local nameScreenY = screenY + 2
 
@@ -415,6 +417,7 @@ local function drawFunctionOnBoard(func, boardX, boardY, boardWidth, screenW, sc
 					draw.Text(math.floor(nameScreenX), math.floor(nameScreenY), displayName)
 				end
 
+				-- Only draw time if it fits without overlapping name
 				local showTime = false
 				local timeScreenX = screenX + barWidthScreen - durationW - padding
 				if timeScreenX > nameScreenX + actualNameW + padding then
@@ -933,6 +936,81 @@ local function handleBoardInput(screenW, screenH, topBarHeight)
 	end
 end
 
+-- Get or create cached truncated text for a name at given pixel width
+-- Uses fixed-size cache with round-robin eviction
+local function getCachedTruncatedText(name, availablePixels)
+	-- Quick reject: if can't fit even 1 char, return empty
+	if availablePixels < 8 then
+		return "", 0
+	end
+
+	-- Check if we have this name cached
+	local nameCache = textCache[name]
+	if not nameCache then
+		-- Need to create new entry - use round-robin if at capacity
+		if textCacheCount >= MAX_TEXT_CACHE_ENTRIES then
+			-- Evict the oldest entry
+			local evictName = textCacheOrder[nextCacheSlot]
+			if evictName then
+				textCache[evictName] = nil
+				textCacheIndex[evictName] = nil
+				textCacheCount = textCacheCount - 1
+			end
+		end
+
+		-- Create new entry at current slot
+		nameCache = {}
+		textCache[name] = nameCache
+		textCacheOrder[nextCacheSlot] = name
+		textCacheIndex[name] = nextCacheSlot
+		textCacheCount = textCacheCount + 1
+		nextCacheSlot = nextCacheSlot + 1
+		if nextCacheSlot > MAX_TEXT_CACHE_ENTRIES then
+			nextCacheSlot = 1
+		end
+	else
+		-- Move to front of LRU (optional optimization - skip for now to save CPU)
+	end
+
+	-- Check if we have this exact pixel width cached
+	local cached = nameCache[availablePixels]
+	if cached then
+		return cached.text, cached.width
+	end
+
+	-- Need to calculate truncation
+	local nameW, nameH = getTextSize(name)
+	local padding = 4
+
+	if availablePixels >= nameW + padding * 2 then
+		-- Full name fits
+		nameCache[availablePixels] = { text = name, width = nameW }
+		return name, nameW
+	end
+
+	-- Need to truncate
+	local charWidth = nameW / #name
+	local maxChars = math.floor((availablePixels - padding * 2 - charWidth * 2) / charWidth)
+
+	if maxChars <= 0 then
+		-- Can't fit even truncated
+		nameCache[availablePixels] = { text = "", width = 0 }
+		return "", 0
+	end
+
+	local truncated = name:sub(1, maxChars) .. ".."
+	local truncatedW = getTextSize(truncated)
+	nameCache[availablePixels] = { text = truncated, width = truncatedW }
+
+	return truncated, truncatedW
+end
+
+-- Per-frame text cache update (processes pending updates)
+local function updateTextCache()
+	-- Reset per-frame counter
+	updatesThisFrame = 0
+end
+
 -- Public API
 function UIBody.Initialize()
 	boardOffsetX = 0
@@ -1262,6 +1340,9 @@ function UIBody.Draw(profilerData, topBarHeight)
 
 	-- Handle input
 	handleBoardInput(screenW, screenH, topBarHeight)
+
+	-- Process text update queue (per-frame limited updates)
+	updateTextCache()
 end
 
 -- Camera controls

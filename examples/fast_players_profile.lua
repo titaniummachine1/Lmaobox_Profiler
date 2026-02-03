@@ -14,7 +14,6 @@ if FAST_PLAYERS_PROFILE_LOADED then
 	callbacks.Unregister("Draw", SCRIPT_TAG)
 	callbacks.Unregister("Unload", SCRIPT_TAG)
 	FAST_PLAYERS_PROFILE_LOADED = false
-	collectgarbage("collect")
 end
 
 -- Load profiler and fast_players

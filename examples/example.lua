@@ -22,7 +22,6 @@ if _G.PROFILER_EXAMPLE_LOADED then
 	callbacks.Unregister("Draw", SCRIPT_TAG)
 	callbacks.Unregister("Unload", SCRIPT_TAG)
 	_G.PROFILER_EXAMPLE_LOADED = false
-	collectgarbage("collect")
 end
 
 -- Load profiler

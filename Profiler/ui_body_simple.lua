@@ -275,6 +275,73 @@ local function screenToBoard(screenX, screenY)
 	return boardX, boardY
 end
 
+-- Get or create cached truncated text for a name at given pixel width
+-- Uses fixed-size cache with round-robin eviction
+local function getCachedTruncatedText(name, availablePixels)
+	-- Quick reject: if can't fit even 1 char, return empty
+	if availablePixels < 8 then
+		return "", 0
+	end
+
+	-- Check if we have this name cached
+	local nameCache = textCache[name]
+	if not nameCache then
+		-- Need to create new entry - use round-robin if at capacity
+		if textCacheCount >= MAX_TEXT_CACHE_ENTRIES then
+			-- Evict the oldest entry
+			local evictName = textCacheOrder[nextCacheSlot]
+			if evictName then
+				textCache[evictName] = nil
+				textCacheIndex[evictName] = nil
+				textCacheCount = textCacheCount - 1
+			end
+		end
+
+		-- Create new entry at current slot
+		nameCache = {}
+		textCache[name] = nameCache
+		textCacheOrder[nextCacheSlot] = name
+		textCacheIndex[name] = nextCacheSlot
+		textCacheCount = textCacheCount + 1
+		nextCacheSlot = nextCacheSlot + 1
+		if nextCacheSlot > MAX_TEXT_CACHE_ENTRIES then
+			nextCacheSlot = 1
+		end
+	end
+
+	-- Check if we have this exact pixel width cached
+	local cached = nameCache[availablePixels]
+	if cached then
+		return cached.text, cached.width
+	end
+
+	-- Need to calculate truncation
+	local nameW, nameH = getTextSize(name)
+	local padding = 4
+
+	if availablePixels >= nameW + padding * 2 then
+		-- Full name fits
+		nameCache[availablePixels] = { text = name, width = nameW }
+		return name, nameW
+	end
+
+	-- Need to truncate
+	local charWidth = nameW / #name
+	local maxChars = math.floor((availablePixels - padding * 2 - charWidth * 2) / charWidth)
+
+	if maxChars <= 0 then
+		-- Can't fit even truncated
+		nameCache[availablePixels] = { text = "", width = 0 }
+		return "", 0
+	end
+
+	local truncated = name:sub(1, maxChars) .. ".."
+	local truncatedW = getTextSize(truncated)
+	nameCache[availablePixels] = { text = truncated, width = truncatedW }
+
+	return truncated, truncatedW
+end
+
 -- Draw a function bar on the virtual board with memory-based height scaling
 local function drawFunctionOnBoard(func, boardX, boardY, boardWidth, screenW, screenH)
 	if not func.startTime or not func.endTime or not draw then

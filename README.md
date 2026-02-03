@@ -5,6 +5,8 @@
 [![GitHub issues](https://img.shields.io/github/issues/titaniummachine1/Lmaobox_Profiler.svg)](https://github.com/titaniummachine1/Lmaobox_Profiler/issues)
 [![GitHub stars](https://img.shields.io/github/stars/titaniummachine1/Lmaobox_Profiler.svg)](https://github.com/titaniummachine1/Lmaobox_Profiler/stargazers)
 
+<img width="1400" height="337" alt="image" src="https://github.com/user-attachments/assets/d7417fc5-40dc-43d1-a559-bf71a9719c57" />
+
 [![Download Latest](https://img.shields.io/badge/Download%20Latest-Profiler.lua-brightgreen?style=for-the-badge&logo=download)](https://github.com/titaniummachine1/Lmaobox_Profiler/releases/latest/download/Profiler.lua)
 
 [![Download Timing Server](https://img.shields.io/badge/Download-Timing%20Server-blue?style=for-the-badge&logo=download)](https://github.com/titaniummachine1/Lmaobox_Profiler/releases/download/v1.3.0/timing_server.exe)

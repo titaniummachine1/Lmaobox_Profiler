@@ -71,6 +71,8 @@ Profiler.Begin("MyFunction")
 Profiler.End("MyFunction")
 ```
 
+**Note:** Function names are automatically simplified - "Navigation.CanNavigate.GoalCheck" shows as "GoalCheck"
+
 **That's it!** The profiler shows timing, memory, and visual bars.
 
 ### Medium Task: Profile Multiple Functions
@@ -101,6 +103,8 @@ end
 callbacks.Register("CreateMove", "profiler_test", onCreateMove)
 callbacks.Register("Draw", "profiler_draw", onDraw)
 ```
+
+**Automatic Nesting:** Work started within another work automatically becomes its child. No need for manual hierarchical names!
 
 **Dual context profiling**: Separate tick work (game logic) from frame work (rendering) for accurate performance tracking.
 
@@ -135,6 +139,8 @@ Profiler.End("SuspiciousFunction")
 -- Look at the profiler UI - if the bar is wide, it's slow!
 ```
 
+**Text Layout:** Names are prioritized, time shows on right if it fits, memory below if space allows.
+
 ### Pattern 2: Find Bottlenecks (5 minutes)
 
 **Use case:** "Which part of my script is slow?"
@@ -160,6 +166,8 @@ end
 -- The widest bar in the profiler is your bottleneck
 ```
 
+**Smart Text:** Short blocks show ".." truncation, names always visible when possible.
+
 ### Pattern 3: Production Monitoring (Always On)
 
 **Use case:** "Monitor performance during gameplay"
@@ -181,7 +189,7 @@ callbacks.Register("Draw", "ui", function()
     Profiler.Draw()
 end)
 
--- Press P to pause/resume
+-- Press P to pause/resume (data preserved on unpause!)
 -- Drag to pan, Q/E to zoom
 ```
 
@@ -473,6 +481,10 @@ Profiler uses **zero-allocation paths** in hot code and defers cleanup to cooldo
 **"Duplicate registration error"**
 
 - Profiler auto-unregisters on reload (fixed in latest version)
+
+**"Data disappears on unpause"**
+
+- Fixed! Data is now preserved when unpausing. No more crashes or data loss.
 
 **"Bars too small to see"**
 

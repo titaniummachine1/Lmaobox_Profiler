@@ -351,7 +351,7 @@ local function drawFunctionOnBoard(func, boardX, boardY, boardWidth, screenW, sc
 			math.floor(screenY + screenHeight)
 		)
 
-		-- Text drawing with cached layout using relative offsets
+		-- Text drawing with improved priority: name first, time on right if fits, memory below if fits
 		local name = func.name or "unknown"
 		if not func._dynamicText then
 			local durationUs = duration * 1000000
@@ -387,68 +387,59 @@ local function drawFunctionOnBoard(func, boardX, boardY, boardWidth, screenW, sc
 
 		if draw.GetTextSize then
 			local nameW, nameH = getTextSize(name)
-
-			local padding = 8
+			local barWidthScreen = boardWidth * boardZoom
+			local barHeight = getFunctionHeight(func)
+			local padding = 4
 			local lineSpacing = 2
 
-			if not func._layout then
-				local barWidthInTime = func.endTime - func.startTime
-				local barWidthUnzoomed = barWidthInTime * TIME_SCALE
-				local minWidthForHorizontal = nameW + durationW + padding * 2
-				local fitsHorizontal = barWidthUnzoomed > minWidthForHorizontal
-				local barHeight = getFunctionHeight(func)
-				local fitsVertical = barHeight > nameH + durationH + lineSpacing + 4
-				local fitsMemory = barHeight > nameH + durationH + memH + lineSpacing * 2 + 4
+			local displayName
+			local actualNameW = nameW
 
-				func._layout = {
-					mode = fitsHorizontal and "horizontal" or (fitsVertical and "vertical" or "none"),
-					showMemory = fitsVertical and fitsMemory,
-					nameOffsetLeft = 4,
-					nameOffsetTop = 2,
-					durationOffsetRight = 4,
-					durationOffsetTop = fitsHorizontal and 2 or (nameH + lineSpacing + 2),
-					memOffsetLeft = 4,
-					memOffsetTop = nameH + durationH + lineSpacing * 2 + 2,
-				}
+			if barWidthScreen < nameW + padding * 2 then
+				local charWidth = nameW / #name
+				local maxChars = math.floor((barWidthScreen - padding * 2 - charWidth * 2) / charWidth)
+				if maxChars > 0 then
+					displayName = name:sub(1, maxChars) .. ".."
+					actualNameW = getTextSize(displayName)
+				end
+			else
+				displayName = name
 			end
 
-			local layout = func._layout
-			local barWidthScreen = boardWidth * boardZoom
+			if displayName and barWidthScreen >= padding * 2 then
+				local nameScreenX = screenX + padding
+				local nameScreenY = screenY + 2
 
-			if barWidthScreen > nameW + padding then
-				local nameScreenX = screenX + layout.nameOffsetLeft
-				local nameScreenY = screenY + layout.nameOffsetTop
-
-				if nameScreenX + nameW > 0 and nameScreenX < screenW then
+				if nameScreenX + actualNameW > 0 and nameScreenX < screenW then
 					draw.Color(255, 255, 255, 255)
-					draw.Text(math.floor(nameScreenX), math.floor(nameScreenY), name)
+					draw.Text(math.floor(nameScreenX), math.floor(nameScreenY), displayName)
 				end
 
-				if layout.mode == "horizontal" then
-					local durationScreenX = screenX + barWidthScreen - durationW - layout.durationOffsetRight
-					local durationScreenY = screenY + layout.durationOffsetTop
+				local showTime = false
+				local timeScreenX = screenX + barWidthScreen - durationW - padding
+				if timeScreenX > nameScreenX + actualNameW + padding then
+					showTime = true
+				end
 
-					if durationScreenX + durationW > 0 and durationScreenX < screenW then
-						draw.Color(255, 255, 100, 255)
-						draw.Text(math.floor(durationScreenX), math.floor(durationScreenY), durationText)
+				if showTime and timeScreenX + durationW > 0 and timeScreenX < screenW then
+					draw.Color(255, 255, 100, 255)
+					draw.Text(math.floor(timeScreenX), math.floor(nameScreenY), durationText)
+				end
+
+				local showMemory = false
+				if barHeight > nameH + memH + lineSpacing + 4 then
+					if barWidthScreen > memW + padding * 2 then
+						showMemory = true
 					end
-				elseif layout.mode == "vertical" then
-					local durationScreenX = screenX + layout.nameOffsetLeft
-					local durationScreenY = screenY + layout.durationOffsetTop
+				end
 
-					if durationScreenX + durationW > 0 and durationScreenX < screenW then
-						draw.Color(255, 255, 100, 255)
-						draw.Text(math.floor(durationScreenX), math.floor(durationScreenY), durationText)
-					end
+				if showMemory then
+					local memScreenX = screenX + padding
+					local memScreenY = screenY + nameH + lineSpacing + 2
 
-					if layout.showMemory and barWidthScreen > memW + padding then
-						local memScreenX = screenX + layout.memOffsetLeft
-						local memScreenY = screenY + layout.memOffsetTop
-
-						if memScreenX + memW > 0 and memScreenX < screenW then
-							draw.Color(150, 255, 150, 255)
-							draw.Text(math.floor(memScreenX), math.floor(memScreenY), memText)
-						end
+					if memScreenX + memW > 0 and memScreenX < screenW then
+						draw.Color(150, 255, 150, 255)
+						draw.Text(math.floor(memScreenX), math.floor(memScreenY), memText)
 					end
 				end
 			end

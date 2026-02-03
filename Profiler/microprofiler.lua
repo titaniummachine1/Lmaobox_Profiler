@@ -557,7 +557,6 @@ function MicroProfiler.SetPaused(paused)
 			ctx.callStack = {}
 		end
 	elseif not paused and wasPaused then
-		MicroProfiler.ClearData()
 		if Shared then
 			Shared.RecordingStartTime = getCurrentTime()
 		end

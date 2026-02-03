@@ -38,16 +38,15 @@ local function onCreateMove(cmd)
 	Profiler.Begin("FastPlayers.Total")
 
 	-- Update cache (triggers rebuild if needed)
-	Profiler.Begin("FastPlayers.Update")
+	Profiler.Begin("Update")
 	FastPlayers.Update()
-	Profiler.End("FastPlayers.Update")
+	Profiler.End("Update")
 
-	Profiler.Begin("XDtest")
+	Profiler.Begin("SimpleTest")
 	variable = 1 + 1
-	Profiler.End("XDtest")
+	Profiler.End("SimpleTest")
 
 	-- Trace line performance test (safe version)
-
 	local me = entities.GetLocalPlayer()
 	if me then
 		local source = me:GetAbsOrigin() + me:GetPropVector("localdata", "m_vecViewOffset[0]")
@@ -58,22 +57,22 @@ local function onCreateMove(cmd)
 	end
 
 	-- Get all players (uses cached data)
-	Profiler.Begin("FastPlayers.GetAll")
+	Profiler.Begin("GetAll")
 	local allPlayers = FastPlayers.GetAll()
-	Profiler.End("FastPlayers.GetAll")
+	Profiler.End("GetAll")
 
 	-- Get enemies (uses cached data)
-	Profiler.Begin("FastPlayers.GetEnemies")
+	Profiler.Begin("GetEnemies")
 	local enemies = FastPlayers.GetEnemies()
-	Profiler.End("FastPlayers.GetEnemies")
+	Profiler.End("GetEnemies")
 
 	-- Get teammates (uses cached data)
-	Profiler.Begin("FastPlayers.GetTeammates")
+	Profiler.Begin("GetTeammates")
 	local teammates = FastPlayers.GetTeammates()
-	Profiler.End("FastPlayers.GetTeammates")
+	Profiler.End("GetTeammates")
 
 	-- Iterate through all players (simulates real usage)
-	Profiler.Begin("FastPlayers.Iteration")
+	Profiler.Begin("Iteration")
 	local validCount = 0
 	local maxIterations = math.max(1, math.floor(#allPlayers / 10))
 	for i = 1, maxIterations do
@@ -84,12 +83,12 @@ local function onCreateMove(cmd)
 			local _ = ply:GetHealth()
 		end
 	end
-	Profiler.End("FastPlayers.Iteration")
+	Profiler.End("Iteration")
 
 	-- Test GetLocal (single lookup)
-	Profiler.Begin("FastPlayers.GetLocal")
+	Profiler.Begin("GetLocal")
 	local localPly = FastPlayers.GetLocal()
-	Profiler.End("FastPlayers.GetLocal")
+	Profiler.End("GetLocal")
 
 	Profiler.End("FastPlayers.Total")
 end
@@ -114,5 +113,7 @@ callbacks.Register("Draw", SCRIPT_TAG, onDraw)
 callbacks.Register("Unload", SCRIPT_TAG, onUnload)
 
 print("[FastPlayers Profile] loaded. Profiling real fast_players module usage.")
-print("  - You should see natural µs-level variance (e.g., 127.532µs, 143.871µs)")
-print("  - Not artificial clamping like synthetic loops")
+print("  - Function names are simplified: 'FastPlayers.Update' shows as 'Update'")
+print("  - Automatic nesting: all work under 'FastPlayers.Total' becomes children")
+print("  - Smart text layout: names prioritized, time/memory shown if space allows")
+print("  - Data preserved on unpause - no more crashes or data loss!")

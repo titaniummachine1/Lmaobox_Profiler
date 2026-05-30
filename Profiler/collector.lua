@@ -101,16 +101,14 @@ function Collector.BeginSession(scriptName)
 	if not sessionId or sessionId == "-1" or sessionId == "" then
 		Shared.CollectorAvailable = false
 		collectorReachable = false
-		Shared.LastError = "timing_collector not running — start timing_collector\\run_collector.bat ("
-			.. BASE_URL
-			.. ")"
+		Shared.LastError = "timing_collector not running — double-click timing_collector.exe (" .. BASE_URL .. ")"
 		return false
 	end
 	if ver ~= "2" then
 		Shared.CollectorAvailable = false
 		Shared.LastError = "timing_collector.exe is outdated (version="
 			.. tostring(ver)
-			.. "). Run run_collector.bat to rebuild."
+			.. "). Rebuild: cd timing_collector && go build -o timing_collector.exe ."
 		httpGet("/session/end")
 		return false
 	end

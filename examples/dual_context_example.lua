@@ -1,7 +1,7 @@
 --[[
     Tick + frame in one shot (frame block still runs at load; real games use Draw callback).
 
-    1. run_collector.bat
+    1. Double-click timing_collector\timing_collector.exe
     2. lua_load dual_context_example
 ]]
 
@@ -19,7 +19,7 @@ Profiler.BindScript(SCRIPT_NAME)
 Profiler.SetEnabled(true)
 
 if not Profiler.BeginSession() then
-	print("[dual_context] run_collector.bat first")
+	print("[Profiler] FAILED: " .. tostring(Profiler.GetLastError()))
 	return
 end
 

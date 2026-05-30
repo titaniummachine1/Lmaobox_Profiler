@@ -104,8 +104,9 @@ jobs:
           test -s dist/Profiler.lua
           cp timing_collector/timing_collector dist/
           cp timing_collector/timing_collector.exe dist/
-          cp timing_collector/README.md dist/timing_collector_README.md
-          cp examples/test_flamegraphs.lua dist/example_test_flamegraphs.lua
+          cp timing_collector/USAGE.txt dist/USAGE.txt
+          cp examples/simple_test.lua dist/example_simple_test.lua
+          cp examples/multi_tick_test.lua dist/example_multi_tick_test.lua
           sha256sum dist/* > dist/SHA256SUMS.txt
 
       - name: Create GitHub Release
@@ -121,9 +122,10 @@ jobs:
             echo "Automated release for \`${short_sha}\` (**${bump}** → \`${tag}\`)."
             echo ""
             echo "### Assets"
-            echo "- \`Profiler.lua\` — place in \`%localappdata%/lua/\`"
-            echo "- \`timing_collector\` / \`timing_collector.exe\` — run before profiling"
-            echo "- \`example_test_flamegraphs.lua\` — sample script"
+            echo "- \`Profiler.lua\` → \`%localappdata%/lua/Profiler.lua\`"
+            echo "- \`timing_collector.exe\` — double-click, leave window open"
+            echo "- \`USAGE.txt\` — short instructions"
+            echo "- \`example_simple_test.lua\` / \`example_multi_tick_test.lua\`"
             echo "- \`SHA256SUMS.txt\`"
           } > "${body_file}"
           gh release create "${tag}" \
@@ -132,6 +134,7 @@ jobs:
             dist/Profiler.lua \
             dist/timing_collector \
             dist/timing_collector.exe \
-            dist/timing_collector_README.md \
-            dist/example_test_flamegraphs.lua \
+            dist/USAGE.txt \
+            dist/example_simple_test.lua \
+            dist/example_multi_tick_test.lua \
             dist/SHA256SUMS.txt

@@ -92,10 +92,8 @@ end
 		} else {
 			writeTarget(targetPath, output, "Profiler.lua");
 			deployExamples();
-			console.log(`[BundleAndDeploy] Drop-in library: ${targetPath}`);
-			console.log(
-				"[BundleAndDeploy] Run timing_collector\\run_collector.bat then lua_load test_flamegraphs"
-			);
+			console.log(`[BundleAndDeploy] Profiler.lua -> ${targetPath}`);
+			console.log("[BundleAndDeploy] Double-click timing_collector\\timing_collector.exe then lua_load simple_test");
 		}
 
 		process.exitCode = 0;

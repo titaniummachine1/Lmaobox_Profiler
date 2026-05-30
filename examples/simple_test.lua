@@ -1,6 +1,6 @@
 --[[
     One-shot test. Deploy: npm run bundle-deploy  ->  %%LOCALAPPDATA%%\lua\Profiler.lua
-    1. timing_collector\run_collector.bat
+    1. Double-click timing_collector\timing_collector.exe
     2. lua_load simple_test
 ]]
 

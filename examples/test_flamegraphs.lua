@@ -16,7 +16,7 @@ Profiler.BindScript(SCRIPT_NAME)
 Profiler.SetEnabled(true)
 
 if not Profiler.BeginSession() then
-	print("[test_flamegraphs] run_collector.bat first")
+	print("[Profiler] FAILED: " .. tostring(Profiler.GetLastError()))
 	return
 end
 

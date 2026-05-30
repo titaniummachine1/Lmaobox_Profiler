@@ -130,17 +130,38 @@ func main() {
 
 	startIdleWatcher()
 
+	printStartupBanner(outDir)
+
+	freeListenAddr(listenAddr)
 	ln, err := net.Listen("tcp", listenAddr)
 	if err != nil {
+		freeListenAddr(listenAddr)
+		ln, err = net.Listen("tcp", listenAddr)
+	}
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "timing_collector: cannot listen on %s: %v\n", listenAddr, err)
-		fmt.Fprintf(os.Stderr, "Another timing_collector or the old Rust server may already be using port 9876.\n")
+		fmt.Fprintf(os.Stderr, "Close the other program using port 9876, then run timing_collector.exe again.\n")
 		waitBeforeExit()
 		os.Exit(1)
 	}
 
 	log.Printf("timing_collector on http://%s (flame_graphs: %s)", listenAddr, outDir)
-	log.Printf("idle export: %v after last tick/frame/span (not after session/begin alone)", sessionIdleTimeout)
 	log.Fatal(http.Serve(ln, mux))
+}
+
+func printStartupBanner(outDir string) {
+	fmt.Println("============================================================")
+	fmt.Println(" Lmaobox Profiler — timing_collector.exe")
+	fmt.Println("============================================================")
+	fmt.Printf("  HTTP:   http://%s\n", listenAddr)
+	fmt.Printf("  Output: %s\\<session_id>\\tick.speedscope.json\n", outDir)
+	fmt.Println()
+	fmt.Println("  1. Copy Profiler.lua to %LOCALAPPDATA%\\lua\\")
+	fmt.Println("  2. In TF2: lua_load simple_test  (or your script)")
+	fmt.Println("  3. Open tick.speedscope.json at https://www.speedscope.app")
+	fmt.Println()
+	fmt.Println("  Leave this window open while you play.")
+	fmt.Println("============================================================")
 }
 
 func waitBeforeExit() {
@@ -624,6 +645,31 @@ func writeSessionErrorFile(dir, reason string, err error) {
 	_ = os.WriteFile(filepath.Join(dir, "session.error.txt"), []byte(msg), 0o644)
 }
 
+// compressEventTimeline caps idle gaps between sampled ticks so speedscope Time Order
+// is not mostly empty space (Lua samples ~1 tick/s; wall-clock gaps can be seconds).
+func compressEventTimeline(events []speedscopeEvent) []speedscopeEvent {
+	if len(events) <= 1 {
+		return events
+	}
+	const maxGapNs = int64(2_000_000) // 2ms visual gap between distant event groups
+
+	out := make([]speedscopeEvent, len(events))
+	out[0] = speedscopeEvent{Type: events[0].Type, At: 0, Frame: events[0].Frame}
+	cursor := int64(0)
+	for i := 1; i < len(events); i++ {
+		gap := events[i].At - events[i-1].At
+		if gap > maxGapNs {
+			gap = maxGapNs
+		}
+		if gap < 0 {
+			gap = 0
+		}
+		cursor += gap
+		out[i] = speedscopeEvent{Type: events[i].Type, At: cursor, Frame: events[i].Frame}
+	}
+	return out
+}
+
 func writeSpeedscope(dir, ctx string, events []speedscopeEvent, frameMap map[string]int) error {
 	if len(events) == 0 {
 		return fmt.Errorf("%s: no speedscope events (spans never reached collector)", ctx)
@@ -631,6 +677,8 @@ func writeSpeedscope(dir, ctx string, events []speedscopeEvent, frameMap map[str
 	if len(frameMap) == 0 {
 		return fmt.Errorf("%s: no frame names for speedscope export", ctx)
 	}
+
+	events = compressEventTimeline(events)
 
 	maxIdx := -1
 	for _, idx := range frameMap {

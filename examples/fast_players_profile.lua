@@ -1,19 +1,16 @@
 --[[
-    Example: profile optional fast_players module if present.
+    Profile fast_players every ~1s. No Unregister / _G (Lmaobox policy).
 ]]
 
 local TAG = "fast_players_profile"
+local LOAD_KEY = "profiler.fast_players_profile.v1"
+local TICKS_PER_SAMPLE = 66
 
-local function cleanup()
-	callbacks.Unregister("CreateMove", TAG)
-	callbacks.Unregister("Draw", TAG)
-	callbacks.Unregister("Unload", TAG)
+if package.loaded[LOAD_KEY] then
+	print("[fast_players_profile] Already loaded.")
+	return
 end
-
-if _G.FAST_PLAYERS_PROFILE_LOADED then
-	cleanup()
-	_G.FAST_PLAYERS_PROFILE_LOADED = false
-end
+package.loaded[LOAD_KEY] = true
 
 package.loaded["Profiler"] = nil
 local Profiler = require("Profiler")
@@ -31,9 +28,14 @@ if ok then
 	FastPlayers = mod
 end
 
-_G.FAST_PLAYERS_PROFILE_LOADED = true
+local tickCount = 0
 
-callbacks.Register("CreateMove", TAG, function(cmd)
+callbacks.Register("CreateMove", TAG, function()
+	tickCount = tickCount + 1
+	if tickCount % TICKS_PER_SAMPLE ~= 0 then
+		return
+	end
+
 	Profiler.BeginTick()
 	Profiler.Begin("FastPlayers.Total")
 
@@ -53,15 +55,9 @@ callbacks.Register("CreateMove", TAG, function(cmd)
 	Profiler.EndTick()
 end)
 
-callbacks.Register("Draw", TAG, function()
-	Profiler.BeginFrame()
-	Profiler.EndFrame()
-end)
-
 callbacks.Register("Unload", TAG, function()
 	local ok, sessionId = Profiler.EndSession()
-	cleanup()
-	_G.FAST_PLAYERS_PROFILE_LOADED = false
+	package.loaded[LOAD_KEY] = nil
 	if ok then
 		print("[Profiler] OK flame_graphs/" .. tostring(sessionId) .. "/tick.speedscope.json")
 	else
@@ -69,5 +65,5 @@ callbacks.Register("Unload", TAG, function()
 	end
 end)
 
-print("[fast_players_profile] Recording every tick — unload to export.")
+print("[fast_players_profile] Sampling every " .. TICKS_PER_SAMPLE .. " ticks — unload to export.")
 print("[fast_players_profile] fast_players: " .. (FastPlayers and "yes" or "no"))

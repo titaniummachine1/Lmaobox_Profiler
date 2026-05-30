@@ -9,14 +9,23 @@ const WATCH_GO = path.join("timing_collector", "cmd");
 let timer = null;
 let running = false;
 let pending = false;
+let pendingLuaOnly = true;
+
+function queuePendingRun(luaOnly) {
+	pending = true;
+	if (!luaOnly) {
+		pendingLuaOnly = false;
+	}
+}
 
 function runRapidDev(luaOnly = false) {
 	if (running) {
-		pending = true;
+		queuePendingRun(luaOnly);
 		return;
 	}
 	running = true;
 	pending = false;
+	pendingLuaOnly = true;
 	const args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/rapid-dev.ps1"];
 	if (luaOnly) {
 		args.push("-LuaOnly");
@@ -31,7 +40,10 @@ function runRapidDev(luaOnly = false) {
 		running = false;
 		console.log(`[watch] Done (exit ${code ?? "?"}).\n`);
 		if (pending) {
-			schedule(luaOnly);
+			const rerunLuaOnly = pendingLuaOnly;
+			pending = false;
+			pendingLuaOnly = true;
+			schedule(rerunLuaOnly);
 		}
 	});
 }

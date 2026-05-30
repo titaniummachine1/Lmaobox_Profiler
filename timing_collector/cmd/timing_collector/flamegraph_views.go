@@ -16,17 +16,48 @@ const (
 
 var flameViewFiles = []string{"tick.svg", "tick_avg.svg", "tick_last.svg"}
 
-func flameViewTitles(script string, nTicks int) []string {
+func totalMergedNsFromBatches(batches [][]completedSpan) int64 {
+	var total int64
+	for _, v := range sumLeafDurationsByKey(batches) {
+		total += v
+	}
+	return total
+}
+
+func formatFlameDuration(ns int64) string {
+	if ns < 1_000_000 {
+		return fmt.Sprintf("%.0f ns", float64(ns))
+	}
+	if ns < 1_000_000_000 {
+		return fmt.Sprintf("%.1f ms", float64(ns)/1e6)
+	}
+	return fmt.Sprintf("%.2f s", float64(ns)/1e9)
+}
+
+func flameMergedTitle(script string, batches [][]completedSpan) string {
 	base := script
 	if base == "" {
 		base = "tick"
 	}
-	merged := base
-	if nTicks > 0 {
-		merged = fmt.Sprintf("%s — %d ticks (merged)", base, nTicks)
+	n := len(batches)
+	if n == 0 {
+		return base
+	}
+	total := totalMergedNsFromBatches(batches)
+	title := fmt.Sprintf("%s — %d ticks merged · %s total", base, n, formatFlameDuration(total))
+	if n > 1 && total > 0 {
+		title += fmt.Sprintf(" (~%s/tick)", formatFlameDuration(total/int64(n)))
+	}
+	return title
+}
+
+func flameViewTitles(script string, batches [][]completedSpan) []string {
+	base := script
+	if base == "" {
+		base = "tick"
 	}
 	return []string{
-		merged,
+		flameMergedTitle(script, batches),
 		base + " — average tick",
 		base + " — last tick",
 	}
@@ -192,8 +223,8 @@ func tickCountForFlameTitles() int {
 
 func liveFlameSpansLocked(now int64, view int) ([]completedSpan, string) {
 	script := state.scriptName
-	n := tickCountForFlameTitles()
-	titles := flameViewTitles(script, len(state.tickSpanBatches))
+	batches := state.tickSpanBatches
+	titles := flameViewTitles(script, batches)
 
 	switch view {
 	case flameViewAverage:
@@ -216,7 +247,13 @@ func liveFlameSpansLocked(now int64, view int) ([]completedSpan, string) {
 		if len(sp) == 0 {
 			return nil, ""
 		}
-		return sp, flameViewTitles(script, n)[0]
+		liveBatches := append([][]completedSpan(nil), state.tickSpanBatches...)
+		if state.tickOpen {
+			if cur := currentTickSpansLocked(now); len(cur) > 0 {
+				liveBatches = append(liveBatches, cur)
+			}
+		}
+		return sp, flameMergedTitle(script, liveBatches)
 	}
 }
 
@@ -228,8 +265,7 @@ func sessionFlameFile(view int) string {
 }
 
 func writeFlamegraphViews(dir string, batches [][]completedSpan, scriptName string) error {
-	n := len(batches)
-	titles := flameViewTitles(scriptName, n)
+	titles := flameViewTitles(scriptName, batches)
 	views := []struct {
 		file              string
 		spans             []completedSpan

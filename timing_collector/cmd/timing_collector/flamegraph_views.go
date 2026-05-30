@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -38,6 +39,42 @@ func stackKey(stack []string, name string) string {
 	return strings.Join(stack, ";")
 }
 
+func spanDurationNs(s completedSpan) int64 {
+	d := s.endNs - s.startNs
+	if d < 0 {
+		return 0
+	}
+	return d
+}
+
+func spanFromStackKey(key string, dur int64) completedSpan {
+	if dur < 1 {
+		dur = 1
+	}
+	parts := strings.Split(key, ";")
+	name := key
+	if len(parts) > 0 {
+		name = parts[len(parts)-1]
+	}
+	return completedSpan{
+		name:    name,
+		ctx:     "tick",
+		startNs: 0,
+		endNs:   dur,
+		stack:   parts,
+	}
+}
+
+// mergedSpansFromTicks concatenates leaf-only spans from every completed tick.
+// foldedLinesFromSpans sums durations per stack path (total time across the session).
+func mergedSpansFromTicks(batches [][]completedSpan) []completedSpan {
+	var out []completedSpan
+	for _, batch := range batches {
+		out = append(out, batch...)
+	}
+	return out
+}
+
 func averageSpansFromTicks(batches [][]completedSpan) []completedSpan {
 	if len(batches) == 0 {
 		return nil
@@ -47,15 +84,10 @@ func averageSpansFromTicks(batches [][]completedSpan) []completedSpan {
 		n   int64
 	}
 	byKey := map[string]acc{}
-	var template []completedSpan
 	for _, batch := range batches {
-		leaves := spansForFlamegraph(batch)
-		if len(leaves) > len(template) {
-			template = leaves
-		}
-		for _, s := range leaves {
+		for _, s := range batch {
 			key := stackKey(s.stack, s.name)
-			d := s.endNs - s.startNs
+			d := spanDurationNs(s)
 			if d <= 0 {
 				continue
 			}
@@ -65,27 +97,22 @@ func averageSpansFromTicks(batches [][]completedSpan) []completedSpan {
 			byKey[key] = a
 		}
 	}
-	if len(template) == 0 {
+	if len(byKey) == 0 {
 		return nil
 	}
-	out := make([]completedSpan, 0, len(template))
-	for _, s := range template {
-		key := stackKey(s.stack, s.name)
+	keys := make([]string, 0, len(byKey))
+	for k := range byKey {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	out := make([]completedSpan, 0, len(keys))
+	for _, key := range keys {
 		a := byKey[key]
 		if a.n == 0 {
 			continue
 		}
 		avg := a.sum / a.n
-		if avg < 1 {
-			avg = 1
-		}
-		out = append(out, completedSpan{
-			name:    s.name,
-			ctx:     s.ctx,
-			startNs: 0,
-			endNs:   avg,
-			stack:   append([]string(nil), s.stack...),
-		})
+		out = append(out, spanFromStackKey(key, avg))
 	}
 	return out
 }
@@ -94,28 +121,79 @@ func lastTickSpansFromBatches(batches [][]completedSpan) []completedSpan {
 	if len(batches) == 0 {
 		return nil
 	}
-	return append([]completedSpan(nil), batches[len(batches)-1]...)
+	last := batches[len(batches)-1]
+	return append([]completedSpan(nil), last...)
+}
+
+func currentTickSpansLocked(now int64) []completedSpan {
+	var out []completedSpan
+	for _, id := range collectSpanIDs(state.spans) {
+		rec := state.spans[id]
+		if rec == nil || rec.ctx != "tick" {
+			continue
+		}
+		end := rec.endNs
+		if !rec.closed || end == 0 {
+			end = now
+		}
+		dur := end - rec.startNs
+		if dur <= 0 {
+			continue
+		}
+		out = append(out, completedSpan{
+			name:    rec.name,
+			ctx:     rec.ctx,
+			startNs: rec.startNs,
+			endNs:   end,
+			stack:   buildStackNames(rec, state.spans),
+		})
+	}
+	return spansForFlamegraph(out)
+}
+
+func mergedSpansForLiveLocked(now int64) []completedSpan {
+	out := mergedSpansFromTicks(state.tickSpanBatches)
+	if state.tickOpen {
+		out = append(out, currentTickSpansLocked(now)...)
+	}
+	return out
+}
+
+func tickCountForFlameTitles() int {
+	n := len(state.tickSpanBatches)
+	if state.tickOpen {
+		n++
+	}
+	return n
 }
 
 func liveFlameSpansLocked(now int64, view int) ([]completedSpan, string) {
+	script := state.scriptName
+	n := tickCountForFlameTitles()
+	titles := flameViewTitles(script, len(state.tickSpanBatches))
+
 	switch view {
 	case flameViewAverage:
 		sp := averageSpansFromTicks(state.tickSpanBatches)
 		if len(sp) == 0 {
 			return nil, ""
 		}
-		return sp, "Average tick"
+		return sp, titles[1]
 	case flameViewLast:
 		if len(lastTickLiveSpans) > 0 {
-			return append([]completedSpan(nil), lastTickLiveSpans...), "Last tick"
+			return append([]completedSpan(nil), lastTickLiveSpans...), titles[2]
 		}
 		sp := lastTickSpansFromBatches(state.tickSpanBatches)
 		if len(sp) == 0 {
 			return nil, ""
 		}
-		return sp, "Last tick"
+		return sp, titles[2]
 	default:
-		return collectLiveDisplaySpansLocked(now), liveFlameRootName()
+		sp := mergedSpansForLiveLocked(now)
+		if len(sp) == 0 {
+			return nil, ""
+		}
+		return sp, flameViewTitles(script, n)[0]
 	}
 }
 
@@ -126,7 +204,7 @@ func sessionFlameFile(view int) string {
 	return flameViewFiles[view]
 }
 
-func writeFlamegraphViews(dir string, batches [][]completedSpan, allSpans []completedSpan, scriptName string) error {
+func writeFlamegraphViews(dir string, batches [][]completedSpan, scriptName string) error {
 	n := len(batches)
 	titles := flameViewTitles(scriptName, n)
 	views := []struct {
@@ -134,7 +212,7 @@ func writeFlamegraphViews(dir string, batches [][]completedSpan, allSpans []comp
 		spans []completedSpan
 		title string
 	}{
-		{flameViewFiles[0], allSpans, titles[0]},
+		{flameViewFiles[0], mergedSpansFromTicks(batches), titles[0]},
 		{flameViewFiles[1], averageSpansFromTicks(batches), titles[1]},
 		{flameViewFiles[2], lastTickSpansFromBatches(batches), titles[2]},
 	}

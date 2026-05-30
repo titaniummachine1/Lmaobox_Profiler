@@ -16,3 +16,15 @@ if ($c -eq $c2) {
 }
 [IO.File]::WriteAllText($js, $c2)
 Write-Host "patched speedscope wheel zoom/pan: $js"
+    $c2 = $c2.Replace($pair[0], $pair[1])
+}
+if ($c -eq $c2) {
+    if ($c -match "deltaY/320" -and $c -notmatch "deltaY/100" -and $c -notmatch "1\+n/100") {
+        Write-Host "speedscope zoom/pan already patched: $js"
+        exit 0
+    }
+    Write-Warning "patch_speedscope_zoom: patterns not found (bundle layout changed?)"
+    exit 1
+}
+[IO.File]::WriteAllText($js, $c2)
+Write-Host "patched speedscope wheel zoom/pan: $js"

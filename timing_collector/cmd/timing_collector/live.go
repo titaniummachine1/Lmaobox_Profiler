@@ -47,56 +47,19 @@ func setLastTickLiveSpans(spans []completedSpan) {
 	bumpLiveGraph()
 }
 
-// All tick spans recorded this session (+ current tick in progress).
-func collectLiveSessionSpansLocked(now int64) []completedSpan {
-	out := append([]completedSpan(nil), state.tickSpans...)
-	if !state.tickOpen {
-		return out
-	}
-	for _, id := range collectSpanIDs(state.spans) {
-		rec := state.spans[id]
-		if rec == nil || rec.ctx != "tick" {
-			continue
-		}
-		end := rec.endNs
-		if !rec.closed || end == 0 {
-			end = now
-		}
-		dur := end - rec.startNs
-		if dur <= 0 {
-			continue
-		}
-		out = append(out, completedSpan{
-			name:    rec.name,
-			ctx:     rec.ctx,
-			startNs: rec.startNs,
-			endNs:   end,
-			stack:   buildStackNames(rec, state.spans),
-		})
-	}
-	return out
-}
-
-func collectLiveDisplaySpansLocked(now int64) []completedSpan {
-	return collectLiveSessionSpansLocked(now)
-}
-
 func collectLiveTopSpansLocked(now int64) []completedSpan {
-	return collectLiveSessionSpansLocked(now)
+	return mergedSpansForLiveLocked(now)
 }
 
 func liveFlameRootName() string {
-	n := state.tickSampleNum
-	if state.tickOpen {
-		n++
-	}
+	n := tickCountForFlameTitles()
 	if n <= 0 {
 		return state.scriptName
 	}
 	if state.scriptName != "" {
-		return fmt.Sprintf("%s — %d ticks", state.scriptName, n)
+		return fmt.Sprintf("%s — %d ticks (merged)", state.scriptName, n)
 	}
-	return fmt.Sprintf("%d ticks", n)
+	return fmt.Sprintf("%d ticks (merged)", n)
 }
 
 func liveSpeedscopeMetaLocked() ([]string, int) {

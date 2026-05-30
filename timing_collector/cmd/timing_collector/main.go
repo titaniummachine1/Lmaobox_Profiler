@@ -695,7 +695,7 @@ func exportSessionLocked(endReason string) error {
 		captureTickProfileLocked()
 	}
 
-	tickN := len(state.tickSpans)
+	tickN := len(state.tickSpanBatches)
 	frameN := len(state.frameSpans)
 	if tickN == 0 && frameN == 0 {
 		return fmt.Errorf(
@@ -715,7 +715,7 @@ func exportSessionLocked(endReason string) error {
 			writeSessionErrorFile(dir, endReason, err)
 			return err
 		}
-		if err := writeFlamegraphViews(dir, state.tickSpanBatches, state.tickSpans, state.scriptName); err != nil {
+		if err := writeFlamegraphViews(dir, state.tickSpanBatches, state.scriptName); err != nil {
 			return err
 		}
 		wrote = true

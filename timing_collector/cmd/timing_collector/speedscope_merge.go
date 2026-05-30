@@ -64,17 +64,18 @@ func mergeTickProfiles(perTick []speedscopeEventedProfile) ([]speedscopeEvent, i
 	return merged, merged[0].At, merged[len(merged)-1].At, nil
 }
 
-// frameTotalDurations maps each frame to its total (inclusive) time from one tick's open/close events.
-func frameTotalDurations(events []speedscopeEvent) map[int]int64 {
+// frameExclusiveDurations maps each frame to self time (inclusive minus nested children) per tick.
+func frameExclusiveDurations(events []speedscopeEvent) map[int]int64 {
 	type openRec struct {
-		frame int
-		at    int64
+		frame          int
+		at             int64
+		childInclusive int64
 	}
 	var stack []openRec
 	durs := map[int]int64{}
 	for _, e := range events {
 		if e.Type == "O" {
-			stack = append(stack, openRec{e.Frame, e.At})
+			stack = append(stack, openRec{frame: e.Frame, at: e.At})
 			continue
 		}
 		if len(stack) == 0 {
@@ -85,9 +86,18 @@ func frameTotalDurations(events []speedscopeEvent) map[int]int64 {
 		if top.frame != e.Frame {
 			continue
 		}
-		d := e.At - top.at
-		if d > 0 {
-			durs[e.Frame] += d // accumulate total time (inclusive of children)
+		inclusive := e.At - top.at
+		if inclusive <= 0 {
+			continue
+		}
+		exclusive := inclusive - top.childInclusive
+		if exclusive > 0 {
+			durs[e.Frame] += exclusive
+		}
+		if len(stack) > 0 {
+			parent := stack[len(stack)-1]
+			parent.childInclusive += inclusive
+			stack[len(stack)-1] = parent
 		}
 	}
 	return durs
@@ -103,7 +113,7 @@ func averageTickProfile(perTick []speedscopeEventedProfile) (speedscopeEventedPr
 	}
 	avgDur := map[int]stat{}
 	for _, prof := range perTick {
-		durs := frameTotalDurations(rebaseEvents(prof.Events))
+		durs := frameExclusiveDurations(rebaseEvents(prof.Events))
 		for f, d := range durs {
 			s := avgDur[f]
 			s.sum += d

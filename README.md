@@ -44,8 +44,8 @@ Download both from [GitHub Releases](https://github.com/titaniummachine1/Lmaobox
 
 5. **View the graph**
    - Your browser should open **http://127.0.0.1:9876/** automatically after export.
-   - **Live** panel updates while you play (top spans).
-   - **Saved sessions** → click one for a **Rust-style SVG** flame graph (wide bars, zoom in browser).
+   - **Live** panel updates **while the script stays loaded** (open Live first, then `lua_load live_demo`).
+   - **Saved sessions** → click one for an **inferno SVG** flame graph (same renderer as `cargo flamegraph`).
    - **Open in speedscope.app** link for timeline / Left Heavy (same data, deeper view).
 
 Files on disk: `flame_graphs\<session_id>\tick.svg` (classic) and `tick.speedscope.json` (timeline).
@@ -134,8 +134,9 @@ If there is no data, nothing useful is written and Lua prints **`[Profiler] FAIL
 
 | Script                    | What it does                 |
 | ------------------------- | ---------------------------- |
-| **`simple_test.lua`**     | One tick, instant smoke test |
-| **`multi_tick_test.lua`** | Many ticks; unload to export |
+| **`simple_test.lua`**     | One tick, instant smoke test (no Live) |
+| **`live_demo.lua`**       | **Use for Live** — nested spans, ~6 samples/sec |
+| **`multi_tick_test.lua`** | Many ticks; nested tree; unload to export |
 | **`example.lua`**         | One tick with nested spans   |
 | **`proof.lua`**           | Checks collector responds    |
 
@@ -148,11 +149,13 @@ If there is no data, nothing useful is written and Lua prints **`[Profiler] FAIL
 npm install
 npm run bundle-deploy
 
-# Windows collector
+# Windows collector (Go + hidden Rust inferno helper for SVG)
 timing_collector\build.bat
 ```
 
-Repo layout: `Profiler/` → `Profiler.lua`; `timing_collector/run/` (exe); `timing_collector/cmd/` (Go source); `examples/`.
+Requires [Go](https://go.dev/dl/). For **cargo-flamegraph-quality** SVG, install [Rust](https://rustup.rs/) before `build.bat` — it also builds `flamegraph_gen.exe` into `run\` (used automatically; you only double-click `timing_collector.exe`).
+
+Repo layout: `Profiler/` → `Profiler.lua`; `timing_collector/run/` (exes); `timing_collector/cmd/` (Go); `timing_collector/flamegraph_gen/` (Rust); `examples/`.
 
 ---
 

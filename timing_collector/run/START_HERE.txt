@@ -16,6 +16,7 @@ VIEW RESULTS (after unload script in TF2)
     Profile dropdown → tick 1, tick 2, … (one tick each)
     Scroll = zoom, drag = pan, click bar = zoom in
 
-  Rebuild: build.bat in parent folder
+  Rebuild: build.bat in parent folder (builds timing_collector.exe + hidden flamegraph_gen.exe)
 
 Do not open the "cmd" folder — that is source code.
+Only double-click timing_collector.exe — flamegraph_gen.exe is called automatically.

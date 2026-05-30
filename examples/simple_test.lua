@@ -1,6 +1,8 @@
 --[[
-    One-shot test. Deploy: npm run bundle-deploy  ->  %%LOCALAPPDATA%%\lua\Profiler.lua
-    1. Double-click timing_collector\run\timing_collector.exe
+    One-shot export (no Live — ends immediately). For Live use live_demo or multi_tick_test.
+
+    Deploy: npm run bundle-deploy  ->  %LOCALAPPDATA%\lua\Profiler.lua
+    1. timing_collector\run\timing_collector.exe
     2. lua_load simple_test
 ]]
 
@@ -34,9 +36,11 @@ local function profileTask(name, times)
 end
 
 Profiler.BeginTick()
+Profiler.Begin("CreateMove")
 profileTask("setupBones", 50)
 profileTask("cachePlayers", 30)
 profileTask("readConfig", 10)
+Profiler.End() -- CreateMove
 Profiler.EndTick()
 
 local ok, sessionId = Profiler.EndSession()

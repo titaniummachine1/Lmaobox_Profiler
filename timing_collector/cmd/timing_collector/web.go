@@ -23,22 +23,49 @@ func registerWebUI(mux *http.ServeMux) {
 	sub, _ := fs.Sub(webFS, "web")
 	mux.Handle("/", http.FileServer(http.FS(sub)))
 	mux.HandleFunc("/api/live", handleAPILive)
+	mux.HandleFunc("/api/live/flame.svg", handleAPILiveFlameSVG)
 	mux.HandleFunc("/api/sessions", handleAPISessions)
-	mux.HandleFunc("/api/session/", handleAPISession)
+	mux.HandleFunc("/api/session/", handleAPISessionRoute)
 }
 
-func handleAPISession(w http.ResponseWriter, r *http.Request) {
+func handleAPISessionRoute(w http.ResponseWriter, r *http.Request) {
 	setAPICORS(w)
-	// /api/session/{id}/tick.meta.json | tick.speedscope.json | ...
+	w.Header().Set("Access-Control-Allow-Methods", "GET, DELETE, OPTIONS")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
 	path := strings.TrimPrefix(r.URL.Path, "/api/session/")
-	parts := strings.Split(path, "/")
-	if len(parts) < 2 {
+	path = strings.Trim(path, "/")
+	if path == "" || strings.Contains(path, "..") {
 		http.NotFound(w, r)
 		return
 	}
+
+	parts := strings.Split(path, "/")
 	id := parts[0]
+	if strings.Contains(id, "..") {
+		http.NotFound(w, r)
+		return
+	}
+
+	if len(parts) == 1 {
+		if r.Method == http.MethodDelete {
+			handleDeleteSession(w, id)
+			return
+		}
+		http.Error(w, "use DELETE to remove session", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	file := strings.Join(parts[1:], "/")
-	if strings.Contains(id, "..") || strings.Contains(file, "..") {
+	if strings.Contains(file, "..") {
 		http.NotFound(w, r)
 		return
 	}
@@ -59,6 +86,20 @@ func handleAPISession(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(data)
 }
 
+func handleDeleteSession(w http.ResponseWriter, sessionID string) {
+	dir := filepath.Join(flameGraphsDir(), sessionID)
+	if _, err := os.Stat(dir); err != nil {
+		http.NotFound(w, nil)
+		return
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"deleted": sessionID})
+}
+
 func handleAPILive(w http.ResponseWriter, r *http.Request) {
 	mu.Lock()
 	defer mu.Unlock()
@@ -67,7 +108,13 @@ func handleAPILive(w http.ResponseWriter, r *http.Request) {
 		Stack string `json:"stack"`
 		Ns    int64  `json:"ns"`
 	}
+	type openRow struct {
+		Stack string  `json:"stack"`
+		Ns    int64   `json:"ns"`
+		Ms    float64 `json:"ms"`
+	}
 	var rows []row
+	var openRows []openRow
 	totals := map[string]int64{}
 
 	addSpan := func(stack []string, ns int64) {
@@ -81,15 +128,14 @@ func handleAPILive(w http.ResponseWriter, r *http.Request) {
 		totals[key] += ns
 	}
 
-	for _, s := range state.tickSpans {
-		addSpan(s.stack, s.endNs-s.startNs)
-	}
-	for _, s := range state.frameSpans {
-		addSpan(s.stack, s.endNs-s.startNs)
-	}
 	now := time.Since(serverStart).Nanoseconds()
-	for _, rec := range state.spans {
-		if rec == nil || rec.closed {
+	for _, s := range collectLiveTopSpansLocked(now) {
+		addSpan(s.stack, s.endNs-s.startNs)
+	}
+
+	for _, id := range state.openStack {
+		rec := state.spans[id]
+		if rec == nil || rec.closed || rec.ctx != "tick" {
 			continue
 		}
 		end := rec.endNs
@@ -97,7 +143,12 @@ func handleAPILive(w http.ResponseWriter, r *http.Request) {
 			end = now
 		}
 		stack := buildStackNames(rec, state.spans)
-		addSpan(stack, end-rec.startNs)
+		ns := end - rec.startNs
+		openRows = append(openRows, openRow{
+			Stack: strings.Join(stack, " → "),
+			Ns:    ns,
+			Ms:    float64(ns) / 1e6,
+		})
 	}
 
 	for k, v := range totals {
@@ -108,18 +159,57 @@ func handleAPILive(w http.ResponseWriter, r *http.Request) {
 		rows = rows[:20]
 	}
 
+	events := append([]liveEvent(nil), liveEvents...)
+	if len(events) > 80 {
+		events = events[len(events)-80:]
+	}
+
 	resp := map[string]interface{}{
-		"active":      state.sessionID != "",
-		"session_id":  state.sessionID,
-		"script":      state.scriptName,
-		"tick_open":   state.tickOpen,
-		"frame_open":  state.frameOpen,
-		"top":         rows,
-		"server_time": time.Now().Format(time.RFC3339),
+		"active":       state.sessionID != "",
+		"session_id":   state.sessionID,
+		"script":       state.scriptName,
+		"tick_open":    state.tickOpen,
+		"frame_open":   state.frameOpen,
+		"tick_samples": state.tickSampleNum,
+		"top":          rows,
+		"open":         openRows,
+		"events":       events,
+		"graph_rev":    liveGraphRev,
+		"server_time":  time.Now().Format(time.RFC3339),
 	}
 	setAPICORS(w)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func handleAPILiveFlameSVG(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	now := time.Since(serverStart).Nanoseconds()
+	spans := collectLiveDisplaySpansLocked(now)
+	active := state.sessionID != ""
+	script := state.scriptName
+	rootLabel := liveFlameRootName()
+	mu.Unlock()
+
+	if !active || len(spans) == 0 {
+		w.Header().Set("Content-Type", "image/svg+xml")
+		_, _ = w.Write([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="80"><text x="12" y="40" fill="#888" font-family="Segoe UI,sans-serif" font-size="14">Waiting for first tick — play with a profiled script loaded</text></svg>`))
+		return
+	}
+
+	title := rootLabel
+	if script != "" {
+		title = rootLabel + " — " + script
+	}
+	svg, err := renderFlamegraphBytes(spans, title, rootLabel)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNoContent)
+		return
+	}
+	setAPICORS(w)
+	w.Header().Set("Content-Type", "image/svg+xml")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(svg)
 }
 
 func handleAPISessions(w http.ResponseWriter, _ *http.Request) {
@@ -137,7 +227,7 @@ func handleAPISessions(w http.ResponseWriter, _ *http.Request) {
 		HasScope bool   `json:"has_speedscope"`
 		ModTime  string `json:"mod_time"`
 	}
-	var list []sess
+	list := make([]sess, 0) // must be non-nil so JSON encodes as [] not null
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue

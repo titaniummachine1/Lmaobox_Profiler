@@ -1,0 +1,3 @@
+multi_tick_test;tick 1;setupBones 20000000
+multi_tick_test;tick 1;cachePlayers 15000000
+multi_tick_test;tick 1;readConfig 10000000

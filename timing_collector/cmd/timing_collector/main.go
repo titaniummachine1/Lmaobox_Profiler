@@ -56,8 +56,8 @@ type collectorState struct {
 	tickEvents  []speedscopeEvent
 	frameEvents []speedscopeEvent
 
-	tickEventsStart int                      // tickEvents index at last tick/begin
-	tickSampleNum   int                      // exported tick counter
+	tickEventsStart int                        // tickEvents index at last tick/begin
+	tickSampleNum   int                        // exported tick counter
 	tickProfiles    []speedscopeEventedProfile // one speedscope profile per EndTick
 }
 
@@ -160,6 +160,11 @@ func printStartupBanner(outDir string) {
 	fmt.Println("============================================================")
 	fmt.Printf("  Viewer: http://%s/  (live + saved flame graphs)\n", listenAddr)
 	fmt.Printf("  Files:  %s\\<session_id>\\tick.svg\n", outDir)
+	if flamegraphGenExe() != "" {
+		fmt.Println("  SVG:    inferno (flamegraph_gen.exe — cargo-flamegraph quality)")
+	} else {
+		fmt.Println("  SVG:    built-in renderer (run build.bat with Rust for inferno SVG)")
+	}
 	fmt.Println()
 	fmt.Println("  1. Copy Profiler.lua to %LOCALAPPDATA%\\lua\\")
 	fmt.Println("  2. In TF2: lua_load simple_test  (or your script)")
@@ -267,6 +272,8 @@ func handleSessionBegin(w http.ResponseWriter, r *http.Request) {
 	frameNameToIndex = map[string]map[string]int{}
 	profilingStarted = false
 	lastActivity = time.Time{}
+	clearLiveEvents()
+	pushLiveEvent("session", fmt.Sprintf("Session started — %s", script))
 
 	fmt.Fprintf(w, "%s", state.sessionID)
 }
@@ -298,6 +305,7 @@ func handleTickBegin(w http.ResponseWriter, r *http.Request) {
 	state.activeCtx = "tick"
 	state.tickOpen = true
 	state.tickEventsStart = len(state.tickEvents)
+	pushLiveEvent("tick", fmt.Sprintf("Tick %d begin", state.tickSampleNum+1))
 	fmt.Fprint(w, "0")
 }
 
@@ -343,6 +351,7 @@ func handleTickEnd(w http.ResponseWriter, r *http.Request) {
 	if state.activeCtx == "tick" {
 		state.activeCtx = ""
 	}
+	pushLiveEvent("tick", fmt.Sprintf("Tick %d end", state.tickSampleNum))
 	fmt.Fprint(w, "0")
 }
 
@@ -357,6 +366,7 @@ func handleFrameBegin(w http.ResponseWriter, r *http.Request) {
 	closeOpenSpansLocked("frame")
 	state.activeCtx = "frame"
 	state.frameOpen = true
+	pushLiveEvent("frame", "Frame begin")
 	fmt.Fprint(w, "0")
 }
 
@@ -373,6 +383,7 @@ func handleFrameEnd(w http.ResponseWriter, r *http.Request) {
 	if state.activeCtx == "frame" {
 		state.activeCtx = ""
 	}
+	pushLiveEvent("frame", "Frame end")
 	fmt.Fprint(w, "0")
 }
 
@@ -418,6 +429,7 @@ func handleSpanStart(w http.ResponseWriter, r *http.Request) {
 	state.openStack = append(state.openStack, id)
 
 	appendOpenEventLocked(ctx, name, startNs)
+	pushLiveEvent("open", fmt.Sprintf("▶ %s", spanStackLabel(rec)))
 
 	fmt.Fprintf(w, "%d", id)
 }
@@ -458,7 +470,9 @@ func handleSpanEnd(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	fmt.Fprintf(w, "%d", endNs-rec.startNs)
+	dur := endNs - rec.startNs
+	pushLiveEvent("close", fmt.Sprintf("■ %s — %.3f ms", spanStackLabel(rec), float64(dur)/1e6))
+	fmt.Fprintf(w, "%d", dur)
 }
 
 // handleSpanReport ingests a completed span from Lua (buffered flush — no per-Begin HTTP).
@@ -520,6 +534,7 @@ func handleSpanReport(w http.ResponseWriter, r *http.Request) {
 	} else {
 		state.frameSpans = append(state.frameSpans, completed)
 	}
+	pushLiveEvent("close", fmt.Sprintf("■ %s — %.3f ms", strings.Join(stack, " → "), float64(durNs)/1e6))
 
 	fmt.Fprint(w, "0")
 }
@@ -544,8 +559,10 @@ func closeOpenSpansLocked(ctx string) {
 
 func flushCtxSpansLocked(ctx string) {
 	now := time.Since(serverStart).Nanoseconds()
-	var completed []completedSpan
-	for _, id := range collectSpanIDs(state.spans) {
+	ids := collectSpanIDs(state.spans)
+
+	// Pass 1: close any still-open spans (parents first by ID order is fine here)
+	for _, id := range ids {
 		rec := state.spans[id]
 		if rec == nil || rec.ctx != ctx {
 			continue
@@ -555,6 +572,15 @@ func flushCtxSpansLocked(ctx string) {
 			rec.closed = true
 			appendCloseEventLocked(ctx, rec.name, now)
 		}
+	}
+
+	// Pass 2: build full stacks while ALL parents are still in the map
+	var completed []completedSpan
+	for _, id := range ids {
+		rec := state.spans[id]
+		if rec == nil || rec.ctx != ctx {
+			continue
+		}
 		stack := buildStackNames(rec, state.spans)
 		completed = append(completed, completedSpan{
 			name:    rec.name,
@@ -563,12 +589,19 @@ func flushCtxSpansLocked(ctx string) {
 			endNs:   rec.endNs,
 			stack:   stack,
 		})
-		delete(state.spans, id)
+	}
+
+	// Pass 3: remove all processed spans at once
+	for _, id := range ids {
+		if rec := state.spans[id]; rec != nil && rec.ctx == ctx {
+			delete(state.spans, id)
+		}
 	}
 	state.openStack = nil
 
 	if ctx == "tick" {
 		state.tickSpans = append(state.tickSpans, completed...)
+		setLastTickLiveSpans(completed)
 	} else {
 		state.frameSpans = append(state.frameSpans, completed...)
 	}
@@ -653,10 +686,7 @@ func exportSessionLocked(endReason string) error {
 			writeSessionErrorFile(dir, endReason, err)
 			return err
 		}
-		if err := writeFolded(dir, "tick", state.tickSpans); err != nil {
-			return err
-		}
-		if err := writeFlamegraphSVG(dir, "tick", state.tickSpans); err != nil {
+		if err := writeFlamegraph(dir, "tick", state.tickSpans, state.scriptName); err != nil {
 			return err
 		}
 		wrote = true
@@ -666,10 +696,7 @@ func exportSessionLocked(endReason string) error {
 			writeSessionErrorFile(dir, endReason, err)
 			return err
 		}
-		if err := writeFolded(dir, "frame", state.frameSpans); err != nil {
-			return err
-		}
-		if err := writeFlamegraphSVG(dir, "frame", state.frameSpans); err != nil {
+		if err := writeFlamegraph(dir, "frame", state.frameSpans, state.scriptName); err != nil {
 			return err
 		}
 		wrote = true
@@ -844,39 +871,6 @@ func buildSpeedscopeFile(frameMap map[string]int, profiles []speedscopeEventedPr
 	return file, nil
 }
 
-func writeFolded(dir, ctx string, spans []completedSpan) error {
-	agg := map[string]int64{}
-	for _, s := range spans {
-		key := strings.Join(s.stack, ";")
-		if key == "" {
-			key = s.name
-		}
-		dur := s.endNs - s.startNs
-		if dur < 0 {
-			dur = 0
-		}
-		agg[key] += dur
-	}
-	if len(agg) == 0 {
-		return fmt.Errorf("%s: no folded stack data", ctx)
-	}
-	var lines []string
-	for k, v := range agg {
-		if v > 0 {
-			lines = append(lines, fmt.Sprintf("%s %d", k, v))
-		}
-	}
-	if len(lines) == 0 {
-		return fmt.Errorf("%s: all span durations are zero", ctx)
-	}
-	sort.Strings(lines)
-	path := filepath.Join(dir, ctx+".folded.txt")
-	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644); err != nil {
-		return fmt.Errorf("%s: write %s: %w", ctx, path, err)
-	}
-	return nil
-}
-
 func resetSessionLocked() {
 	state.sessionID = ""
 	state.scriptName = ""
@@ -895,6 +889,7 @@ func resetSessionLocked() {
 	frameNameToIndex = map[string]map[string]int{}
 	profilingStarted = false
 	lastActivity = time.Time{}
+	clearLiveEvents()
 }
 
 func queryUnescape(r *http.Request, key string) string {

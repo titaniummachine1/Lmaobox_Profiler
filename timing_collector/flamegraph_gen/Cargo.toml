@@ -1,0 +1,19 @@
+[package]
+name = "flamegraph_gen"
+version = "0.1.0"
+edition = "2021"
+description = "Hidden helper: folded stacks -> SVG (inferno / cargo-flamegraph quality)"
+
+[[bin]]
+name = "flamegraph_gen"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+inferno = "0.12"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true

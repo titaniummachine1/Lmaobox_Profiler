@@ -7,3 +7,6 @@ timing_collector/**/*.exe~
 timing_server/target/
 timing_collector/flamegraph_gen/target/
 timing_collector/run/flamegraph_gen.exe
+timing_collector/run/test.*
+timing_collector/run/*.folded
+timing_collector/run/*.svg

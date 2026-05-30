@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -46,48 +47,99 @@ func setLastTickLiveSpans(spans []completedSpan) {
 	bumpLiveGraph()
 }
 
-// collectLiveDisplaySpans returns spans for one tick only (in-progress or last completed).
-func collectLiveDisplaySpansLocked(now int64) []completedSpan {
-	if state.tickOpen {
-		var out []completedSpan
-		for _, id := range collectSpanIDs(state.spans) {
-			rec := state.spans[id]
-			if rec == nil || rec.ctx != "tick" {
-				continue
-			}
-			end := rec.endNs
-			if !rec.closed || end == 0 {
-				end = now
-			}
-			dur := end - rec.startNs
-			if dur <= 0 {
-				continue
-			}
-			out = append(out, completedSpan{
-				name:    rec.name,
-				ctx:     rec.ctx,
-				startNs: rec.startNs,
-				endNs:   end,
-				stack:   buildStackNames(rec, state.spans),
-			})
-		}
+// All tick spans recorded this session (+ current tick in progress).
+func collectLiveSessionSpansLocked(now int64) []completedSpan {
+	out := append([]completedSpan(nil), state.tickSpans...)
+	if !state.tickOpen {
 		return out
 	}
-	return append([]completedSpan(nil), lastTickLiveSpans...)
+	for _, id := range collectSpanIDs(state.spans) {
+		rec := state.spans[id]
+		if rec == nil || rec.ctx != "tick" {
+			continue
+		}
+		end := rec.endNs
+		if !rec.closed || end == 0 {
+			end = now
+		}
+		dur := end - rec.startNs
+		if dur <= 0 {
+			continue
+		}
+		out = append(out, completedSpan{
+			name:    rec.name,
+			ctx:     rec.ctx,
+			startNs: rec.startNs,
+			endNs:   end,
+			stack:   buildStackNames(rec, state.spans),
+		})
+	}
+	return out
 }
 
-func liveFlameRootName() string {
-	if state.tickOpen {
-		return fmt.Sprintf("tick %d (live)", state.tickSampleNum+1)
-	}
-	if state.tickSampleNum > 0 {
-		return fmt.Sprintf("tick %d", state.tickSampleNum)
-	}
-	return "tick"
+func collectLiveDisplaySpansLocked(now int64) []completedSpan {
+	return collectLiveSessionSpansLocked(now)
 }
 
 func collectLiveTopSpansLocked(now int64) []completedSpan {
-	return collectLiveDisplaySpansLocked(now)
+	return collectLiveSessionSpansLocked(now)
+}
+
+func liveFlameRootName() string {
+	n := state.tickSampleNum
+	if state.tickOpen {
+		n++
+	}
+	if n <= 0 {
+		return state.scriptName
+	}
+	if state.scriptName != "" {
+		return fmt.Sprintf("%s — %d ticks", state.scriptName, n)
+	}
+	return fmt.Sprintf("%d ticks", n)
+}
+
+func buildLiveSpeedscopeLocked() ([]byte, []string, int, error) {
+	events := state.tickEvents
+	frameMap := frameNameToIndex["tick"]
+	if len(events) < 2 || len(frameMap) == 0 {
+		return nil, nil, 0, fmt.Errorf("not enough live speedscope data yet")
+	}
+
+	merged := compressEventTimeline(append([]speedscopeEvent(nil), events...))
+	startVal := merged[0].At
+	endVal := merged[len(merged)-1].At
+	if endVal <= startVal {
+		return nil, nil, 0, fmt.Errorf("zero duration")
+	}
+
+	profiles := []speedscopeEventedProfile{{
+		Type:       "evented",
+		Name:       "ALL ticks (merged)",
+		Unit:       "nanoseconds",
+		StartValue: startVal,
+		EndValue:   endVal,
+		Events:     merged,
+	}}
+	profiles = append(profiles, state.tickProfiles...)
+	active := 0
+	if len(state.tickProfiles) > 0 {
+		active = 1
+	}
+
+	file, err := buildSpeedscopeFile(frameMap, profiles, active)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	b, err := json.Marshal(file)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	names := make([]string, len(profiles))
+	for i, p := range profiles {
+		names[i] = p.Name
+	}
+	return b, names, active, nil
 }
 
 func spanStackLabel(rec *spanRecord) string {

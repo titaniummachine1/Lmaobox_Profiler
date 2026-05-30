@@ -3,7 +3,7 @@
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use inferno::flamegraph::{from_reader, Options};
+use inferno::flamegraph::{from_reader, Direction, Options};
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
@@ -33,6 +33,8 @@ fn main() -> Result<()> {
     options.frame_height = 20;
     options.min_width = 0.0;
     options.hash = true;
+    // Root at top, children grow downward (icicle-style — not classic bottom-up flame)
+    options.direction = Direction::Straight;
 
     let input = BufReader::new(
         File::open(&args.input)

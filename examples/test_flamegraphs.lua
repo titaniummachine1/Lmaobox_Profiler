@@ -3,7 +3,7 @@
 ]]
 
 local SCRIPT_NAME = "test_flamegraphs"
-local FLAME_GRAPHS_ROOT = "C:\\gitProjects\\profiler\\timing_collector\\flame_graphs"
+local FLAME_GRAPHS_ROOT = "C:\\gitProjects\\profiler\\timing_collector\\run\\flame_graphs"
 local LOAD_KEY = "profiler.test_flamegraphs.v1"
 
 if package.loaded[LOAD_KEY] then

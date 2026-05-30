@@ -91,20 +91,20 @@ jobs:
 
       - name: Build timing_collector (linux)
         working-directory: timing_collector
-        run: go build -o timing_collector .
+        run: go build -o run/timing_collector ./cmd/timing_collector
 
       - name: Build timing_collector (windows)
         working-directory: timing_collector
-        run: GOOS=windows GOARCH=amd64 go build -o timing_collector.exe .
+        run: GOOS=windows GOARCH=amd64 go build -o run/timing_collector.exe ./cmd/timing_collector
 
       - name: Stage release files
         run: |
           set -euo pipefail
           mkdir -p dist
           test -s dist/Profiler.lua
-          cp timing_collector/timing_collector dist/
-          cp timing_collector/timing_collector.exe dist/
-          cp timing_collector/USAGE.txt dist/USAGE.txt
+          cp timing_collector/run/timing_collector dist/
+          cp timing_collector/run/timing_collector.exe dist/
+          cp timing_collector/run/START_HERE.txt dist/START_HERE.txt
           cp examples/simple_test.lua dist/example_simple_test.lua
           cp examples/multi_tick_test.lua dist/example_multi_tick_test.lua
           sha256sum dist/* > dist/SHA256SUMS.txt
@@ -124,7 +124,7 @@ jobs:
             echo "### Assets"
             echo "- \`Profiler.lua\` → \`%localappdata%/lua/Profiler.lua\`"
             echo "- \`timing_collector.exe\` — double-click, leave window open"
-            echo "- \`USAGE.txt\` — short instructions"
+            echo "- \`START_HERE.txt\` — short instructions"
             echo "- \`example_simple_test.lua\` / \`example_multi_tick_test.lua\`"
             echo "- \`SHA256SUMS.txt\`"
           } > "${body_file}"
@@ -134,7 +134,7 @@ jobs:
             dist/Profiler.lua \
             dist/timing_collector \
             dist/timing_collector.exe \
-            dist/USAGE.txt \
+            dist/START_HERE.txt \
             dist/example_simple_test.lua \
             dist/example_multi_tick_test.lua \
             dist/SHA256SUMS.txt

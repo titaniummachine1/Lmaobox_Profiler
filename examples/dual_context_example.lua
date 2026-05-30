@@ -1,12 +1,12 @@
 --[[
     Tick + frame in one shot (frame block still runs at load; real games use Draw callback).
 
-    1. Double-click timing_collector\timing_collector.exe
+    1. Double-click timing_collector\run\timing_collector.exe
     2. lua_load dual_context_example
 ]]
 
 local SCRIPT_NAME = "dual_context_example"
-local FLAME_GRAPHS_ROOT = "C:\\gitProjects\\profiler\\timing_collector\\flame_graphs"
+local FLAME_GRAPHS_ROOT = "C:\\gitProjects\\profiler\\timing_collector\\run\\flame_graphs"
 local LOAD_KEY = "profiler.dual_context.v1"
 
 if package.loaded[LOAD_KEY] then

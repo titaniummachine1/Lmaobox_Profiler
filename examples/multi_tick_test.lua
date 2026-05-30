@@ -2,7 +2,7 @@
     Profile ~1 CreateMove tick per second (avoids blocking http.Get storm).
     Unload script to export. No callbacks.Unregister (Lmaobox policy — crashes).
 
-    1. Double-click timing_collector\timing_collector.exe
+    1. Double-click timing_collector\run\timing_collector.exe
     2. lua_load multi_tick_test
     3. Play a few seconds, unload script
 ]]

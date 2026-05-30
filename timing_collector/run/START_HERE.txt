@@ -1,0 +1,21 @@
+RUN THIS
+========
+  timing_collector.exe   <-- double-click, leave window open
+
+THEN IN TF2
+===========
+  1. Profiler.lua is in %LOCALAPPDATA%\lua\  (devs: npm run bundle-deploy)
+  2. lua_load simple_test
+
+VIEW RESULTS (after unload script in TF2)
+=======================================
+  Browser: http://127.0.0.1:9876/
+  Click a saved session → interactive graph (zoom / pan / per-tick)
+
+  In the viewer:
+    Profile dropdown → tick 1, tick 2, … (one tick each)
+    Scroll = zoom, drag = pan, click bar = zoom in
+
+  Rebuild: build.bat in parent folder
+
+Do not open the "cmd" folder — that is source code.

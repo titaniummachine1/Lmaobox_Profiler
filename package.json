@@ -10,7 +10,7 @@
 		"bundle-deploy": "node bundle-and-deploy.js",
 		"bundle-and-deploy": "node bundle-and-deploy.js",
 		"watch": "node watch.js",
-		"build:collector": "cd timing_collector && go build -o timing_collector.exe ."
+		"build:collector": "cd timing_collector && go build -o run/timing_collector.exe ./cmd/timing_collector"
 	},
 	"keywords": ["lua", "profiler", "lmaobox"],
 	"author": "titaniummachine1",

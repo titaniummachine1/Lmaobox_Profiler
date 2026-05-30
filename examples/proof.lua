@@ -1,6 +1,6 @@
 --[[
     Verify timing_collector.exe is running (one Draw probe).
-    Double-click timing_collector.exe first.
+    Double-click timing_collector\run\timing_collector.exe first.
 ]]
 
 local TAG = "profiler_proof"
@@ -22,7 +22,7 @@ callbacks.Register("Draw", TAG, function()
 	if ok and response and tonumber(response) then
 		print("[proof] Collector OK — run: lua_load simple_test")
 	else
-		print("[proof] FAILED — double-click timing_collector.exe")
+		print("[proof] FAILED — double-click timing_collector\\run\\timing_collector.exe")
 	end
 end)
 

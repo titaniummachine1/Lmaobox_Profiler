@@ -6,10 +6,10 @@ Drop-in Lua library + one Windows program. **Lua never measures time** — it on
 
 ## What you need (two files)
 
-| File                       | Where                                                                              |
-| -------------------------- | ---------------------------------------------------------------------------------- |
-| **`timing_collector.exe`** | Any folder (e.g. `timing_collector\`). **Double-click** and leave the window open. |
-| **`Profiler.lua`**         | `%LOCALAPPDATA%\lua\Profiler.lua`                                                  |
+| File                       | Where                                                                 |
+| -------------------------- | --------------------------------------------------------------------- |
+| **`timing_collector.exe`** | `timing_collector\run\` — **double-click** and leave the window open. |
+| **`Profiler.lua`**         | `%LOCALAPPDATA%\lua\Profiler.lua`                                     |
 
 Download both from [GitHub Releases](https://github.com/titaniummachine1/Lmaobox_Profiler/releases) or build from this repo (below).
 
@@ -17,7 +17,7 @@ Download both from [GitHub Releases](https://github.com/titaniummachine1/Lmaobox
 
 ## First test (copy-paste path)
 
-1. **Double-click** `timing_collector\timing_collector.exe`
+1. **Double-click** `timing_collector\run\timing_collector.exe`
    - Window should stay open and show `http://127.0.0.1:9876`
    - If it exits immediately, something else owns port 9876 — close that program and double-click again (the exe tries to free the port on Windows).
 
@@ -42,12 +42,13 @@ Download both from [GitHub Releases](https://github.com/titaniummachine1/Lmaobox
    [Profiler] OK flame_graphs/simple_test_<id>/tick.speedscope.json
    ```
 
-5. **Open the graph**
-   - Path (next to the exe): `timing_collector\flame_graphs\<session_id>\tick.speedscope.json`
-   - Drag that file into **https://www.speedscope.app**
-   - Use **Left Heavy** to see what cost the most; **Time Order** for when things ran.
+5. **View the graph**
+   - Your browser should open **http://127.0.0.1:9876/** automatically after export.
+   - **Live** panel updates while you play (top spans).
+   - **Saved sessions** → click one for a **Rust-style SVG** flame graph (wide bars, zoom in browser).
+   - **Open in speedscope.app** link for timeline / Left Heavy (same data, deeper view).
 
-**Do not** open `tick.folded.txt` in speedscope — use **`.speedscope.json` only**.
+Files on disk: `flame_graphs\<session_id>\tick.svg` (classic) and `tick.speedscope.json` (timeline).
 
 ---
 
@@ -147,12 +148,11 @@ If there is no data, nothing useful is written and Lua prints **`[Profiler] FAIL
 npm install
 npm run bundle-deploy
 
-# Windows collector (double-clickable)
-cd timing_collector
-go build -o timing_collector.exe .
+# Windows collector
+timing_collector\build.bat
 ```
 
-Repo layout: `Profiler/` (sources) → bundled to `Profiler.lua`; `timing_collector/` (Go); `examples/` (samples). `timing_server/` is archived Rust — do not use.
+Repo layout: `Profiler/` → `Profiler.lua`; `timing_collector/run/` (exe); `timing_collector/cmd/` (Go source); `examples/`.
 
 ---
 
@@ -160,8 +160,8 @@ Repo layout: `Profiler/` (sources) → bundled to `Profiler.lua`; `timing_collec
 
 | Symptom                                           | Fix                                                                         |
 | ------------------------------------------------- | --------------------------------------------------------------------------- |
-| `[Profiler] FAILED: timing_collector not running` | Double-click `timing_collector.exe`, keep window open                       |
-| `[Profiler] FAILED: outdated`                     | Rebuild: `cd timing_collector && go build -o timing_collector.exe .`        |
+| `[Profiler] FAILED: timing_collector not running` | Double-click `timing_collector\run\timing_collector.exe`                    |
+| `[Profiler] FAILED: outdated`                     | Run `timing_collector\build.bat`                                            |
 | Port 9876 in use                                  | Close old collector; exe frees port on start (Windows)                      |
 | speedscope empty / broken                         | Open **`tick.speedscope.json`**, not `.folded.txt`                          |
 | Game freeze with profiling                        | Fewer spans per tick; use `multi_tick_test` sampling, not 66 full ticks/sec |

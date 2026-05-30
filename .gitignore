@@ -1,5 +1,7 @@
 node_modules/
 Profiler.lua
-timing_collector/timing_collector.exe
-timing_collector/flame_graphs/
+timing_collector/run/timing_collector.exe
+timing_collector/run/flame_graphs/
+timing_collector/*.exe
+timing_collector/**/*.exe~
 timing_server/target/

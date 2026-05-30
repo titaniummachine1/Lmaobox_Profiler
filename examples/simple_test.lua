@@ -1,6 +1,6 @@
 --[[
     One-shot test. Deploy: npm run bundle-deploy  ->  %%LOCALAPPDATA%%\lua\Profiler.lua
-    1. Double-click timing_collector\timing_collector.exe
+    1. Double-click timing_collector\run\timing_collector.exe
     2. lua_load simple_test
 ]]
 
@@ -46,5 +46,5 @@ if not ok then
 	return
 end
 
-print("[Profiler] OK flame_graphs/" .. tostring(sessionId) .. "/tick.speedscope.json")
-print("[Profiler] Open that file at https://www.speedscope.app")
+print("[Profiler] OK — browser should open http://127.0.0.1:9876/")
+print("[Profiler] session: " .. tostring(sessionId))

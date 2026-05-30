@@ -1,7 +1,7 @@
 --[[
     Same as simple_test but with one extra nested task. Still one shot on load.
 
-    1. Double-click timing_collector\timing_collector.exe
+    1. Double-click timing_collector\run\timing_collector.exe
     2. lua_load example
 ]]
 

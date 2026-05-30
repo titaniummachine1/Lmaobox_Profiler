@@ -93,7 +93,7 @@ end
 			writeTarget(targetPath, output, "Profiler.lua");
 			deployExamples();
 			console.log(`[BundleAndDeploy] Profiler.lua -> ${targetPath}`);
-			console.log("[BundleAndDeploy] Double-click timing_collector\\timing_collector.exe then lua_load simple_test");
+			console.log("[BundleAndDeploy] Double-click timing_collector\\run\\timing_collector.exe then lua_load simple_test");
 		}
 
 		process.exitCode = 0;

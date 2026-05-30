@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lmaobox Profiler</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif; background: #0f0f0f; color: #eee; }
+    header { padding: 10px 14px; background: #1a1a1a; border-bottom: 1px solid #333; }
+    header h1 { margin: 0; font-size: 17px; }
+    header p { margin: 4px 0 0; font-size: 12px; color: #999; }
+    main { display: grid; grid-template-columns: 260px 1fr; height: calc(100vh - 52px); }
+    aside { border-right: 1px solid #333; padding: 10px; overflow: auto; font-size: 13px; }
+    section h2 { font-size: 11px; text-transform: uppercase; color: #777; margin: 12px 0 6px; }
+    section h2:first-child { margin-top: 0; }
+    .live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; background: #444; vertical-align: middle; }
+    .live-dot.on { background: #4caf50; }
+    .session { display: block; width: 100%; text-align: left; padding: 7px 9px; margin: 3px 0; border: 1px solid #333; border-radius: 5px; background: #181818; color: #eee; cursor: pointer; }
+    .session.active { border-color: #6a9; background: #1a2820; }
+    .meta { font-size: 11px; color: #666; }
+    .content { display: flex; flex-direction: column; min-height: 0; }
+    .help { padding: 8px 12px; background: #1a2420; border-bottom: 1px solid #333; font-size: 12px; line-height: 1.45; color: #bdc; }
+    .help b { color: #dfe; }
+    .toolbar { padding: 8px 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; border-bottom: 1px solid #333; background: #161616; }
+    .toolbar label { font-size: 12px; color: #aaa; }
+    .toolbar select, .toolbar button, .toolbar a { font-size: 13px; padding: 5px 10px; border-radius: 5px; border: 1px solid #444; background: #252525; color: #eee; text-decoration: none; }
+    .toolbar button:hover, .toolbar a:hover { background: #333; }
+    #scopeFrame { flex: 1; width: 100%; border: 0; background: #111; min-height: 0; }
+    .empty { padding: 48px 20px; text-align: center; color: #777; }
+    .bar-row { margin: 3px 0; font-size: 11px; }
+    .bar-track { height: 5px; background: #2a2a2a; border-radius: 2px; margin-top: 2px; }
+    .bar-fill { height: 100%; background: #c66; border-radius: 2px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Lmaobox Profiler</h1>
+    <p>Zoom / pan / per-tick view — powered by Speedscope (same family as Rust flamegraphs)</p>
+  </header>
+  <main>
+    <aside>
+      <section>
+        <h2><span class="live-dot" id="liveDot"></span> Live</h2>
+        <div id="liveMeta" class="meta">No session</div>
+        <div id="liveBars"></div>
+      </section>
+      <section>
+        <h2>Saved sessions</h2>
+        <div id="sessionList"></div>
+      </section>
+    </aside>
+    <div class="content">
+      <div class="help" id="helpBox">
+        <b>Navigate:</b> scroll wheel = zoom · drag = pan · click a bar = zoom into that function · click background = zoom out.<br>
+        <b>Per tick:</b> use the <b>Profile</b> dropdown below (pick <code>tick 1</code>, <code>tick 2</code>, …) or the one inside Speedscope’s top bar.<br>
+        <b>Views:</b> try <b>Left Heavy</b> (total cost) and <b>Time Order</b> (timeline) in Speedscope’s toolbar.
+      </div>
+      <div class="toolbar">
+        <label for="profilePick">Profile</label>
+        <select id="profilePick" disabled><option>—</option></select>
+        <button type="button" id="btnRefresh">Refresh</button>
+        <a id="linkOpenTab" href="#" target="_blank" rel="noopener" style="display:none">Open full tab ↗</a>
+      </div>
+      <div id="graphArea">
+        <p class="empty" id="placeholder">Select a saved session (unload your script in TF2 first).</p>
+        <iframe id="scopeFrame" title="Speedscope" style="display:none"></iframe>
+      </div>
+    </div>
+  </main>
+  <script>
+    const params = new URLSearchParams(location.search);
+    let selectedId = params.get("session") || "";
+    let profileNames = [];
+    let profileIndex = 0;
+
+    function fmtMs(ns) { return (ns / 1e6).toFixed(2) + " ms"; }
+
+    function speedscopeURL(sessionId, profileIdx) {
+      const dataUrl = location.origin + "/api/session/" + encodeURIComponent(sessionId) + "/tick.speedscope.json";
+      let hash = "profileURL=" + encodeURIComponent(dataUrl);
+      if (profileIdx > 0) {
+        hash += "&profileIndex=" + profileIdx;
+      }
+      return "https://www.speedscope.app/#" + hash;
+    }
+
+    async function loadProfileMeta(id) {
+      const pick = document.getElementById("profilePick");
+      try {
+        const r = await fetch("/api/session/" + encodeURIComponent(id) + "/tick.meta.json");
+        if (!r.ok) throw new Error("no meta");
+        const m = await r.json();
+        profileNames = m.profiles || [];
+        profileIndex = m.default_index || 0;
+        pick.innerHTML = profileNames.map((name, i) =>
+          `<option value="${i}"${i === profileIndex ? " selected" : ""}>${name}</option>`
+        ).join("");
+        pick.disabled = false;
+      } catch {
+        profileNames = ["ALL ticks (merged)"];
+        profileIndex = 0;
+        pick.innerHTML = "<option>ALL ticks (merged)</option>";
+        pick.disabled = true;
+      }
+    }
+
+    function showSpeedscope(id) {
+      const frame = document.getElementById("scopeFrame");
+      const ph = document.getElementById("placeholder");
+      const link = document.getElementById("linkOpenTab");
+      if (!id) {
+        frame.style.display = "none";
+        ph.style.display = "block";
+        link.style.display = "none";
+        return;
+      }
+      const url = speedscopeURL(id, profileIndex);
+      frame.src = url;
+      frame.style.display = "block";
+      ph.style.display = "none";
+      link.href = url;
+      link.style.display = "inline-block";
+    }
+
+    document.getElementById("profilePick").onchange = (e) => {
+      profileIndex = parseInt(e.target.value, 10) || 0;
+      if (selectedId) showSpeedscope(selectedId);
+    };
+
+    async function pollLive() {
+      try {
+        const r = await fetch("/api/live");
+        const d = await r.json();
+        document.getElementById("liveDot").classList.toggle("on", d.active);
+        document.getElementById("liveMeta").textContent = d.active
+          ? (d.script || "?") + " · profiling… unload script to save"
+          : "No active session";
+        const top = d.top || [];
+        const bars = document.getElementById("liveBars");
+        if (!top.length) { bars.innerHTML = ""; return; }
+        const max = top[0].ns || 1;
+        bars.innerHTML = top.map(row => {
+          const pct = Math.max(2, (row.ns / max) * 100);
+          return `<div class="bar-row"><div title="${row.stack}">${row.stack}</div><div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div><div class="meta">${fmtMs(row.ns)}</div></div>`;
+        }).join("");
+      } catch (e) { console.error(e); }
+    }
+
+    async function loadSessions() {
+      const r = await fetch("/api/sessions");
+      const list = await r.json();
+      const el = document.getElementById("sessionList");
+      if (!list.length) {
+        el.innerHTML = '<p class="meta">Unload script in TF2 to create one</p>';
+        return;
+      }
+      el.innerHTML = list.map(s => {
+        const active = s.id === selectedId ? " active" : "";
+        return `<button type="button" class="session${active}" data-id="${s.id}">${s.id}</button>`;
+      }).join("");
+      el.querySelectorAll(".session").forEach(btn => {
+        btn.onclick = async () => {
+          selectedId = btn.dataset.id;
+          history.replaceState(null, "", "?session=" + encodeURIComponent(selectedId));
+          await loadProfileMeta(selectedId);
+          showSpeedscope(selectedId);
+          loadSessions();
+        };
+      });
+    }
+
+    document.getElementById("btnRefresh").onclick = async () => {
+      await loadSessions();
+      pollLive();
+      if (selectedId) {
+        await loadProfileMeta(selectedId);
+        showSpeedscope(selectedId);
+      }
+    };
+
+    pollLive();
+    loadSessions();
+    (async () => {
+      if (selectedId) {
+        await loadProfileMeta(selectedId);
+        showSpeedscope(selectedId);
+      }
+    })();
+    setInterval(pollLive, 1000);
+    setInterval(loadSessions, 4000);
+  </script>
+</body>
+</html>

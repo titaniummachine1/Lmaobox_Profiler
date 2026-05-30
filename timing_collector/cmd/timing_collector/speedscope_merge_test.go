@@ -44,6 +44,45 @@ func TestMergeTickProfilesConcatenatesTicks(t *testing.T) {
 	}
 }
 
+func TestFrameExclusiveDurationsSelfTime(t *testing.T) {
+	events := []speedscopeEvent{
+		{Type: "O", At: 0, Frame: 0},
+		{Type: "O", At: 0, Frame: 1},
+		{Type: "C", At: 80, Frame: 1},
+		{Type: "C", At: 100, Frame: 0},
+	}
+	d := frameExclusiveDurations(events)
+	if d[1] != 80 {
+		t.Fatalf("child self=%d want 80", d[1])
+	}
+	if d[0] != 20 {
+		t.Fatalf("parent self=%d want 20 (not inclusive 100)", d[0])
+	}
+}
+
+func TestAverageTickProfileNotDoubleCountParents(t *testing.T) {
+	events := []speedscopeEvent{
+		{Type: "O", At: 0, Frame: 0},
+		{Type: "O", At: 0, Frame: 1},
+		{Type: "C", At: 1000, Frame: 1},
+		{Type: "C", At: 1020, Frame: 0},
+	}
+	perTick := []speedscopeEventedProfile{
+		{Name: "tick 1", Events: append([]speedscopeEvent(nil), events...), EndValue: 1020},
+		{Name: "tick 2", Events: append([]speedscopeEvent(nil), events...), EndValue: 1020},
+	}
+	avg, err := averageTickProfile(perTick)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if avg.EndValue > 1100 {
+		t.Fatalf("average tick inflated (double-counted parent): end=%d", avg.EndValue)
+	}
+	if avg.EndValue < 1000 {
+		t.Fatalf("average tick too short: end=%d", avg.EndValue)
+	}
+}
+
 func TestAverageTickProfile(t *testing.T) {
 	tick := func(ns int64) []speedscopeEvent {
 		return []speedscopeEvent{
@@ -67,6 +106,9 @@ func TestAverageTickProfile(t *testing.T) {
 	durs := frameExclusiveDurations(avg.Events)
 	if durs[1] != 200 {
 		t.Fatalf("avg child frame dur=%d want 200", durs[1])
+	}
+	if durs[0] != 200 {
+		t.Fatalf("avg root self=%d want 200 (exclusive, not 400 inclusive)", durs[0])
 	}
 }
 

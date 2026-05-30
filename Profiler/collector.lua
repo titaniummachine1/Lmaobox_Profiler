@@ -102,7 +102,7 @@ function Collector.BeginSession(scriptName)
 		Shared.CollectorAvailable = false
 		collectorReachable = false
 		Shared.LastError = "timing_collector not running — double-click timing_collector\\run\\timing_collector.exe ("
-		.. BASE_URL
+			.. BASE_URL
 			.. ")"
 		return false
 	end
@@ -237,8 +237,11 @@ function Collector.EndFrame()
 end
 
 function Collector.Begin(name)
-	if not isEnabled() or not Shared.SessionID or not activeCtx then
+	if not isEnabled() or not Shared.SessionID then
 		return
+	end
+	if not activeCtx then
+		Collector.BeginTick()
 	end
 	if not name or name == "" then
 		return

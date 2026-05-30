@@ -73,16 +73,23 @@ func writeFoldedFile(path string, spans []completedSpan, rootPrefix string) erro
 }
 
 func writeFlamegraph(dir, ctx string, spans []completedSpan, rootLabel string) error {
+	return writeFlamegraphWithTitle(dir, ctx, spans, rootLabel, "")
+}
+
+func writeFlamegraphWithTitle(dir, ctx string, spans []completedSpan, rootLabel, displayTitle string) error {
 	if rootLabel == "" {
 		rootLabel = ctx
 	}
 	foldedPath := filepath.Join(dir, ctx+".folded.txt")
 	svgPath := filepath.Join(dir, ctx+".svg")
-	title := ctx
-	if rootLabel != "" && rootLabel != ctx {
-		title = rootLabel + " — " + ctx
-	} else if rootLabel != "" {
-		title = rootLabel
+	title := displayTitle
+	if title == "" {
+		title = ctx
+		if rootLabel != "" && rootLabel != ctx {
+			title = rootLabel + " — " + ctx
+		} else if rootLabel != "" {
+			title = rootLabel
+		}
 	}
 
 	if err := writeFoldedFile(foldedPath, spans, rootLabel); err != nil {

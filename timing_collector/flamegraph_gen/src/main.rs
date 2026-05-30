@@ -33,8 +33,8 @@ fn main() -> Result<()> {
     options.frame_height = 20;
     options.min_width = 0.0;
     options.hash = true;
-    // Root at top, children grow downward (icicle-style — not classic bottom-up flame)
-    options.direction = Direction::Straight;
+    // Root at top, children grow downward (icicle). Straight is left-to-right, not vertical.
+    options.direction = Direction::Inverted;
 
     let input = BufReader::new(
         File::open(&args.input)

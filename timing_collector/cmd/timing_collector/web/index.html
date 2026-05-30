@@ -357,7 +357,7 @@
   <body>
     <header>
       <h1>Lmaobox Profiler</h1>
-      <p>Live recording · Flame graph (SVG) · Speedscope per-tick</p>
+      <p>Live recording ? Flame graph (SVG) ? Speedscope per-tick</p>
     </header>
     <main>
       <aside>
@@ -381,32 +381,29 @@
       </aside>
       <div class="content">
         <div class="help">
-          <b>Live:</b> <b>All ticks</b> flame (top-down) · <b>Timeline</b> =
-          speedscope per tick (merged + tick 1, 2, …).<br />
-          <b>Saved:</b> same views after unload.
+          <b>Live:</b> sidebar updates automatically; click
+          <b>Update graph</b> when you see <b>*</b> (flame + timeline do not
+          reload on their own).<br />
+          <b>View:</b> ALL ticks (merged) ? Average tick ? Last tick ? same for
+          flame (top-down) and Speedscope.<br />
+          <b>Saved:</b> pick a session, then Flame graph or Speedscope.
         </div>
         <div class="toolbar">
           <button type="button" id="btnLive" class="view-active">Live</button>
           <button type="button" id="btnFlame">Flame graph</button>
           <button type="button" id="btnScope">Speedscope</button>
           <label for="profilePick" id="lblProfile" style="display: none"
-            >Tick</label
+            >View</label
           >
           <select id="profilePick" style="display: none">
-            <option>—</option>
+            <option value="0">ALL ticks (merged)</option>
           </select>
           <button type="button" id="btnLiveFlame" style="display: none">
-            All ticks
+            Flame graph
           </button>
           <button type="button" id="btnLiveScope" style="display: none">
-            Timeline
+            Speedscope
           </button>
-          <label for="liveProfilePick" id="lblLiveProfile" style="display: none"
-            >Tick</label
-          >
-          <select id="liveProfilePick" style="display: none">
-            <option>—</option>
-          </select>
           <button type="button" id="btnUpdateGraph" style="display: none">
             Update graph
           </button>
@@ -417,14 +414,14 @@
             target="_blank"
             rel="noopener"
             style="display: none"
-            >Open SVG ↗</a
+            >Open SVG ?</a
           >
         </div>
         <div id="graphArea">
           <div id="livePanel" class="active">
             <div id="liveGraphHint">
-              <b>All ticks</b> merged (top-down). Use <b>Timeline</b> to pick
-              tick 1, 2, 3…
+              Sidebar updates live. Click <b>Update graph</b> when you see
+              <b>*</b> ? graphs do not auto-refresh.
             </div>
             <div id="liveFeedMain"></div>
             <div id="liveViewArea">
@@ -464,15 +461,21 @@
       let livePollTimer = null;
       let lastLiveSessionId = "";
       let liveViewMode = "flame";
-      let liveProfileIndex = 1;
       let lastScopeRev = -1;
+      let pendingGraphUpdate = false;
+      let liveProfiles = ["ALL ticks (merged)", "Average tick", "Last tick"];
 
       function fmtMs(ns) {
         return (ns / 1e6).toFixed(2) + " ms";
       }
 
+      function speedscopeDataUrl(path, profileIdx) {
+        const sep = path.includes("?") ? "&" : "?";
+        return path + sep + "profile=" + profileIdx + "&t=" + Date.now();
+      }
+
       function speedscopeFrameURL(dataUrl, profileIdx) {
-        let hash =
+        const hash =
           "profileURL=" +
           encodeURIComponent(dataUrl) +
           "&profileIndex=" +
@@ -481,17 +484,23 @@
       }
 
       function speedscopeURL(sessionId, profileIdx) {
-        const dataUrl =
+        const path =
           location.origin +
           "/api/session/" +
           encodeURIComponent(sessionId) +
           "/tick.speedscope.json";
-        return speedscopeFrameURL(dataUrl, profileIdx);
+        return speedscopeFrameURL(
+          speedscopeDataUrl(path, profileIdx),
+          profileIdx,
+        );
       }
 
       function liveSpeedscopeURL(profileIdx) {
-        const dataUrl = location.origin + "/api/live/speedscope.json";
-        return speedscopeFrameURL(dataUrl, profileIdx);
+        const path = location.origin + "/api/live/speedscope.json";
+        return speedscopeFrameURL(
+          speedscopeDataUrl(path, profileIdx),
+          profileIdx,
+        );
       }
 
       function setLiveView(mode) {
@@ -505,14 +514,35 @@
         document
           .getElementById("liveViewArea")
           .classList.toggle("timeline", mode === "scope");
-        const showPick = mode === "scope";
-        document.getElementById("lblLiveProfile").style.display = showPick
+        syncProfilePickerVisibility();
+      }
+
+      function syncProfilePickerVisibility() {
+        const show =
+          panelMode === "live" || (panelMode === "saved" && selectedId);
+        document.getElementById("lblProfile").style.display = show
           ? ""
           : "none";
-        document.getElementById("liveProfilePick").style.display = showPick
+        document.getElementById("profilePick").style.display = show
           ? ""
           : "none";
-        if (mode === "scope") refreshLiveScope(lastGraphRev, true);
+      }
+
+      function fillProfilePick(names, selectedIdx) {
+        const pick = document.getElementById("profilePick");
+        if (!names || !names.length) {
+          names = liveProfiles;
+        }
+        if (selectedIdx !== undefined && selectedIdx !== null) {
+          profileIndex = selectedIdx;
+        }
+        if (profileIndex < 0 || profileIndex >= names.length) profileIndex = 0;
+        pick.innerHTML = names
+          .map(
+            (name, i) =>
+              `<option value="${i}"${i === profileIndex ? " selected" : ""}>${escapeHtml(name)}</option>`,
+          )
+          .join("");
       }
 
       async function deleteSession(id, ev) {
@@ -588,14 +618,8 @@
         document.getElementById("btnScope").style.display = isLive
           ? "none"
           : "";
-        document.getElementById("lblProfile").style.display =
-          isLive || viewMode !== "scope" || !selectedId ? "none" : "";
-        document.getElementById("profilePick").style.display =
-          isLive || viewMode !== "scope" || !selectedId ? "none" : "";
-        document.getElementById("lblLiveProfile").style.display =
-          !isLive || liveViewMode !== "scope" ? "none" : "";
-        document.getElementById("liveProfilePick").style.display =
-          !isLive || liveViewMode !== "scope" ? "none" : "";
+        syncProfilePickerVisibility();
+        if (isLive) fillProfilePick(liveProfiles, profileIndex);
         document.getElementById("linkOpenTab").style.display = isLive
           ? "none"
           : selectedId
@@ -612,13 +636,7 @@
         document
           .getElementById("btnScope")
           .classList.toggle("view-active", mode === "scope");
-        const showProf = mode === "scope" && selectedId;
-        document.getElementById("lblProfile").style.display = showProf
-          ? ""
-          : "none";
-        document.getElementById("profilePick").style.display = showProf
-          ? ""
-          : "none";
+        syncProfilePickerVisibility();
         if (selectedId) showGraph(selectedId);
       }
 
@@ -628,10 +646,6 @@
         setLiveView("flame");
       document.getElementById("btnLiveScope").onclick = () =>
         setLiveView("scope");
-      document.getElementById("liveProfilePick").onchange = (e) => {
-        liveProfileIndex = parseInt(e.target.value, 10) || 0;
-        refreshLiveScope(lastGraphRev, true);
-      };
       document.getElementById("btnFlame").onclick = () => {
         if (panelMode === "live" && selectedId) setPanel("saved");
         setView("flame");
@@ -642,27 +656,45 @@
       };
 
       async function loadProfileMeta(id) {
-        const pick = document.getElementById("profilePick");
         try {
           const r = await fetch(
             "/api/session/" + encodeURIComponent(id) + "/tick.meta.json",
           );
           if (!r.ok) throw new Error("no meta");
           const m = await r.json();
-          profileIndex = m.default_index || 0;
-          pick.innerHTML = (m.profiles || [])
-            .map(
-              (name, i) =>
-                `<option value="${i}"${i === profileIndex ? " selected" : ""}>${name}</option>`,
-            )
-            .join("");
+          fillProfilePick(m.profiles || liveProfiles, m.default_index ?? 0);
         } catch {
-          pick.innerHTML = "<option>ALL ticks</option>";
-          profileIndex = 0;
+          fillProfilePick(liveProfiles, 0);
         }
       }
 
-      // ── Tree builder for sidebar bars ──────────────────────────────────
+      function sessionFlameSvgUrl(id) {
+        return (
+          "/api/session/" +
+          encodeURIComponent(id) +
+          "/tick.svg?profile=" +
+          profileIndex +
+          "&t=" +
+          Date.now()
+        );
+      }
+
+      function markGraphPending(rev) {
+        if (rev !== lastGraphRev) {
+          pendingGraphUpdate = true;
+          const btn = document.getElementById("btnUpdateGraph");
+          btn.textContent = pendingGraphUpdate
+            ? "Update graph *"
+            : "Update graph";
+        }
+      }
+
+      function clearGraphPending() {
+        pendingGraphUpdate = false;
+        document.getElementById("btnUpdateGraph").textContent = "Update graph";
+      }
+
+      // ?? Tree builder for sidebar bars ??????????????????????????????????
       function buildBarTree(rows) {
         // rows: [{stack:"a;b", ns:N}, ...] sorted shallow-first
         const byPath = {};
@@ -699,7 +731,7 @@
           const pad = node.depth * 11;
           const ms = (node.ns / 1e6).toFixed(2);
           const connector =
-            node.depth > 0 ? `<span class="bar-connector">└</span>` : "";
+            node.depth > 0 ? `<span class="bar-connector">?</span>` : "";
           const fill = isOpen
             ? `class="bar-fill open"`
             : `class="bar-fill" style="width:${pct}%"`;
@@ -715,16 +747,16 @@
       }
 
       function renderOpenTreeHtml(openRows) {
-        // openRows: [{stack:"a → b", ns, ms}] — " → " separated
+        // openRows: [{stack:"a ? b", ns, ms}] ? " ? " separated
         let html = "";
         for (const row of openRows) {
-          const parts = row.stack.split(" → ");
+          const parts = row.stack.split(" ? ");
           const depth = parts.length - 1;
           const pad = depth * 11;
           const connector =
-            depth > 0 ? `<span class="bar-connector">└</span>` : "";
+            depth > 0 ? `<span class="bar-connector">?</span>` : "";
           html += `<div class="bar-row" style="padding-left:${pad}px">
-        <div class="bar-label">${connector}<span style="color:#4a9">▶</span> ${escapeHtml(parts[depth])}</div>
+        <div class="bar-label">${connector}<span style="color:#4a9">?</span> ${escapeHtml(parts[depth])}</div>
         <div class="bar-track"><div class="bar-fill open"></div></div>
         <div class="bar-ms">${row.ms.toFixed(2)} ms</div>
       </div>`;
@@ -735,7 +767,7 @@
       function resetEventLog(el) {
         renderedEventCount = 0;
         el.innerHTML =
-          '<div class="ev"><span class="x">Waiting for span/tick events from TF2…</span></div>';
+          '<div class="ev"><span class="x">Waiting for span/tick events from TF2?</span></div>';
       }
 
       function appendEvents(el, events) {
@@ -783,11 +815,7 @@
           return;
         }
         ph.style.display = "none";
-        const svgUrl =
-          "/api/session/" +
-          encodeURIComponent(id) +
-          "/tick.svg?t=" +
-          Date.now();
+        const svgUrl = sessionFlameSvgUrl(id);
         svgFrame.src = svgUrl;
         frame.src = speedscopeURL(id, profileIndex);
         link.href = svgUrl;
@@ -803,40 +831,37 @@
 
       document.getElementById("profilePick").onchange = (e) => {
         profileIndex = parseInt(e.target.value, 10) || 0;
-        if (selectedId && viewMode === "scope") showGraph(selectedId);
+        if (panelMode === "live") {
+          refreshLiveGraphs(lastGraphRev, true);
+        } else if (selectedId) {
+          showGraph(selectedId);
+        }
       };
 
       function refreshLiveFlame(rev, force) {
         if (!force && rev === lastGraphRev) return;
         lastGraphRev = rev;
         const iframe = document.getElementById("liveFlameFrame");
-        iframe.src = "/api/live/flame.svg?rev=" + rev + "&t=" + Date.now();
-        if (liveViewMode === "scope" || rev !== lastScopeRev) {
-          refreshLiveScope(rev, force);
-        }
+        iframe.src =
+          "/api/live/flame.svg?profile=" +
+          profileIndex +
+          "&rev=" +
+          rev +
+          "&t=" +
+          Date.now();
       }
 
       function refreshLiveScope(rev, force) {
         if (!force && rev === lastScopeRev) return;
         lastScopeRev = rev;
         document.getElementById("liveScopeFrame").src =
-          liveSpeedscopeURL(liveProfileIndex) + "&t=" + Date.now();
+          liveSpeedscopeURL(profileIndex);
       }
 
-      function updateLiveProfilePick(profiles, defIdx) {
-        const pick = document.getElementById("liveProfilePick");
-        if (!profiles || !profiles.length) {
-          pick.innerHTML = "<option>—</option>";
-          return;
-        }
-        liveProfileIndex = defIdx > 0 ? defIdx : 1;
-        if (liveProfileIndex >= profiles.length) liveProfileIndex = 0;
-        pick.innerHTML = profiles
-          .map(
-            (name, i) =>
-              `<option value="${i}"${i === liveProfileIndex ? " selected" : ""}>${escapeHtml(name)}</option>`,
-          )
-          .join("");
+      function refreshLiveGraphs(rev, force) {
+        if (liveViewMode === "flame") refreshLiveFlame(rev, force);
+        else refreshLiveScope(rev, force);
+        clearGraphPending();
       }
 
       async function pollLive() {
@@ -845,17 +870,17 @@
           const d = await r.json();
           document.getElementById("liveDot").classList.toggle("on", d.active);
           let meta =
-            "No active session — lua_load live_demo (keep loaded while playing)";
+            "No active session ? lua_load live_demo (keep loaded while playing)";
           if (d.active) {
             meta =
-              "● " +
+              "? " +
               (d.script || "?") +
-              " · tick " +
+              " ? tick " +
               (d.tick_samples || 0) +
-              (d.tick_open ? " (recording…)" : "") +
-              " — move in TF2; unload only when done";
+              (d.tick_open ? " (recording?)" : "") +
+              " ? move in TF2; unload only when done";
           } else if ((d.events || []).length > 0) {
-            meta = "Session ended — load script again or pick Saved session →";
+            meta = "Session ended ? load script again or pick Saved session ?";
           }
           document.getElementById("liveMeta").textContent = meta;
 
@@ -871,25 +896,10 @@
             if (d.active || events.length) appendEvents(feed, events);
             else if (!renderedEventCount) resetEventLog(feed);
             if (d.speedscope_profiles && d.speedscope_profiles.length) {
-              updateLiveProfilePick(
-                d.speedscope_profiles,
-                d.speedscope_default ?? 1,
-              );
+              liveProfiles = d.speedscope_profiles;
+              fillProfilePick(liveProfiles);
             }
-            refreshLiveFlame(d.graph_rev ?? 0, false);
-            const hint = document.getElementById("liveGraphHint");
-            const n = d.tick_samples || 0;
-            if (d.tick_open) {
-              hint.innerHTML =
-                "<b>All " +
-                (n + 1) +
-                " ticks</b> in flame (top-down). Timeline → pick each tick.";
-            } else if (n > 0) {
-              hint.innerHTML =
-                "<b>" +
-                n +
-                " ticks</b> recorded — flame = merged · Timeline = per tick.";
-            }
+            markGraphPending(d.graph_rev ?? 0);
           }
 
           const open = d.open || [];
@@ -913,7 +923,7 @@
             html += `<div class="live-section-hdr">${escapeHtml(label)}</div>`;
             html += renderBarTreeHtml(roots, totalNs, false);
           } else if (!open.length && d.active) {
-            html = `<div class="meta" style="padding:4px 0">Waiting for first tick…</div>`;
+            html = `<div class="meta" style="padding:4px 0">Waiting for first tick?</div>`;
           }
 
           bars.innerHTML = html;
@@ -928,14 +938,16 @@
         lastScopeRev = -1;
         renderedEventCount = 0;
         resetEventLog(document.getElementById("liveFeedMain"));
+        fillProfilePick(liveProfiles, 0);
+        syncProfilePickerVisibility();
         setLiveView("flame");
-        refreshLiveFlame(0, true);
         pollLive();
+        refreshLiveGraphs(0, true);
         livePollTimer = setInterval(pollLive, 400);
       }
 
       document.getElementById("btnUpdateGraph").onclick = () => {
-        refreshLiveFlame(lastGraphRev, true);
+        refreshLiveGraphs(lastGraphRev, true);
       };
 
       function stopLivePoll() {
@@ -960,7 +972,7 @@
               const active = s.id === selectedId ? " active" : "";
               return `<div class="session-row">
                   <button type="button" class="session${active}" data-id="${s.id}" title="${s.id}">${s.id}</button>
-                  <button type="button" class="trash" data-id="${s.id}" title="Delete session">🗑</button>
+                  <button type="button" class="trash" data-id="${s.id}" title="Delete session">??</button>
                 </div>`;
             })
             .join("");
@@ -1008,7 +1020,6 @@
           setPanel("live");
         }
       })();
-      setInterval(pollLive, 400);
       setInterval(loadSessions, 4000);
     </script>
   </body>

@@ -100,47 +100,23 @@ func liveFlameRootName() string {
 }
 
 func liveSpeedscopeMetaLocked() ([]string, int) {
-	var names []string
-	if len(state.tickEvents) >= 2 && len(frameNameToIndex["tick"]) > 0 {
-		names = append(names, "ALL ticks (merged)")
+	if len(state.tickProfiles) == 0 && len(state.tickEvents) < 2 {
+		return []string{"ALL ticks (merged)"}, 0
 	}
-	for _, p := range state.tickProfiles {
-		names = append(names, p.Name)
-	}
-	active := 0
-	if len(state.tickProfiles) > 0 {
-		active = 1
-	}
-	return names, active
+	return speedscopeProfileNames(state.tickProfiles), 0
 }
 
 func buildLiveSpeedscopeLocked() ([]byte, []string, int, error) {
-	events := state.tickEvents
 	frameMap := frameNameToIndex["tick"]
-	if len(events) < 2 || len(frameMap) == 0 {
-		return nil, nil, 0, fmt.Errorf("not enough live speedscope data yet")
+	if len(frameMap) == 0 {
+		return nil, nil, 0, fmt.Errorf("no frame map")
 	}
 
-	merged := compressEventTimeline(append([]speedscopeEvent(nil), events...))
-	startVal := merged[0].At
-	endVal := merged[len(merged)-1].At
-	if endVal <= startVal {
-		return nil, nil, 0, fmt.Errorf("zero duration")
+	profiles, err := buildSpeedscopeProfiles(state.tickProfiles, state.tickEvents)
+	if err != nil {
+		return nil, nil, 0, err
 	}
-
-	profiles := []speedscopeEventedProfile{{
-		Type:       "evented",
-		Name:       "ALL ticks (merged)",
-		Unit:       "nanoseconds",
-		StartValue: startVal,
-		EndValue:   endVal,
-		Events:     merged,
-	}}
-	profiles = append(profiles, state.tickProfiles...)
 	active := 0
-	if len(state.tickProfiles) > 0 {
-		active = 1
-	}
 
 	file, err := buildSpeedscopeFile(frameMap, profiles, active)
 	if err != nil {

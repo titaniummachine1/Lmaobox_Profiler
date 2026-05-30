@@ -49,16 +49,18 @@ type collectorState struct {
 	openStack  []uint64
 
 	// Per-context completed spans for export (aggregated across ticks/frames in session)
-	tickSpans  []completedSpan
-	frameSpans []completedSpan
+	tickSpans       []completedSpan
+	tickSpanBatches [][]completedSpan // one leaf batch per completed tick (flame average/last)
+	frameSpans      []completedSpan
 
 	// Speedscope event buffers per context (reset each tick/frame end export slice append)
 	tickEvents  []speedscopeEvent
 	frameEvents []speedscopeEvent
 
-	tickEventsStart int                        // tickEvents index at last tick/begin
-	tickSampleNum   int                        // exported tick counter
-	tickProfiles    []speedscopeEventedProfile // one speedscope profile per EndTick
+	tickEventsStart  int                        // tickEvents index at last tick/begin
+	tickSampleNum    int                        // exported tick counter
+	tickProfiles     []speedscopeEventedProfile // one speedscope profile per EndTick
+	tickRootBoundary string                     // top-level span name for auto tick rollover
 }
 
 type spanRecord struct {
@@ -263,12 +265,14 @@ func handleSessionBegin(w http.ResponseWriter, r *http.Request) {
 	state.spans = make(map[uint64]*spanRecord)
 	state.openStack = nil
 	state.tickSpans = nil
+	state.tickSpanBatches = nil
 	state.frameSpans = nil
 	state.tickEvents = nil
 	state.frameEvents = nil
 	state.tickEventsStart = 0
 	state.tickSampleNum = 0
 	state.tickProfiles = nil
+	resetTickBoundaryLocked()
 	frameNameToIndex = map[string]map[string]int{}
 	profilingStarted = false
 	lastActivity = time.Time{}
@@ -305,6 +309,7 @@ func handleTickBegin(w http.ResponseWriter, r *http.Request) {
 	state.activeCtx = "tick"
 	state.tickOpen = true
 	state.tickEventsStart = len(state.tickEvents)
+	resetTickBoundaryLocked()
 	pushLiveEvent("tick", fmt.Sprintf("Tick %d begin", state.tickSampleNum+1))
 	fmt.Fprint(w, "0")
 }
@@ -351,6 +356,7 @@ func handleTickEnd(w http.ResponseWriter, r *http.Request) {
 	if state.activeCtx == "tick" {
 		state.activeCtx = ""
 	}
+	resetTickBoundaryLocked()
 	pushLiveEvent("tick", fmt.Sprintf("Tick %d end", state.tickSampleNum))
 	fmt.Fprint(w, "0")
 }
@@ -392,7 +398,7 @@ func handleSpanStart(w http.ResponseWriter, r *http.Request) {
 	defer mu.Unlock()
 	markProfilingActivity()
 
-	if state.sessionID == "" || state.activeCtx == "" {
+	if state.sessionID == "" {
 		fmt.Fprint(w, "-1")
 		return
 	}
@@ -405,6 +411,13 @@ func handleSpanStart(w http.ResponseWriter, r *http.Request) {
 	ctx := queryUnescape(r, "ctx")
 	if ctx == "" {
 		ctx = state.activeCtx
+	}
+	if ctx == "" {
+		fmt.Fprint(w, "-1")
+		return
+	}
+	if state.activeCtx == "" {
+		state.activeCtx = ctx
 	}
 
 	parent := uint64(0)
@@ -427,6 +440,10 @@ func handleSpanStart(w http.ResponseWriter, r *http.Request) {
 	}
 	state.spans[id] = rec
 	state.openStack = append(state.openStack, id)
+
+	if ctx == "tick" && parent == 0 {
+		maybeBeginTickOnRootSpanLocked(name)
+	}
 
 	appendOpenEventLocked(ctx, name, startNs)
 	pushLiveEvent("open", fmt.Sprintf("▶ %s", spanStackLabel(rec)))
@@ -511,6 +528,13 @@ func handleSpanReport(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(stack) == 0 {
 		stack = []string{name}
+	}
+
+	if ctx == "tick" {
+		if state.activeCtx == "" {
+			state.activeCtx = "tick"
+		}
+		maybeBeginTickOnReportRootLocked(tickRootFromStack(stack, name))
 	}
 
 	endNs := time.Since(serverStart).Nanoseconds()
@@ -601,7 +625,8 @@ func flushCtxSpansLocked(ctx string) {
 
 	if ctx == "tick" {
 		state.tickSpans = append(state.tickSpans, completed...)
-		setLastTickLiveSpans(completed)
+		state.tickSpanBatches = append(state.tickSpanBatches, spansForFlamegraph(completed))
+		setLastTickLiveSpans(spansForFlamegraph(completed))
 	} else {
 		state.frameSpans = append(state.frameSpans, completed...)
 	}
@@ -666,6 +691,10 @@ func exportSessionLocked(endReason string) error {
 		return fmt.Errorf("no active session")
 	}
 
+	if state.tickOpen {
+		captureTickProfileLocked()
+	}
+
 	tickN := len(state.tickSpans)
 	frameN := len(state.frameSpans)
 	if tickN == 0 && frameN == 0 {
@@ -686,7 +715,7 @@ func exportSessionLocked(endReason string) error {
 			writeSessionErrorFile(dir, endReason, err)
 			return err
 		}
-		if err := writeFlamegraph(dir, "tick", state.tickSpans, state.scriptName); err != nil {
+		if err := writeFlamegraphViews(dir, state.tickSpanBatches, state.tickSpans, state.scriptName); err != nil {
 			return err
 		}
 		wrote = true
@@ -865,12 +894,14 @@ func resetSessionLocked() {
 	state.spans = make(map[uint64]*spanRecord)
 	state.openStack = nil
 	state.tickSpans = nil
+	state.tickSpanBatches = nil
 	state.frameSpans = nil
 	state.tickEvents = nil
 	state.frameEvents = nil
 	state.tickEventsStart = 0
 	state.tickSampleNum = 0
 	state.tickProfiles = nil
+	resetTickBoundaryLocked()
 	frameNameToIndex = map[string]map[string]int{}
 	profilingStarted = false
 	lastActivity = time.Time{}

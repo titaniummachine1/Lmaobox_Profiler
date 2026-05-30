@@ -70,11 +70,20 @@ func handleAPISessionRoute(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	if file == "tick.svg" {
+		file = sessionFlameFile(parseFlameViewQuery(r))
+	}
 	fpath := filepath.Join(flameGraphsDir(), id, file)
+	if _, err := os.Stat(fpath); err != nil && file != "tick.svg" {
+		fpath = filepath.Join(flameGraphsDir(), id, "tick.svg")
+	}
 	data, err := os.ReadFile(fpath)
 	if err != nil {
 		http.NotFound(w, r)
 		return
+	}
+	if file == "tick.speedscope.json" {
+		data = speedscopeJSONForView(data, parseFlameViewQuery(r))
 	}
 	switch filepath.Ext(file) {
 	case ".svg":
@@ -187,11 +196,15 @@ func handleAPILive(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleAPILiveFlameSVG(w http.ResponseWriter, r *http.Request) {
+	view := parseFlameViewQuery(r)
 	mu.Lock()
 	now := time.Since(serverStart).Nanoseconds()
-	spans := collectLiveDisplaySpansLocked(now)
+	spans, title := liveFlameSpansLocked(now, view)
 	active := state.sessionID != ""
-	rootLabel := liveFlameRootName()
+	rootLabel := title
+	if rootLabel == "" {
+		rootLabel = liveFlameRootName()
+	}
 	mu.Unlock()
 
 	if !active || len(spans) == 0 {
@@ -222,12 +235,14 @@ func handleAPILiveSpeedscope(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	profile := parseFlameViewQuery(r)
 	mu.Lock()
 	data, _, _, err := buildLiveSpeedscopeLocked()
 	mu.Unlock()
 	if err != nil {
 		data = waitingSpeedscopeJSON()
 	}
+	data = speedscopeJSONForView(data, profile)
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write(data)

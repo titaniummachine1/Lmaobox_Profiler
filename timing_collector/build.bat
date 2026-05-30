@@ -15,6 +15,9 @@ if not exist "%SCOPE_DIR%\index.html" (
         echo   OK: %SCOPE_DIR%
     )
 )
+if exist "%SCOPE_DIR%\index.html" (
+    powershell -NoProfile -File "scripts\patch_speedscope_zoom.ps1"
+)
 
 echo.
 echo [1/3] Building flamegraph_gen.exe (Rust / inferno — same engine as cargo flamegraph) ...

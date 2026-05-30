@@ -201,9 +201,10 @@ func handleAPILiveFlameSVG(w http.ResponseWriter, r *http.Request) {
 	now := time.Since(serverStart).Nanoseconds()
 	spans, title := liveFlameSpansLocked(now, view)
 	active := state.sessionID != ""
-	rootLabel := title
-	if rootLabel == "" {
-		rootLabel = liveFlameRootName()
+	perTick := liveTickProfilesForTimelineLocked()
+	frameMap := frameNameToIndex["tick"]
+	if title == "" {
+		title = liveFlameRootName()
 	}
 	mu.Unlock()
 
@@ -213,8 +214,14 @@ func handleAPILiveFlameSVG(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	summed := view == flameViewMerged
-	svg, err := renderFlamegraphBytes(spans, rootLabel, rootLabel, summed)
+	var svg []byte
+	var err error
+	if view == flameViewMerged && len(perTick) > 0 && len(frameMap) > 0 {
+		svg, err = renderTimelineFlamegraphBytes(perTick, frameMap, title)
+	} else {
+		summed := view == flameViewMerged
+		svg, err = renderFlamegraphBytes(spans, title, title, summed)
+	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

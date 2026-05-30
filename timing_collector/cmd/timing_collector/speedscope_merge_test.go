@@ -25,7 +25,7 @@ func TestMergeTickProfilesConcatenatesTicks(t *testing.T) {
 			EndValue: 300,
 		},
 	}
-	events, start, end, err := mergeTickProfiles(perTick)
+	events, start, end, tickStarts, err := mergeTickProfiles(perTick)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,6 +41,9 @@ func TestMergeTickProfilesConcatenatesTicks(t *testing.T) {
 	}
 	if events[4].At < 300+tickTimelineGapNs {
 		t.Fatalf("tick2 start at=%d too early", events[4].At)
+	}
+	if len(tickStarts) != 2 || tickStarts[1] != 300+tickTimelineGapNs {
+		t.Fatalf("tickStarts=%v want 2 starts with second at gap", tickStarts)
 	}
 }
 

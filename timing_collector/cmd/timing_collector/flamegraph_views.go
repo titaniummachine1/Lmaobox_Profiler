@@ -34,33 +34,73 @@ func formatFlameDuration(ns int64) string {
 	return fmt.Sprintf("%.2f s", float64(ns)/1e9)
 }
 
-func flameMergedTitle(script string, batches [][]completedSpan) string {
+func flameMergedTitle(script string, batches [][]completedSpan, perTick []speedscopeEventedProfile) string {
 	base := script
 	if base == "" {
 		base = "tick"
 	}
 	n := len(batches)
+	if len(perTick) > 0 {
+		n = len(perTick)
+	}
 	if n == 0 {
 		return base
 	}
+	if events, _, _, tickStarts, err := mergeTickProfiles(perTick); err == nil && len(events) >= 2 {
+		dur := events[len(events)-1].At - events[0].At
+		if len(tickStarts) > 0 {
+			n = len(tickStarts)
+		}
+		title := fmt.Sprintf("%s — %d ticks · %s timeline", base, n, formatFlameDuration(dur))
+		if n > 1 && dur > 0 {
+			title += fmt.Sprintf(" (~%s/tick)", formatFlameDuration(dur/int64(n)))
+		}
+		return title
+	}
 	total := totalMergedNsFromBatches(batches)
-	title := fmt.Sprintf("%s — %d ticks merged · %s total", base, n, formatFlameDuration(total))
+	title := fmt.Sprintf("%s — %d ticks · %s total", base, n, formatFlameDuration(total))
 	if n > 1 && total > 0 {
 		title += fmt.Sprintf(" (~%s/tick)", formatFlameDuration(total/int64(n)))
 	}
 	return title
 }
 
-func flameViewTitles(script string, batches [][]completedSpan) []string {
+func flameViewTitles(script string, batches [][]completedSpan, perTick []speedscopeEventedProfile) []string {
 	base := script
 	if base == "" {
 		base = "tick"
 	}
 	return []string{
-		flameMergedTitle(script, batches),
+		flameMergedTitle(script, batches, perTick),
 		base + " — average tick",
 		base + " — last tick",
 	}
+}
+
+func liveTickProfilesForTimelineLocked() []speedscopeEventedProfile {
+	out := append([]speedscopeEventedProfile(nil), state.tickProfiles...)
+	if !state.tickOpen {
+		return out
+	}
+	start := state.tickEventsStart
+	end := len(state.tickEvents)
+	if end <= start {
+		return out
+	}
+	chunk := append([]speedscopeEvent(nil), state.tickEvents[start:end]...)
+	chunk = enforceMonotonicEventTimes(rebaseEvents(chunk))
+	if len(chunk) < 2 {
+		return out
+	}
+	out = append(out, speedscopeEventedProfile{
+		Type:       "evented",
+		Name:       "tick (open)",
+		Unit:       "nanoseconds",
+		StartValue: chunk[0].At,
+		EndValue:   chunk[len(chunk)-1].At,
+		Events:     chunk,
+	})
+	return out
 }
 
 func stackKey(stack []string, name string) string {
@@ -224,7 +264,8 @@ func tickCountForFlameTitles() int {
 func liveFlameSpansLocked(now int64, view int) ([]completedSpan, string) {
 	script := state.scriptName
 	batches := state.tickSpanBatches
-	titles := flameViewTitles(script, batches)
+	perTick := liveTickProfilesForTimelineLocked()
+	titles := flameViewTitles(script, batches, perTick)
 
 	switch view {
 	case flameViewAverage:
@@ -247,13 +288,7 @@ func liveFlameSpansLocked(now int64, view int) ([]completedSpan, string) {
 		if len(sp) == 0 {
 			return nil, ""
 		}
-		liveBatches := append([][]completedSpan(nil), state.tickSpanBatches...)
-		if state.tickOpen {
-			if cur := currentTickSpansLocked(now); len(cur) > 0 {
-				liveBatches = append(liveBatches, cur)
-			}
-		}
-		return sp, flameMergedTitle(script, liveBatches)
+		return sp, titles[0]
 	}
 }
 
@@ -264,25 +299,30 @@ func sessionFlameFile(view int) string {
 	return flameViewFiles[view]
 }
 
-func writeFlamegraphViews(dir string, batches [][]completedSpan, scriptName string) error {
-	titles := flameViewTitles(scriptName, batches)
-	views := []struct {
-		file              string
-		spans             []completedSpan
-		title             string
-		summedAcrossTicks bool
-	}{
-		{flameViewFiles[0], mergedSpansFromTicks(batches), titles[0], true},
-		{flameViewFiles[1], averageSpansFromTicks(batches), titles[1], false},
-		{flameViewFiles[2], lastTickSpansFromBatches(batches), titles[2], false},
-	}
+func writeFlamegraphViews(dir string, batches [][]completedSpan, perTick []speedscopeEventedProfile, frameMap map[string]int, scriptName string) error {
+	titles := flameViewTitles(scriptName, batches, perTick)
 	var wrote bool
-	for _, v := range views {
-		if len(v.spans) == 0 {
-			continue
+
+	if len(perTick) > 0 && len(frameMap) > 0 {
+		if err := writeTimelineFlamegraph(dir, "tick", perTick, frameMap, titles[0]); err != nil {
+			return err
 		}
-		ctx := strings.TrimSuffix(v.file, ".svg")
-		if err := writeFlamegraphWithTitle(dir, ctx, v.spans, scriptName, v.title, v.summedAcrossTicks); err != nil {
+		wrote = true
+	} else if sp := mergedSpansFromTicks(batches); len(sp) > 0 {
+		if err := writeFlamegraphWithTitle(dir, "tick", sp, scriptName, titles[0], true); err != nil {
+			return err
+		}
+		wrote = true
+	}
+
+	if sp := averageSpansFromTicks(batches); len(sp) > 0 {
+		if err := writeFlamegraphWithTitle(dir, "tick_avg", sp, scriptName, titles[1], false); err != nil {
+			return err
+		}
+		wrote = true
+	}
+	if sp := lastTickSpansFromBatches(batches); len(sp) > 0 {
+		if err := writeFlamegraphWithTitle(dir, "tick_last", sp, scriptName, titles[2], false); err != nil {
 			return err
 		}
 		wrote = true

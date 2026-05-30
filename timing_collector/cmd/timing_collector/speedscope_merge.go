@@ -33,11 +33,12 @@ func waitingSpeedscopeJSON() []byte {
 
 // mergeTickProfiles lays each completed tick profile end-to-end so Time Order shows all ticks
 // in one continuous zoomable timeline (tick 1, tick 2, …).
-func mergeTickProfiles(perTick []speedscopeEventedProfile) ([]speedscopeEvent, int64, int64, error) {
+func mergeTickProfiles(perTick []speedscopeEventedProfile) ([]speedscopeEvent, int64, int64, []int64, error) {
 	if len(perTick) == 0 {
-		return nil, 0, 0, fmt.Errorf("no per-tick profiles")
+		return nil, 0, 0, nil, fmt.Errorf("no per-tick profiles")
 	}
 	merged := make([]speedscopeEvent, 0, 64)
+	tickStarts := make([]int64, 0, len(perTick))
 	cursor := int64(0)
 	ticksAdded := 0
 	for _, prof := range perTick {
@@ -48,6 +49,7 @@ func mergeTickProfiles(perTick []speedscopeEventedProfile) ([]speedscopeEvent, i
 		if ticksAdded > 0 {
 			cursor += tickTimelineGapNs
 		}
+		tickStarts = append(tickStarts, cursor)
 		for _, e := range chunk {
 			merged = append(merged, speedscopeEvent{
 				Type:  e.Type,
@@ -59,10 +61,10 @@ func mergeTickProfiles(perTick []speedscopeEventedProfile) ([]speedscopeEvent, i
 		ticksAdded++
 	}
 	if len(merged) < 2 || ticksAdded == 0 {
-		return nil, 0, 0, fmt.Errorf("not enough events for merged timeline")
+		return nil, 0, 0, nil, fmt.Errorf("not enough events for merged timeline")
 	}
 	merged = enforceMonotonicEventTimes(merged)
-	return merged, merged[0].At, merged[len(merged)-1].At, nil
+	return merged, merged[0].At, merged[len(merged)-1].At, tickStarts, nil
 }
 
 // frameExclusiveDurations maps each frame to self time (inclusive minus nested children) per tick.
@@ -199,7 +201,7 @@ func speedscopeProfileNames(perTick []speedscopeEventedProfile) []string {
 }
 
 func mergedTickProfile(perTick []speedscopeEventedProfile, fallback []speedscopeEvent) (speedscopeEventedProfile, error) {
-	if events, start, end, err := mergeTickProfiles(perTick); err == nil {
+	if events, start, end, _, err := mergeTickProfiles(perTick); err == nil {
 		return speedscopeEventedProfile{
 			Type:       "evented",
 			Name:       "ALL ticks (merged)",

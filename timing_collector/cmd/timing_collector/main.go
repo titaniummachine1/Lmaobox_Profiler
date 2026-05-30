@@ -709,7 +709,7 @@ func exportSessionLocked(endReason string) error {
 			writeSessionErrorFile(dir, endReason, err)
 			return err
 		}
-		if err := writeFlamegraphViews(dir, state.tickSpanBatches, state.scriptName); err != nil {
+		if err := writeFlamegraphViews(dir, state.tickSpanBatches, state.tickProfiles, frameNameToIndex["tick"], state.scriptName); err != nil {
 			log.Printf("WARN session %s: flame graph export: %v", exportID, err)
 			_ = os.WriteFile(filepath.Join(dir, "flamegraph.error.txt"), []byte(err.Error()+"\n"), 0o644)
 		}

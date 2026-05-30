@@ -20,6 +20,11 @@ local Profiler = require("Profiler")
 Profiler.BindScript("fast_players_profile")
 Profiler.SetEnabled(true)
 
+if not Profiler.BeginSession() then
+	print("[Profiler] FAILED: " .. tostring(Profiler.GetLastError()))
+	return
+end
+
 local FastPlayers = nil
 local ok, mod = pcall(require, "fast_players")
 if ok then
@@ -54,10 +59,15 @@ callbacks.Register("Draw", TAG, function()
 end)
 
 callbacks.Register("Unload", TAG, function()
-	Profiler.EndSession()
+	local ok, sessionId = Profiler.EndSession()
 	cleanup()
 	_G.FAST_PLAYERS_PROFILE_LOADED = false
+	if ok then
+		print("[Profiler] OK flame_graphs/" .. tostring(sessionId) .. "/tick.speedscope.json")
+	else
+		print("[Profiler] FAILED: " .. tostring(sessionId))
+	end
 end)
 
-print("[fast_players_profile] Loaded" .. (FastPlayers and " with fast_players" or " (no fast_players module)"))
-print("[fast_players_profile] session=" .. tostring(Profiler.GetSessionID()))
+print("[fast_players_profile] Recording every tick — unload to export.")
+print("[fast_players_profile] fast_players: " .. (FastPlayers and "yes" or "no"))

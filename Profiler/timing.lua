@@ -1,5 +1,5 @@
 --[[
-    High-precision time via Go timing_collector (/now) with os.clock fallback.
+    Optional /now probe for diagnostics (proof.lua). Span timing is only in timing_collector.exe.
 ]]
 
 local Shared = require("Profiler.Shared")

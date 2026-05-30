@@ -5,12 +5,6 @@
 ]]
 
 local SCRIPT_NAME = "simple_test"
-local LOAD_KEY = "profiler.simple_test.v1"
-
-if package.loaded[LOAD_KEY] then
-	print("[simple_test] Already ran.")
-	return
-end
 
 package.loaded["Profiler"] = nil
 local Profiler = require("Profiler")
@@ -30,9 +24,12 @@ end
 
 local function profileTask(name, times)
 	Profiler.Begin(name)
+	local acc = 0
 	for i = 1, times do
-		local _ = i + 1
+		acc = acc + i * i
 	end
+	-- prevent zero-ns spans (empty loops can open+close in one timestamp)
+	local _ = acc
 	Profiler.End(name)
 end
 
@@ -43,7 +40,6 @@ profileTask("readConfig", 10)
 Profiler.EndTick()
 
 local ok, sessionId = Profiler.EndSession()
-package.loaded[LOAD_KEY] = true
 
 if not ok then
 	print("[Profiler] FAILED: " .. tostring(sessionId))

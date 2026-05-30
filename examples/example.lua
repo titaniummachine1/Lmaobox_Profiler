@@ -6,13 +6,6 @@
 ]]
 
 local SCRIPT_NAME = "example"
-local LOAD_KEY = "profiler.example.v1"
-
-if package.loaded[LOAD_KEY] then
-	print("[example] Already ran.")
-	return
-end
-
 package.loaded["Profiler"] = nil
 local Profiler = require("Profiler")
 
@@ -44,7 +37,6 @@ profileTask("cleanup", 5)
 Profiler.EndTick()
 
 local ok, sessionId = Profiler.EndSession()
-package.loaded[LOAD_KEY] = true
 
 if not ok then
 	print("[Profiler] FAILED: " .. tostring(sessionId))

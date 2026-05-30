@@ -78,17 +78,30 @@ type completedSpan struct {
 type speedscopeEvent struct {
 	Type  string `json:"type"`
 	At    int64  `json:"at"`
-	Frame int    `json:"frame,omitempty"`
+	Frame int    `json:"frame"` // must not use omitempty — frame index 0 is valid
 }
 
-type speedscopeProfile struct {
-	Type      string            `json:"$schema"`
-	Name      string            `json:"name"`
-	Unit      string            `json:"unit"`
-	StartTime int64             `json:"startValue"`
-	EndTime   int64             `json:"endValue"`
-	Events    []speedscopeEvent `json:"events"`
-	Frames    []string          `json:"frames"`
+type speedscopeFrame struct {
+	Name string `json:"name"`
+}
+
+type speedscopeEventedProfile struct {
+	Type       string            `json:"type"`
+	Name       string            `json:"name"`
+	Unit       string            `json:"unit"`
+	StartValue int64             `json:"startValue"`
+	EndValue   int64             `json:"endValue"`
+	Events     []speedscopeEvent `json:"events"`
+}
+
+type speedscopeFile struct {
+	Schema string `json:"$schema"`
+	Shared struct {
+		Frames []speedscopeFrame `json:"frames"`
+	} `json:"shared"`
+	Profiles           []speedscopeEventedProfile `json:"profiles"`
+	ActiveProfileIndex int                        `json:"activeProfileIndex"`
+	Exporter           string                     `json:"exporter,omitempty"`
 }
 
 func main() {
@@ -565,8 +578,7 @@ func exportSessionLocked(endReason string) error {
 	frameN := len(state.frameSpans)
 	if tickN == 0 && frameN == 0 {
 		return fmt.Errorf(
-			"no profiling data received. Lua must: BeginSession, BeginTick, Begin/End spans, EndTick, EndSession. " +
-				"If you did that, rebuild timing_collector.exe (run_collector.bat) so /span/report exists",
+			"no profiling data received. Lua must call BeginSession, BeginTick, Begin/End (span/start+span/end), EndTick, EndSession while timing_collector.exe is running",
 		)
 	}
 
@@ -616,27 +628,50 @@ func writeSpeedscope(dir, ctx string, events []speedscopeEvent, frameMap map[str
 	if len(events) == 0 {
 		return fmt.Errorf("%s: no speedscope events (spans never reached collector)", ctx)
 	}
-	frames := make([]string, len(frameMap))
-	for name, idx := range frameMap {
-		if idx < len(frames) {
-			frames[idx] = name
+	if len(frameMap) == 0 {
+		return fmt.Errorf("%s: no frame names for speedscope export", ctx)
+	}
+
+	maxIdx := -1
+	for _, idx := range frameMap {
+		if idx > maxIdx {
+			maxIdx = idx
 		}
 	}
+	sharedFrames := make([]speedscopeFrame, maxIdx+1)
+	for name, idx := range frameMap {
+		if idx >= 0 && idx < len(sharedFrames) {
+			sharedFrames[idx] = speedscopeFrame{Name: name}
+		}
+	}
+	for i, f := range sharedFrames {
+		if f.Name == "" {
+			return fmt.Errorf("%s: missing frame name at index %d", ctx, i)
+		}
+	}
+
 	startVal := events[0].At
 	endVal := events[len(events)-1].At
 	if endVal <= startVal {
 		return fmt.Errorf("%s: profile has zero duration (corrupt or empty)", ctx)
 	}
-	prof := speedscopeProfile{
-		Type:      "https://www.speedscope.app/file-format/schema#evented",
-		Name:      ctx,
-		Unit:      "nanoseconds",
-		StartTime: startVal,
-		EndTime:   endVal,
-		Events:    events,
-		Frames:    frames,
+
+	file := speedscopeFile{
+		Schema:             "https://www.speedscope.app/file-format-schema.json",
+		ActiveProfileIndex: 0,
+		Exporter:           "timing_collector",
 	}
-	b, err := json.Marshal(prof)
+	file.Shared.Frames = sharedFrames
+	file.Profiles = []speedscopeEventedProfile{{
+		Type:       "evented",
+		Name:       ctx,
+		Unit:       "nanoseconds",
+		StartValue: startVal,
+		EndValue:   endVal,
+		Events:     events,
+	}}
+
+	b, err := json.Marshal(file)
 	if err != nil {
 		return fmt.Errorf("%s: encode speedscope: %w", ctx, err)
 	}

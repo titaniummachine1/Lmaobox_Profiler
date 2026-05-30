@@ -1,6 +1,6 @@
 # Lmaobox Profiler
 
-Lua profiling library for [Lmaobox](https://lmaobox.net/lua/) that sends spans to a local **Go collector**. Flame graphs are written to disk (no in-game UI).
+Lua profiling library for [Lmaobox](https://lmaobox.net/lua/). Your script only calls **start/stop** APIs; **`timing_collector.exe`** records nanosecond timestamps and writes flame graphs (no timing in Lua).
 
 ## Quick start
 
@@ -93,12 +93,14 @@ The Go collector exports `flame_graphs/` when:
 
 Deploy with `npm run bundle-deploy`, `BundleAndDeploy.bat`, or `examples\deployexamples.bat` (all bundle first; `deployexamples` no longer copies examples only).
 
-| Script                 | Purpose                                              |
-| ---------------------- | ---------------------------------------------------- |
-| `test_flamegraphs.lua` | Main test — banner, heavy spans, unload + idle hints |
-| `simple_test.lua`      | Lighter load smoke test                              |
-| `example.lua`          | Nested span demo                                     |
-| `proof.lua`            | Check collector is running                           |
+| Script                     | Purpose                                                   |
+| -------------------------- | --------------------------------------------------------- |
+| `multi_tick_test.lua`      | **Many ticks** — CreateMove until unload; merged timeline |
+| `fast_players_profile.lua` | Same pattern, optional `fast_players` module              |
+| `simple_test.lua`          | **One tick** smoke test on `lua_load`                     |
+| `example.lua`              | One tick, nested spans                                    |
+| `test_flamegraphs.lua`     | One tick (legacy smoke test)                              |
+| `proof.lua`                | Check collector is running                                |
 
 ## Project layout
 

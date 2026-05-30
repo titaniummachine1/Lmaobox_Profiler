@@ -24,6 +24,7 @@ func registerWebUI(mux *http.ServeMux) {
 	mux.Handle("/", http.FileServer(http.FS(sub)))
 	mux.HandleFunc("/api/live", handleAPILive)
 	mux.HandleFunc("/api/live/flame.svg", handleAPILiveFlameSVG)
+	mux.HandleFunc("/api/live/speedscope.json", handleAPILiveSpeedscope)
 	mux.HandleFunc("/api/sessions", handleAPISessions)
 	mux.HandleFunc("/api/session/", handleAPISessionRoute)
 }
@@ -164,18 +165,21 @@ func handleAPILive(w http.ResponseWriter, r *http.Request) {
 		events = events[len(events)-80:]
 	}
 
+	profiles, scopeDefault := liveSpeedscopeMetaLocked()
 	resp := map[string]interface{}{
-		"active":       state.sessionID != "",
-		"session_id":   state.sessionID,
-		"script":       state.scriptName,
-		"tick_open":    state.tickOpen,
-		"frame_open":   state.frameOpen,
-		"tick_samples": state.tickSampleNum,
-		"top":          rows,
-		"open":         openRows,
-		"events":       events,
-		"graph_rev":    liveGraphRev,
-		"server_time":  time.Now().Format(time.RFC3339),
+		"active":              state.sessionID != "",
+		"session_id":          state.sessionID,
+		"script":              state.scriptName,
+		"tick_open":           state.tickOpen,
+		"frame_open":          state.frameOpen,
+		"tick_samples":        state.tickSampleNum,
+		"top":                 rows,
+		"open":                openRows,
+		"events":              events,
+		"graph_rev":           liveGraphRev,
+		"server_time":         time.Now().Format(time.RFC3339),
+		"speedscope_profiles": profiles,
+		"speedscope_default":  scopeDefault,
 	}
 	setAPICORS(w)
 	w.Header().Set("Content-Type", "application/json")
@@ -187,7 +191,6 @@ func handleAPILiveFlameSVG(w http.ResponseWriter, r *http.Request) {
 	now := time.Since(serverStart).Nanoseconds()
 	spans := collectLiveDisplaySpansLocked(now)
 	active := state.sessionID != ""
-	script := state.scriptName
 	rootLabel := liveFlameRootName()
 	mu.Unlock()
 
@@ -197,19 +200,37 @@ func handleAPILiveFlameSVG(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	title := rootLabel
-	if script != "" {
-		title = rootLabel + " — " + script
-	}
-	svg, err := renderFlamegraphBytes(spans, title, rootLabel)
+	svg, err := renderFlamegraphBytes(spans, rootLabel, rootLabel)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusNoContent)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	setAPICORS(w)
 	w.Header().Set("Content-Type", "image/svg+xml")
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write(svg)
+}
+
+func handleAPILiveSpeedscope(w http.ResponseWriter, r *http.Request) {
+	setAPICORS(w)
+	if r.Method == http.MethodOptions {
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	mu.Lock()
+	data, _, _, err := buildLiveSpeedscopeLocked()
+	mu.Unlock()
+	if err != nil {
+		data = waitingSpeedscopeJSON()
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(data)
 }
 
 func handleAPISessions(w http.ResponseWriter, _ *http.Request) {

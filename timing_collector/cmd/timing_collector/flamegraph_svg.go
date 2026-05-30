@@ -30,7 +30,7 @@ func buildFlameTree(spans []completedSpan, rootLabel string) *fgNode {
 		rootLabel = "all"
 	}
 	root := &fgNode{name: "all", children: map[string]*fgNode{}}
-	for _, s := range spans {
+	for _, s := range spansForFlamegraph(spans) {
 		stack := s.stack
 		if len(stack) == 0 {
 			stack = []string{s.name}

@@ -35,7 +35,7 @@ func runFlamegraphGen(foldedPath, svgPath, title string) error {
 
 func foldedLinesFromSpans(spans []completedSpan, rootPrefix string) ([]string, error) {
 	agg := map[string]int64{}
-	for _, s := range spans {
+	for _, s := range spansForFlamegraph(spans) {
 		key := strings.Join(s.stack, ";")
 		if key == "" {
 			key = s.name

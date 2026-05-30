@@ -36,7 +36,7 @@ func buildFlameTree(spans []completedSpan, rootLabel string) *fgNode {
 			stack = []string{s.name}
 		}
 		stack = append([]string{rootLabel}, stack...)
-		dur := s.endNs - s.startNs
+		dur := spanDurationNsFromBounds(s.startNs, s.endNs)
 		if dur <= 0 {
 			continue
 		}

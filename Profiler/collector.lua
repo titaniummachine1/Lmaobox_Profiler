@@ -1,7 +1,7 @@
 --[[
     Thin HTTP client for timing_collector.exe.
-    Lua does not measure time — only session/tick/frame/span boundaries.
-    The Go process records nanosecond timestamps and builds flame graphs.
+    Lua never measures span duration (no os.clock, globals.RealTime, etc.).
+    Only session/tick/frame/span boundaries; Go records all timestamps.
 ]]
 
 local Shared = require("Profiler.Shared")

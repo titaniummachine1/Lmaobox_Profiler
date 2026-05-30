@@ -140,7 +140,7 @@ func handleAPILive(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Since(serverStart).Nanoseconds()
 	for _, s := range collectLiveTopSpansLocked(now) {
-		addSpan(s.stack, s.endNs-s.startNs)
+		addSpan(s.stack, spanDurationNsFromBounds(s.startNs, s.endNs))
 	}
 
 	for _, id := range state.openStack {
@@ -153,7 +153,7 @@ func handleAPILive(w http.ResponseWriter, r *http.Request) {
 			end = now
 		}
 		stack := buildStackNames(rec, state.spans)
-		ns := end - rec.startNs
+		ns := spanDurationNsFromBounds(rec.startNs, end)
 		openRows = append(openRows, openRow{
 			Stack: strings.Join(stack, " → "),
 			Ns:    ns,

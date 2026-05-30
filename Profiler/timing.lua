@@ -1,5 +1,7 @@
 --[[
-    Optional /now probe for diagnostics (proof.lua). Span timing is only in timing_collector.exe.
+    Optional collector /now probe for diagnostics (proof.lua).
+    Does NOT measure span time — use Profiler.Begin/End via Profiler.collector only.
+    Never uses os.clock or game globals for timing.
 ]]
 
 local Shared = require("Profiler.Shared")
@@ -10,8 +12,8 @@ local Timing = {}
 local COLLECTOR_URL = config.collectorUrl or "http://127.0.0.1:9876"
 
 local serverAvailable = nil
-local lastFailTime = 0
-local RETRY_COOLDOWN = config.httpRetryCooldown or 5
+local failPollSkip = 0
+local FAIL_POLL_SKIP_MAX = 50
 
 local function tryCollector(endpoint)
 	local success, result = pcall(function()
@@ -32,26 +34,25 @@ local function tryCollector(endpoint)
 	return nil
 end
 
+--- Returns seconds from timing_collector monotonic clock, or nil if collector unreachable.
 function Timing.Now()
-	if serverAvailable == false then
-		local currentTime = os.clock()
-		if currentTime - lastFailTime < RETRY_COOLDOWN then
-			return currentTime
-		end
+	if failPollSkip > 0 then
+		failPollSkip = failPollSkip - 1
+		return nil
 	end
 
 	local nanos = tryCollector("/now")
 	if nanos then
+		failPollSkip = 0
 		return nanos / 1000000000
 	end
 
 	if serverAvailable ~= false then
 		serverAvailable = false
 		Shared.CollectorAvailable = false
-		lastFailTime = os.clock()
 	end
-
-	return os.clock()
+	failPollSkip = FAIL_POLL_SKIP_MAX
+	return nil
 end
 
 function Timing.IsCollectorAvailable()

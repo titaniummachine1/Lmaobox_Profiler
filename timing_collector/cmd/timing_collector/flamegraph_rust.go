@@ -43,11 +43,7 @@ func foldedLinesFromSpans(spans []completedSpan, rootPrefix string) ([]string, e
 		if rootPrefix != "" {
 			key = rootPrefix + ";" + key
 		}
-		dur := s.endNs - s.startNs
-		if dur < 0 {
-			dur = 0
-		}
-		agg[key] += dur
+		agg[key] += spanDurationNsFromBounds(s.startNs, s.endNs)
 	}
 	if len(agg) == 0 {
 		return nil, fmt.Errorf("no folded stack data")

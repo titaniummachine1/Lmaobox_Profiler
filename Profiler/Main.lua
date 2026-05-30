@@ -1,5 +1,7 @@
 --[[
     Profiler — thin Lua client for Go timing_collector.
+    Span timing is recorded only in timing_collector.exe (nanoseconds).
+    Lua sends boundaries via Begin/End; do not use game time or os.clock for profiling.
 ]]
 
 do

@@ -40,11 +40,7 @@ func stackKey(stack []string, name string) string {
 }
 
 func spanDurationNs(s completedSpan) int64 {
-	d := s.endNs - s.startNs
-	if d < 0 {
-		return 0
-	}
-	return d
+	return spanDurationNsFromBounds(s.startNs, s.endNs)
 }
 
 func spanFromStackKey(key string, dur int64) completedSpan {
@@ -136,10 +132,7 @@ func currentTickSpansLocked(now int64) []completedSpan {
 		if !rec.closed || end == 0 {
 			end = now
 		}
-		dur := end - rec.startNs
-		if dur <= 0 {
-			continue
-		}
+		end = normalizeSpanEnd(rec.startNs, end)
 		out = append(out, completedSpan{
 			name:    rec.name,
 			ctx:     rec.ctx,

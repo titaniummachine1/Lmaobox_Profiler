@@ -472,7 +472,7 @@ func handleSpanEnd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	endNs := time.Since(serverStart).Nanoseconds()
+	endNs := normalizeSpanEnd(rec.startNs, time.Since(serverStart).Nanoseconds())
 	rec.endNs = endNs
 	rec.closed = true
 
@@ -493,7 +493,7 @@ func handleSpanEnd(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleSpanReport ingests a completed span from Lua (buffered flush — no per-Begin HTTP).
-// GET /span/report?name=&ctx=tick|frame&dur_ns=&stack=parent;child
+// GET /span/report?name=&ctx=tick|frame&stack=parent;child (legacy; server timestamps only, dur_ns ignored)
 func handleSpanReport(w http.ResponseWriter, r *http.Request) {
 	mu.Lock()
 	defer mu.Unlock()
@@ -507,12 +507,6 @@ func handleSpanReport(w http.ResponseWriter, r *http.Request) {
 	name := queryUnescape(r, "name")
 	ctx := queryUnescape(r, "ctx")
 	if name == "" || (ctx != "tick" && ctx != "frame") {
-		fmt.Fprint(w, "-1")
-		return
-	}
-
-	durNs, err := strconv.ParseInt(r.URL.Query().Get("dur_ns"), 10, 64)
-	if err != nil || durNs < 0 {
 		fmt.Fprint(w, "-1")
 		return
 	}
@@ -537,11 +531,9 @@ func handleSpanReport(w http.ResponseWriter, r *http.Request) {
 		maybeBeginTickOnReportRootLocked(tickRootFromStack(stack, name))
 	}
 
+	// Legacy one-shot report: timing is server-side only (dur_ns query is ignored).
 	endNs := time.Since(serverStart).Nanoseconds()
-	startNs := endNs - durNs
-	if startNs < 0 {
-		startNs = 0
-	}
+	startNs := endNs - minSpanDurationNs
 
 	appendOpenEventLocked(ctx, name, startNs)
 	appendCloseEventLocked(ctx, name, endNs)
@@ -558,7 +550,7 @@ func handleSpanReport(w http.ResponseWriter, r *http.Request) {
 	} else {
 		state.frameSpans = append(state.frameSpans, completed)
 	}
-	pushLiveEvent("close", fmt.Sprintf("■ %s — %.3f ms", strings.Join(stack, " → "), float64(durNs)/1e6))
+	pushLiveEvent("close", fmt.Sprintf("■ %s — %.3f ms", strings.Join(stack, " → "), float64(spanDurationNsFromBounds(startNs, endNs))/1e6))
 
 	fmt.Fprint(w, "0")
 }
@@ -592,9 +584,10 @@ func flushCtxSpansLocked(ctx string) {
 			continue
 		}
 		if !rec.closed {
-			rec.endNs = now
+			end := normalizeSpanEnd(rec.startNs, now)
+			rec.endNs = end
 			rec.closed = true
-			appendCloseEventLocked(ctx, rec.name, now)
+			appendCloseEventLocked(ctx, rec.name, end)
 		}
 	}
 
@@ -610,7 +603,7 @@ func flushCtxSpansLocked(ctx string) {
 			name:    rec.name,
 			ctx:     rec.ctx,
 			startNs: rec.startNs,
-			endNs:   rec.endNs,
+			endNs:   normalizeSpanEnd(rec.startNs, rec.endNs),
 			stack:   stack,
 		})
 	}

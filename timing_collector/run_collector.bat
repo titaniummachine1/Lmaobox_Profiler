@@ -6,13 +6,11 @@ if /I "%~1"=="/stop" (
     exit /b 0
 )
 
-if not exist timing_collector.exe (
-    echo Building timing_collector.exe...
-    go build -o timing_collector.exe .
-    if errorlevel 1 (
-        pause
-        exit /b 1
-    )
+echo Building timing_collector.exe...
+go build -o timing_collector.exe .
+if errorlevel 1 (
+    pause
+    exit /b 1
 )
 
 REM Free port 9876 if a previous collector or Rust timing_server is still running

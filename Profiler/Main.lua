@@ -117,12 +117,25 @@ function Profiler.BindScript(scriptName)
 end
 
 function Profiler.BeginSession()
-	return ensureSessionForScript(resolveCallerScriptName())
+	local ok = ensureSessionForScript(resolveCallerScriptName())
+	if not ok and not Shared.LastError then
+		Shared.LastError = "could not start session (BindScript with a real script name, then BeginSession)"
+	end
+	return ok
 end
 
 function Profiler.EndSession()
-	Collector.EndSession()
+	local ok, info = Collector.EndSession()
 	Shared.ActiveScriptName = nil
+	if ok then
+		Shared.LastError = nil
+		return true, info
+	end
+	return false, info or Shared.LastError
+end
+
+function Profiler.GetLastError()
+	return Shared.LastError
 end
 
 function Profiler.BeginTick()
@@ -178,25 +191,9 @@ function Profiler.GetActiveScript()
 	return Shared.ActiveScriptName
 end
 
-function Profiler.GetFlameGraphsFolder()
-	local sid = Shared.SessionID
-	if not sid then
-		return nil
-	end
-	return "timing_collector\\flame_graphs\\" .. sid
-end
-
-function Profiler.PrintFlameGraphHelp()
-	local sid = Shared.SessionID
-	print("============================================================")
-	print("[Profiler] Flame graphs (next to timing_collector.exe):")
-	print("  C:\\gitProjects\\profiler\\timing_collector\\flame_graphs\\<session_id>\\")
-	if sid then
-		print("[Profiler] Your session:")
-		print("  ...\\flame_graphs\\" .. sid)
-	end
-	print("[Profiler] Open tick.speedscope.json at https://www.speedscope.app")
-	print("============================================================")
+--- After a successful EndSession, returns session id used for flame_graphs/<id>/tick.speedscope.json
+function Profiler.GetLastExportSessionID()
+	return Shared.LastExportSessionID
 end
 
 function Profiler.Unload()

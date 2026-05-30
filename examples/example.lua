@@ -6,7 +6,6 @@
 ]]
 
 local SCRIPT_NAME = "example"
-local FLAME_GRAPHS_ROOT = "C:\\gitProjects\\profiler\\timing_collector\\flame_graphs"
 local LOAD_KEY = "profiler.example.v1"
 
 if package.loaded[LOAD_KEY] then
@@ -21,11 +20,9 @@ Profiler.BindScript(SCRIPT_NAME)
 Profiler.SetEnabled(true)
 
 if not Profiler.BeginSession() then
-	print("[example] Start run_collector.bat first.")
+	print("[Profiler] FAILED: " .. tostring(Profiler.GetLastError()))
 	return
 end
-
-local sessionId = Profiler.GetSessionID()
 
 local function profileTask(name, times)
 	Profiler.Begin(name)
@@ -46,10 +43,11 @@ Profiler.End("aimbotTick")
 profileTask("cleanup", 5)
 Profiler.EndTick()
 
-Profiler.EndSession()
+local ok, sessionId = Profiler.EndSession()
 package.loaded[LOAD_KEY] = true
 
-print("============================================================")
-print("[example] Done. Graphs:")
-print("  " .. FLAME_GRAPHS_ROOT .. "\\" .. tostring(sessionId))
-print("============================================================")
+if not ok then
+	print("[Profiler] FAILED: " .. tostring(sessionId))
+	return
+end
+print("[Profiler] OK flame_graphs/" .. tostring(sessionId) .. "/tick.speedscope.json")

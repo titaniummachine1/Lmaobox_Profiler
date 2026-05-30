@@ -1,31 +1,14 @@
 @echo off
 
-if "%LOCALAPPDATA%"=="" (
-    echo LOCALAPPDATA is not set. Cannot deploy examples.
-    pause
-    exit /b 1
-)
+REM Bundle Profiler.lua + copy examples to %%LOCALAPPDATA%%\lua
 
-set "TARGET_DIR=%LOCALAPPDATA%\lua"
-if not exist "%TARGET_DIR%" (
-    mkdir "%TARGET_DIR%"
-    if errorlevel 1 (
-        echo Failed to create target directory %TARGET_DIR%!
-        pause
-        exit /b 1
-    )
-)
 
-echo Copying Lua scripts to %TARGET_DIR%...
-copy /Y "%~dp0*.lua" "%TARGET_DIR%\"
 
-if errorlevel 1 (
-    echo Example files copy failed.
-    pause
-    exit /b 1
-)
+setlocal
 
-echo All Lua scripts copied successfully!
-if /I "%DEPLOY_EXAMPLES_NO_PAUSE%"=="1" exit /b 0
-pause
-exit /b 0
+cd /d "%~dp0.."
+
+call "%~dp0..\BundleAndDeploy.bat" --no-collector
+
+exit /b %ERRORLEVEL%
+

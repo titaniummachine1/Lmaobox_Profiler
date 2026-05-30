@@ -85,8 +85,10 @@ local function flushLocalSpans(ctx)
 				durNs,
 				urlEncode(stack)
 			)
-			httpGet(endpoint)
-			s.sent = true
+			local result = httpGet(endpoint)
+			if result == "0" then
+				s.sent = true
+			end
 		end
 	end
 	inApi = false
@@ -138,60 +140,110 @@ function Collector.GetActiveContext()
 	return activeCtx
 end
 
+local function countUnsentSpans()
+	local n = 0
+	for i = 1, #localSpans do
+		local s = localSpans[i]
+		if s and s.closed and not s.sent then
+			n = n + 1
+		end
+	end
+	return n
+end
+
 function Collector.BeginSession(scriptName)
+	Shared.LastError = nil
 	if not isEnabled() then
+		Shared.LastError = "Profiler is disabled (SetEnabled(false))"
 		return false
 	end
 	if inApi then
+		Shared.LastError = "Profiler HTTP call already in progress"
+		return false
+	end
+	if not http or not http.Get then
+		Shared.LastError = "Lmaobox http.Get is not available"
 		return false
 	end
 
 	inApi = true
 	local endpoint = "/session/begin?script=" .. urlEncode(scriptName or "unknown")
 	local sessionId = httpGet(endpoint)
+	local ver = httpGet("/version")
 	inApi = false
 
-	if sessionId and sessionId ~= "-1" and sessionId ~= "" then
-		Shared.SessionID = sessionId
-		Shared.ActiveScriptName = scriptName
-		Shared.CollectorAvailable = true
-		collectorReachable = true
-		Collector.ResetLocalStack()
-		return true
+	if not sessionId or sessionId == "-1" or sessionId == "" then
+		Shared.CollectorAvailable = false
+		collectorReachable = false
+		Shared.LastError = "timing_collector not running — start timing_collector\\run_collector.bat (" .. BASE_URL .. ")"
+		return false
+	end
+	if ver ~= "2" then
+		Shared.CollectorAvailable = false
+		Shared.LastError = "timing_collector.exe is outdated (version=" .. tostring(ver) .. "). Run run_collector.bat to rebuild."
+		httpGet("/session/end")
+		return false
 	end
 
-	Shared.CollectorAvailable = false
-	collectorReachable = false
-	return false
+	Shared.SessionID = sessionId
+	Shared.ActiveScriptName = scriptName
+	Shared.CollectorAvailable = true
+	collectorReachable = true
+	Collector.ResetLocalStack()
+	return true
 end
 
 function Collector.EndSession()
 	if Shared.SessionEnding then
-		return
+		return false, Shared.LastError or "session end already in progress"
 	end
 	if not Shared.SessionID then
 		Collector.ResetLocalStack()
-		return
+		return true
 	end
 
 	Shared.SessionEnding = true
+	Shared.LastError = nil
 
 	closeOpenLocalSpans()
 	flushLocalSpans("tick")
 	flushLocalSpans("frame")
+
+	local unsent = countUnsentSpans()
+	if unsent > 0 then
+		Shared.LastError = string.format(
+			"%d span(s) were not accepted by timing_collector. Rebuild timing_collector.exe (run_collector.bat).",
+			unsent
+		)
+		Shared.SessionEnding = false
+		return false, Shared.LastError
+	end
 
 	if activeCtx == "tick" then
 		httpGet("/tick/end")
 	elseif activeCtx == "frame" then
 		httpGet("/frame/end")
 	end
-	httpGet("/session/end")
+
+	local sessionId = Shared.SessionID
+	local result = httpGet("/session/end")
 
 	Shared.SessionID = nil
 	Shared.ActiveScriptName = nil
 	activeCtx = nil
 	Shared.SessionEnding = false
 	Collector.ResetLocalStack()
+
+	if result == "OK" then
+		Shared.LastExportSessionID = sessionId
+		return true, sessionId
+	end
+	if result and result:sub(1, 4) == "ERR:" then
+		Shared.LastError = result:sub(5)
+		return false, Shared.LastError
+	end
+	Shared.LastError = "timing_collector did not respond on " .. BASE_URL
+	return false, Shared.LastError
 end
 
 function Collector.BeginTick()

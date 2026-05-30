@@ -102,6 +102,9 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/now", handleNow)
+	mux.HandleFunc("/version", func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, "2")
+	})
 	mux.HandleFunc("/session/begin", handleSessionBegin)
 	mux.HandleFunc("/session/end", handleSessionEnd)
 	mux.HandleFunc("/tick/begin", handleTickBegin)
@@ -144,8 +147,9 @@ func startIdleWatcher() {
 			mu.Lock()
 			if state.sessionID != "" && profilingStarted && !lastActivity.IsZero() {
 				if time.Since(lastActivity) >= sessionIdleTimeout {
-					log.Printf("session %s idle for %v — exporting flame_graphs", state.sessionID, sessionIdleTimeout)
-					endSessionLocked("idle_timeout")
+					if err := endSessionLocked("idle_timeout"); err != nil {
+						log.Printf("ERROR session %s idle export: %v", state.sessionID, err)
+					}
 				}
 			}
 			mu.Unlock()
@@ -154,9 +158,9 @@ func startIdleWatcher() {
 }
 
 // endSessionLocked exports and clears the active session (same outcome as /session/end).
-func endSessionLocked(reason string) {
+func endSessionLocked(reason string) error {
 	if state.sessionID == "" {
-		return
+		return nil
 	}
 	sid := state.sessionID
 
@@ -170,9 +174,14 @@ func endSessionLocked(reason string) {
 	}
 	state.activeCtx = ""
 
-	exportSessionLocked(reason)
+	exportErr := exportSessionLocked(reason)
 	resetSessionLocked()
-	log.Printf("session %s ended (%s)", sid, reason)
+	if exportErr != nil {
+		log.Printf("ERROR session %s ended (%s): %v", sid, reason, exportErr)
+		return exportErr
+	}
+	log.Printf("session %s OK — flame graph: flame_graphs/%s/tick.speedscope.json", sid, sid)
+	return nil
 }
 
 func flameGraphsDir() string {
@@ -197,7 +206,7 @@ func handleSessionBegin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if state.sessionID != "" {
-		endSessionLocked("session_begin")
+		_ = endSessionLocked("session_begin")
 	}
 
 	state.sessionID = fmt.Sprintf("%s_%d", sanitizeFileName(script), time.Now().UnixNano())
@@ -228,8 +237,11 @@ func handleSessionEnd(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "0")
 		return
 	}
-	endSessionLocked("api")
-	fmt.Fprint(w, "1")
+	if err := endSessionLocked("api"); err != nil {
+		fmt.Fprintf(w, "ERR:%s", err.Error())
+		return
+	}
+	fmt.Fprint(w, "OK")
 }
 
 func handleTickBegin(w http.ResponseWriter, r *http.Request) {
@@ -544,43 +556,76 @@ func appendCloseEventLocked(ctx, name string, at int64) {
 	}
 }
 
-func exportSessionLocked(endReason string) {
+func exportSessionLocked(endReason string) error {
 	if state.sessionID == "" {
-		return
+		return fmt.Errorf("no active session")
 	}
+
+	tickN := len(state.tickSpans)
+	frameN := len(state.frameSpans)
+	if tickN == 0 && frameN == 0 {
+		return fmt.Errorf(
+			"no profiling data received. Lua must: BeginSession, BeginTick, Begin/End spans, EndTick, EndSession. " +
+				"If you did that, rebuild timing_collector.exe (run_collector.bat) so /span/report exists",
+		)
+	}
+
 	dir := filepath.Join(flameGraphsDir(), state.sessionID)
-	_ = os.MkdirAll(dir, 0o755)
-
-	writeSpeedscope(dir, "tick", state.tickEvents, frameNameToIndex["tick"])
-	writeSpeedscope(dir, "frame", state.frameEvents, frameNameToIndex["frame"])
-	writeFolded(dir, "tick", state.tickSpans)
-	writeFolded(dir, "frame", state.frameSpans)
-
-	meta := map[string]interface{}{
-		"session_id":  state.sessionID,
-		"script":      state.scriptName,
-		"started_at":  state.sessionStart.Format(time.RFC3339),
-		"ended_at":    time.Now().Format(time.RFC3339),
-		"end_reason":  endReason,
-		"tick_spans":  len(state.tickSpans),
-		"frame_spans": len(state.frameSpans),
-		"output_dir":  dir,
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("cannot create output folder: %w", err)
 	}
-	b, _ := json.MarshalIndent(meta, "", "  ")
-	_ = os.WriteFile(filepath.Join(dir, "session.meta.json"), b, 0o644)
+
+	var wrote bool
+	if tickN > 0 {
+		if err := writeSpeedscope(dir, "tick", state.tickEvents, frameNameToIndex["tick"]); err != nil {
+			writeSessionErrorFile(dir, endReason, err)
+			return err
+		}
+		if err := writeFolded(dir, "tick", state.tickSpans); err != nil {
+			return err
+		}
+		wrote = true
+	}
+	if frameN > 0 {
+		if err := writeSpeedscope(dir, "frame", state.frameEvents, frameNameToIndex["frame"]); err != nil {
+			writeSessionErrorFile(dir, endReason, err)
+			return err
+		}
+		if err := writeFolded(dir, "frame", state.frameSpans); err != nil {
+			return err
+		}
+		wrote = true
+	}
+
+	if !wrote {
+		err := fmt.Errorf("internal error: span counts tick=%d frame=%d but nothing exported", tickN, frameN)
+		writeSessionErrorFile(dir, endReason, err)
+		return err
+	}
+
+	_ = endReason // reserved for future diagnostics file if needed
+	return nil
 }
 
-func writeSpeedscope(dir, ctx string, events []speedscopeEvent, frameMap map[string]int) {
+func writeSessionErrorFile(dir, reason string, err error) {
+	msg := fmt.Sprintf("Profiler export FAILED (%s)\n\n%s\n", reason, err.Error())
+	_ = os.WriteFile(filepath.Join(dir, "session.error.txt"), []byte(msg), 0o644)
+}
+
+func writeSpeedscope(dir, ctx string, events []speedscopeEvent, frameMap map[string]int) error {
+	if len(events) == 0 {
+		return fmt.Errorf("%s: no speedscope events (spans never reached collector)", ctx)
+	}
 	frames := make([]string, len(frameMap))
 	for name, idx := range frameMap {
 		if idx < len(frames) {
 			frames[idx] = name
 		}
 	}
-	var startVal, endVal int64
-	if len(events) > 0 {
-		startVal = events[0].At
-		endVal = events[len(events)-1].At
+	startVal := events[0].At
+	endVal := events[len(events)-1].At
+	if endVal <= startVal {
+		return fmt.Errorf("%s: profile has zero duration (corrupt or empty)", ctx)
 	}
 	prof := speedscopeProfile{
 		Type:      "https://www.speedscope.app/file-format/schema#evented",
@@ -593,12 +638,16 @@ func writeSpeedscope(dir, ctx string, events []speedscopeEvent, frameMap map[str
 	}
 	b, err := json.Marshal(prof)
 	if err != nil {
-		return
+		return fmt.Errorf("%s: encode speedscope: %w", ctx, err)
 	}
-	_ = os.WriteFile(filepath.Join(dir, ctx+".speedscope.json"), b, 0o644)
+	path := filepath.Join(dir, ctx+".speedscope.json")
+	if err := os.WriteFile(path, b, 0o644); err != nil {
+		return fmt.Errorf("%s: write %s: %w", ctx, path, err)
+	}
+	return nil
 }
 
-func writeFolded(dir, ctx string, spans []completedSpan) {
+func writeFolded(dir, ctx string, spans []completedSpan) error {
 	agg := map[string]int64{}
 	for _, s := range spans {
 		key := strings.Join(s.stack, ";")
@@ -611,12 +660,24 @@ func writeFolded(dir, ctx string, spans []completedSpan) {
 		}
 		agg[key] += dur
 	}
+	if len(agg) == 0 {
+		return fmt.Errorf("%s: no folded stack data", ctx)
+	}
 	var lines []string
 	for k, v := range agg {
-		lines = append(lines, fmt.Sprintf("%s %d", k, v))
+		if v > 0 {
+			lines = append(lines, fmt.Sprintf("%s %d", k, v))
+		}
+	}
+	if len(lines) == 0 {
+		return fmt.Errorf("%s: all span durations are zero", ctx)
 	}
 	sort.Strings(lines)
-	_ = os.WriteFile(filepath.Join(dir, ctx+".folded.txt"), []byte(strings.Join(lines, "\n")), 0o644)
+	path := filepath.Join(dir, ctx+".folded.txt")
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644); err != nil {
+		return fmt.Errorf("%s: write %s: %w", ctx, path, err)
+	}
+	return nil
 }
 
 func resetSessionLocked() {

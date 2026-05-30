@@ -1,13 +1,10 @@
 --[[
-    Dead-simple profiler test — runs ONCE on lua_load. No CreateMove/Draw hooks.
-
+    One-shot test. Deploy: npm run bundle-deploy  ->  %%LOCALAPPDATA%%\lua\Profiler.lua
     1. timing_collector\run_collector.bat
     2. lua_load simple_test
-    3. Open the folder it prints -> tick.speedscope.json on speedscope.app
 ]]
 
 local SCRIPT_NAME = "simple_test"
-local FLAME_GRAPHS_ROOT = "C:\\gitProjects\\profiler\\timing_collector\\flame_graphs"
 local LOAD_KEY = "profiler.simple_test.v1"
 
 if package.loaded[LOAD_KEY] then
@@ -27,11 +24,9 @@ Profiler.BindScript(SCRIPT_NAME)
 Profiler.SetEnabled(true)
 
 if not Profiler.BeginSession() then
-	print("[simple_test] Start run_collector.bat first.")
+	print("[Profiler] FAILED: " .. tostring(Profiler.GetLastError()))
 	return
 end
-
-local sessionId = Profiler.GetSessionID()
 
 local function profileTask(name, times)
 	Profiler.Begin(name)
@@ -47,11 +42,13 @@ profileTask("cachePlayers", 30)
 profileTask("readConfig", 10)
 Profiler.EndTick()
 
-Profiler.EndSession()
+local ok, sessionId = Profiler.EndSession()
 package.loaded[LOAD_KEY] = true
 
-print("============================================================")
-print("[simple_test] Done.")
-print("  " .. FLAME_GRAPHS_ROOT .. "\\" .. tostring(sessionId))
-print("  tick.speedscope.json -> https://www.speedscope.app")
-print("============================================================")
+if not ok then
+	print("[Profiler] FAILED: " .. tostring(sessionId))
+	return
+end
+
+print("[Profiler] OK flame_graphs/" .. tostring(sessionId) .. "/tick.speedscope.json")
+print("[Profiler] Open that file at https://www.speedscope.app")

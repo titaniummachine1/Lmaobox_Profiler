@@ -21,12 +21,16 @@ npm install
 npm run bundle-deploy
 ```
 
-Copies `Profiler.lua` and `examples/*.lua` to `%LOCALAPPDATA%\lua\`.
+Copies **`Profiler.lua`** (drop-in library for `%LOCALAPPDATA%\lua\`) and **`examples/*.lua`**.
+
+Any script: `local Profiler = require("Profiler")` then talk to `timing_collector.exe` on port 9876. No extra Lua files to install.
+
+If export fails, the game console prints `[Profiler] FAILED: …` and the collector writes **`session.error.txt`** only (no empty speedscope files).
 
 **Automatic dev workflow** (same pattern as Cheater Detection):
 
 - **On save** — install [Run on Save](https://marketplace.visualstudio.com/items?itemName=achilleshr.runonsave) (or emeraldwalk); saving any `.lua` runs `BundleAndDeploy.bat --no-collector`
-- **On folder open** — task *Bundle on folder open* runs once (allow in prompt)
+- **On folder open** — task _Bundle on folder open_ runs once (allow in prompt)
 - **Watch mode** — `npm run watch` rebundles when `Profiler/` or `examples/` changes
 - **Ctrl+Shift+B** — full bundle + Go collector build
 
@@ -71,9 +75,11 @@ After playing, unloading the script, or **3 seconds with no profiling traffic**,
 | `Begin(name)` / `End(name)`   | Nested work spans inside active tick/frame         |
 | `SetEnabled(bool)`            | Gate HTTP when collector is offline                |
 | `BeginSession()`              | Optional; auto-runs on require when script changes |
-| `EndSession()`                | Flush session; called on script unload             |
+| `EndSession()`                | Returns `ok, sessionIdOrError` — check `ok`        |
+| `GetLastError()`              | Why `BeginSession` / `EndSession` failed           |
+| `GetLastExportSessionID()`    | After success: folder name under `flame_graphs/`   |
 | `IsCollectorAvailable()`      | Probe `/now`                                       |
-| `GetSessionID()`              | Current collector session id                       |
+| `GetSessionID()`              | Active session id (nil after EndSession)           |
 
 ## Session end
 
@@ -85,7 +91,7 @@ The Go collector exports `flame_graphs/` when:
 
 ## Examples
 
-Deploy with `examples\deployexamples.bat` or `BundleAndDeploy.bat`.
+Deploy with `npm run bundle-deploy`, `BundleAndDeploy.bat`, or `examples\deployexamples.bat` (all bundle first; `deployexamples` no longer copies examples only).
 
 | Script                 | Purpose                                              |
 | ---------------------- | ---------------------------------------------------- |

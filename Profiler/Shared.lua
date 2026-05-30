@@ -9,6 +9,8 @@ local Shared = {
 	CollectorAvailable = nil,
 	Enabled = true,
 	SessionEnding = false,
+	LastError = nil,
+	LastExportSessionID = nil,
 }
 
 return Shared

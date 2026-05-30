@@ -1,0 +1,137 @@
+# Bundle Profiler.lua + timing_collector, tag with semver bump, publish GitHub Release.
+
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      !contains(github.event.head_commit.message, '[skip release]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute next version tag
+        id: version
+        shell: bash
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          set -euo pipefail
+          msg="$(printf '%s' "${COMMIT_MESSAGE}" | head -n1 | tr '[:upper:]' '[:lower:]')"
+          bump="patch"
+          if [[ "${msg}" =~ (^|[^a-z])(major|breaking|break)([^a-z]|$) ]]; then
+            bump="major"
+          elif [[ "${msg}" =~ (^|[^a-z])(minor|feature|feat|update)([^a-z]|$) ]]; then
+            bump="minor"
+          fi
+
+          latest_tag="$(git tag -l 'v[0-9]*' --sort=-v:refname | head -n1 || true)"
+          if [[ -z "${latest_tag}" ]]; then
+            major=2
+            minor=0
+            patch=0
+          else
+            ver="${latest_tag#v}"
+            IFS='.' read -r major minor patch _ <<< "${ver}."
+            major="${major:-2}"
+            minor="${minor:-0}"
+            patch="${patch:-0}"
+          fi
+
+          case "${bump}" in
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            patch) patch=$((patch + 1)) ;;
+          esac
+
+          next="v${major}.${minor}.${patch}"
+          echo "tag=${next}" >> "$GITHUB_OUTPUT"
+          echo "bump=${bump}" >> "$GITHUB_OUTPUT"
+          echo "Next release: ${next} (${bump})"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: timing_collector/go.mod
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Bundle Lua
+        env:
+          BUNDLE_CI: "1"
+          BUNDLE_OUTPUT_PATH: ${{ github.workspace }}/dist/Profiler.lua
+        run: npm run bundle
+
+      - name: Build timing_collector (linux)
+        working-directory: timing_collector
+        run: go build -o timing_collector .
+
+      - name: Build timing_collector (windows)
+        working-directory: timing_collector
+        run: GOOS=windows GOARCH=amd64 go build -o timing_collector.exe .
+
+      - name: Stage release files
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          test -s dist/Profiler.lua
+          cp timing_collector/timing_collector dist/
+          cp timing_collector/timing_collector.exe dist/
+          cp timing_collector/README.md dist/timing_collector_README.md
+          cp examples/test_flamegraphs.lua dist/example_test_flamegraphs.lua
+          sha256sum dist/* > dist/SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.version.outputs.tag }}"
+          bump="${{ steps.version.outputs.bump }}"
+          short_sha="${GITHUB_SHA::7}"
+          body_file="$(mktemp)"
+          {
+            echo "Automated release for \`${short_sha}\` (**${bump}** → \`${tag}\`)."
+            echo ""
+            echo "### Assets"
+            echo "- \`Profiler.lua\` — place in \`%localappdata%/lua/\`"
+            echo "- \`timing_collector\` / \`timing_collector.exe\` — run before profiling"
+            echo "- \`example_test_flamegraphs.lua\` — sample script"
+            echo "- \`SHA256SUMS.txt\`"
+          } > "${body_file}"
+          gh release create "${tag}" \
+            --title "${tag}" \
+            --notes-file "${body_file}" \
+            dist/Profiler.lua \
+            dist/timing_collector \
+            dist/timing_collector.exe \
+            dist/timing_collector_README.md \
+            dist/example_test_flamegraphs.lua \
+            dist/SHA256SUMS.txt

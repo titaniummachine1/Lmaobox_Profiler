@@ -26,5 +26,6 @@ if errorlevel 1 (
 )
 
 echo All Lua scripts copied successfully!
+if /I "%DEPLOY_EXAMPLES_NO_PAUSE%"=="1" exit /b 0
 pause
-exit
+exit /b 0

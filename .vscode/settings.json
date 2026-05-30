@@ -1,27 +1,42 @@
 {
-    "editor.formatOnSave": true,
-    "[lua]": {
-      "editor.defaultFormatter": "JohnnyMorganz.stylua", 
-      // Or if using LuaFormat: "editor.defaultFormatter": "koihik.vscode-lua-format",
-      "editor.formatOnSave": true
-    },
-    "stylua.searchParentDirectories": true,
-    "emeraldwalk.runonsave": {
-        "commands": [
-            {
-                "match": "\\.lua$",
-                "isAsync": true,
-                "cmd": "${workspaceFolder}/BundleAndDeploy.bat",
-                "message": "Attempting to run default build task for ${fileBasename}...",
-                "autoShowOutputPanel": "error"
-            }
-        ]
-    },
-    "stylua.targetReleaseVersion": "latest",
-    "Lua.workspace.library": [
-        "C:/Users/Terminatort8000/AppData/Local/Lmaobox-Annotations-master"
-    ],
-    "Lua.workspace.userThirdParty": [
-        "C:/Users/Terminatort8000/AppData/Local/Lmaobox-Annotations-master/library"
-    ]
+	"Lua.runtime.version": "Lua 5.4",
+	"files.autoSave": "onFocusChange",
+	"editor.formatOnSave": true,
+	"[lua]": {
+		"editor.defaultFormatter": "JohnnyMorganz.stylua",
+		"editor.formatOnSave": true
+	},
+	"stylua.searchParentDirectories": true,
+	"stylua.targetReleaseVersion": "latest",
+	"Lua.workspace.library": [
+		"C:/Users/Terminatort8000/AppData/Local/Lmaobox-Annotations-master",
+		"C:/gitProjects/Lmaobox-Annotations/library"
+	],
+	"Lua.workspace.checkThirdParty": false,
+	"achilleshr.runonsave": {
+		"autoSave": true,
+		"onSave": true,
+		"commands": [
+			{
+				"match": ".*\\.lua$",
+				"isAsync": false,
+				"cmd": "\"${workspaceFolder}\\BundleAndDeploy.bat\" --no-collector",
+				"autoShowOutputPanel": "always"
+			}
+		]
+	},
+	"emeraldwalk.runonsave": {
+		"autoSave": true,
+		"commands": [
+			{
+				"match": ".*\\.lua$",
+				"isAsync": false,
+				"cmd": "\"${workspaceFolder}\\BundleAndDeploy.bat\" --no-collector",
+				"autoShowOutputPanel": "always"
+			}
+		]
+	},
+	"Lua.workspace.userThirdParty": [
+		"C:/Users/Terminatort8000/AppData/Local/Lmaobox-Annotations-master/library"
+	]
 }

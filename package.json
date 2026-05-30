@@ -1,25 +1,22 @@
 {
-  "name": "profiler-library",
-  "version": "1.0.0",
-  "description": "Lua profiler library for performance monitoring and analysis",
-  "main": "bundle.js",
-  "type": "module",
-  "scripts": {
-    "build": "node bundle.js",
-    "bundle": "node bundle.js",
-    "deploy": "node bundle.js && move /Y \"Profiler.lua\" \"%localappdata%\""
-  },
-  "keywords": [
-    "lua",
-    "profiler",
-    "performance",
-    "monitoring",
-    "library"
-  ],
-  "author": "TerminatorMachine",
-  "license": "MIT",
-  "dependencies": {
-    "lua-format": "^1.5.2",
-    "luabundle": "^1.6.0"
-  }
+	"name": "profiler-library",
+	"version": "2.0.0",
+	"description": "Lua profiler library for Lmaobox with Go timing_collector",
+	"main": "bundle.js",
+	"type": "module",
+	"scripts": {
+		"build": "node bundle.js",
+		"bundle": "node bundle.js",
+		"bundle-deploy": "node bundle-and-deploy.js",
+		"bundle-and-deploy": "node bundle-and-deploy.js",
+		"watch": "node watch.js",
+		"build:collector": "cd timing_collector && go build -o timing_collector.exe ."
+	},
+	"keywords": ["lua", "profiler", "lmaobox"],
+	"author": "titaniummachine1",
+	"license": "MIT",
+	"dependencies": {
+		"lua-format": "^1.5.2",
+		"luabundle": "^1.6.0"
+	}
 }

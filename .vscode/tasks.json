@@ -1,14 +1,60 @@
 {
-    "version": "2.0.0",
-    "tasks": [
-        {
-            "label": "Run BundleAndDeploy.bat",
-            "type": "shell",
-            "command": "${workspaceFolder}/BundleAndDeploy.bat",
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            }
-        }
-    ]
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Bundle and deploy (full)",
+			"type": "shell",
+			"command": "${workspaceFolder}/BundleAndDeploy.bat",
+			"problemMatcher": [],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			}
+		},
+		{
+			"label": "Bundle and deploy (lua only)",
+			"type": "shell",
+			"command": "${workspaceFolder}/BundleAndDeploy.bat",
+			"args": ["--no-collector"],
+			"problemMatcher": []
+		},
+		{
+			"label": "Bundle and deploy (npm)",
+			"type": "shell",
+			"command": "npm run bundle-deploy",
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "Build Go timing_collector",
+			"type": "shell",
+			"command": "npm run build:collector",
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "Watch and auto-deploy",
+			"type": "shell",
+			"command": "npm run watch",
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"isBackground": true,
+			"problemMatcher": []
+		},
+		{
+			"label": "Bundle on folder open",
+			"type": "shell",
+			"command": "${workspaceFolder}/BundleAndDeploy.bat",
+			"args": ["--no-collector"],
+			"problemMatcher": [],
+			"runOptions": {
+				"runOn": "folderOpen"
+			}
+		}
+	]
 }

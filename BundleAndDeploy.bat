@@ -1,45 +1,27 @@
 @echo off
-echo Building and deploying Profiler Library...
+setlocal
+cd /d "%~dp0"
 
-node bundle.js
+echo [BundleAndDeploy] Bundling Profiler.lua and deploying to %%localappdata%%\lua ...
+node bundle-and-deploy.js
 if errorlevel 1 (
-    echo ❌ Bundle failed!
-    pause
+    echo [BundleAndDeploy] NOT DEPLOYED: bundle failed.
     exit /b 1
 )
 
-if "%localappdata%"=="" (
-    echo ❌ LOCALAPPDATA is not set. Cannot deploy.
-    pause
-    exit /b 1
+if /I "%~1"=="--no-collector" goto :done
+
+echo [BundleAndDeploy] Building timing_collector.exe ...
+pushd "%~dp0timing_collector"
+go build -o timing_collector.exe .
+set GO_EXIT=%ERRORLEVEL%
+popd
+if not "%GO_EXIT%"=="0" (
+    echo [BundleAndDeploy] WARN: Go collector build failed ^(install Go or use --no-collector^).
+) else (
+    echo [BundleAndDeploy] Built timing_collector\timing_collector.exe
 )
 
-set "TARGET_DIR=%LOCALAPPDATA%\lua"
-if not exist "%TARGET_DIR%" (
-    mkdir "%TARGET_DIR%"
-    if errorlevel 1 (
-        echo ❌ Failed to create target directory %TARGET_DIR%!
-        pause
-        exit /b 1
-    )
-)
-
-move /Y "Profiler.lua" "%TARGET_DIR%\Profiler.lua"
-if errorlevel 1 (
-    echo ❌ Deploy failed!
-    pause
-    exit /b 1
-)
-
-echo ✅ Profiler Library deployed successfully to %TARGET_DIR%
-
-echo Deploying examples...
-call "examples\deployexamples.bat"
-if errorlevel 1 (
-    echo ❌ Examples deploy failed!
-    pause
-    exit /b 1
-)
-
-echo ✅ All files deployed successfully!
-exit
+:done
+echo [BundleAndDeploy] OK
+exit /b 0

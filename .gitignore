@@ -1,2 +1,5 @@
 node_modules/
-Profiler.lua 
+Profiler.lua
+timing_collector/timing_collector.exe
+timing_collector/flame_graphs/
+timing_server/target/

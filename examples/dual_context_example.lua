@@ -1,85 +1,49 @@
 --[[
-    Dual-Context Profiler Example
-    Demonstrates simultaneous tick and frame profiling using context separation
+    Tick vs frame — separate flame_graphs for tick.* and frame.* files.
 ]]
 
+local TAG = "profiler_dual_context"
+
+local function cleanup()
+	callbacks.Unregister("CreateMove", TAG)
+	callbacks.Unregister("Draw", TAG)
+	callbacks.Unregister("Unload", TAG)
+end
+
+if _G.PROFILER_DUAL_LOADED then
+	cleanup()
+	_G.PROFILER_DUAL_LOADED = false
+end
+
 local Profiler = require("Profiler")
+Profiler.SetEnabled(true)
+_G.PROFILER_DUAL_LOADED = true
 
-Profiler.SetVisible(true)
-
-local function doPhysics()
-	local result = 0
-	for i = 1, 1000 do
-		result = result + math.sqrt(i)
-	end
-	return result
-end
-
-local function doNetworking()
-	local data = {}
-	for i = 1, 500 do
-		data[i] = string.format("packet_%d", i)
-	end
-	return data
-end
-
-local function doRendering()
-	local vertices = {}
-	for i = 1, 2000 do
-		vertices[i] = { x = i * 0.5, y = i * 0.3, z = i * 0.7 }
-	end
-	return vertices
-end
-
-local function doUIUpdate()
-	local elements = {}
-	for i = 1, 100 do
-		elements[i] = { id = i, visible = true }
-	end
-	return elements
-end
-
-local function onCreateMove(cmd)
-	Profiler.SetContext("tick")
-
-	Profiler.Begin("TickProcess")
-
+callbacks.Register("CreateMove", TAG, function(cmd)
+	Profiler.BeginTick()
 	Profiler.Begin("Physics")
-	doPhysics()
-	Profiler.End()
+	for i = 1, 12000 do
+		local _ = math.tan(i * 0.01)
+	end
+	Profiler.End("Physics")
+	Profiler.EndTick()
+end)
 
-	Profiler.Begin("Networking")
-	doNetworking()
-	Profiler.End()
+callbacks.Register("Draw", TAG, function()
+	Profiler.BeginFrame()
+	Profiler.Begin("Render")
+	for i = 1, 6000 do
+		local _ = math.cos(i * 0.02)
+	end
+	Profiler.End("Render")
+	Profiler.EndFrame()
+end)
 
-	Profiler.End()
-end
+callbacks.Register("Unload", TAG, function()
+	Profiler.EndSession()
+	cleanup()
+	_G.PROFILER_DUAL_LOADED = false
+	print("[dual_context] Exported tick.* and frame.* under flame_graphs/")
+end)
 
-local function onDraw()
-	Profiler.SetContext("frame")
-
-	Profiler.Begin("FrameProcess")
-
-	Profiler.Begin("Rendering")
-	doRendering()
-	Profiler.End()
-
-	Profiler.Begin("UI")
-	doUIUpdate()
-	Profiler.End()
-
-	Profiler.End()
-
-	Profiler.Draw()
-end
-
-callbacks.Unregister("CreateMove", "DualContextProfiler_CreateMove")
-callbacks.Unregister("Draw", "DualContextProfiler_Draw")
-
-callbacks.Register("CreateMove", "DualContextProfiler_CreateMove", onCreateMove)
-callbacks.Register("Draw", "DualContextProfiler_Draw", onDraw)
-
-print("✅ Dual-context profiler example loaded")
-print("📊 Tick context: Physics + Networking")
-print("🎨 Frame context: Rendering + UI")
-print("Context automatically switches based on callback")
+print("[dual_context] session=" .. tostring(Profiler.GetSessionID()))

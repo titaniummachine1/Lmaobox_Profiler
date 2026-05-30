@@ -1,185 +1,59 @@
--- Runtime-friendly Profiler demo: showcases real-time work without freezing the game
+--[[
+    Quick smoke test — same pattern as test_flamegraphs, lighter CPU load.
 
-local SCRIPT_TAG = "microprofiler_simple_test"
+    1. timing_collector.exe
+    2. lua_load simple_test
+    3. Move/play briefly, then unload OR wait 3s idle
+]]
 
--- Properly unload existing profiler instance before loading new one
-if _G.SIMPLE_PROFILER_TEST_LOADED then
-	print("[Simple Test] Unloading previous profiler instance...")
-	callbacks.Unregister("CreateMove", SCRIPT_TAG .. "_move")
-	callbacks.Unregister("Draw", SCRIPT_TAG .. "_draw")
-	callbacks.Unregister("Unload", SCRIPT_TAG .. "_unload")
-	_G.SIMPLE_PROFILER_TEST_LOADED = false
-	collectgarbage("collect")
+local TAG = "profiler_simple_test"
+
+local function cleanup()
+	callbacks.Unregister("CreateMove", TAG)
+	callbacks.Unregister("Draw", TAG)
+	callbacks.Unregister("Unload", TAG)
+end
+
+if _G.PROFILER_SIMPLE_TEST then
+	cleanup()
+	_G.PROFILER_SIMPLE_TEST = false
 end
 
 local Profiler = require("Profiler")
+Profiler.SetEnabled(true)
+_G.PROFILER_SIMPLE_TEST = true
 
-_G.SIMPLE_PROFILER_TEST_LOADED = true
-
-local runtimeState = {
-	lastHUDUpdate = 0,
-	frameCount = 0,
-	metrics = {
-		physics = 0,
-		network = 0,
-		ui = 0,
-		background = 0,
-	},
-}
-
-local function simulatePhysics(now)
-	Profiler.Begin("Physics.Integration")
-	local total = 0
-	for i = 1, 150 do
-		local t = now + i * 0.002
-		total = total + math.sin(t) * math.cos(t * 0.5)
+local function burn(name, count)
+	Profiler.Begin(name)
+	for i = 1, count do
+		local _ = math.sqrt(i) * math.sin(i * 0.001)
 	end
-	Profiler.End("Physics.Integration")
-
-	Profiler.Begin("Physics.ContactSolve")
-	for i = 1, 45 do
-		total = total + math.sin(now + i * 0.01) * 0.25
-	end
-	Profiler.End("Physics.ContactSolve")
-
-	runtimeState.metrics.physics = total
+	Profiler.End(name)
 end
 
-local function simulateNetwork(now)
-	Profiler.Begin("Network.PollLoop")
-	local packets = 12
-	local checksum = 0
-	for i = 1, packets do
-		local jitter = math.sin(now * i) * 0.3
-		checksum = checksum + (i * 17) + jitter
-	end
-	Profiler.End("Network.PollLoop")
-
-	Profiler.Begin("Network.DecodeSmall")
-	for i = 1, 4 do
-		checksum = checksum + math.cos(now * i) * 0.1
-	end
-	Profiler.End("Network.DecodeSmall")
-
-	runtimeState.metrics.network = checksum
-end
-
-local function simulateUI(now)
-	Profiler.Begin("UI.Layout")
-	local text = {}
-	for i = 1, 6 do
-		text[i] = string.format("UI_%d_%.2f", i, now + i * 0.1)
-	end
-	Profiler.End("UI.Layout")
-
-	Profiler.Begin("UI.Animations")
-	local anim = 0
-	for i = 1, 20 do
-		anim = anim + math.sin(now + i * 0.05) * 0.25
-	end
-	Profiler.End("UI.Animations")
-
-	runtimeState.metrics.ui = #table.concat(text, "|")
-end
-
-local runtimeTasks = {
-	{
-		name = "Runtime.Physics",
-		interval = 0.05,
-		lastRun = 0,
-		fn = function(now)
-			Profiler.Begin("Physics.Step")
-			simulatePhysics(now)
-			Profiler.End("Physics.Step")
-		end,
-	},
-	{
-		name = "Runtime.Network",
-		interval = 0.1,
-		lastRun = 0,
-		fn = function(now)
-			Profiler.Begin("Network.Poll")
-			simulateNetwork(now)
-			Profiler.End("Network.Poll")
-		end,
-	},
-	{
-		name = "Runtime.UI",
-		interval = 0.2,
-		lastRun = 0,
-		fn = function(now)
-			Profiler.Begin("UI.Update")
-			simulateUI(now)
-			Profiler.End("UI.Update")
-		end,
-	},
-}
-
-local function processTasks()
-	local now = globals.RealTime()
-	Profiler.Begin("Runtime.Tick")
-	for _, task in ipairs(runtimeTasks) do
-		if now - task.lastRun >= task.interval then
-			task.lastRun = now
-			task.fn(now)
-		end
-	end
-	Profiler.End()
-end
-
-local function runManualSpike()
-	Profiler.Begin("ManualSpike")
-	local total = 0
-	for i = 1, 200 do
-		total = total + math.sqrt(i * globals.FrameTime())
-	end
-	Profiler.End("ManualSpike")
-	return total
-end
-
-local function drawHud()
-	Profiler.Begin("HUD.Update")
-	local now = globals.RealTime()
-	if now - runtimeState.lastHUDUpdate < 0.25 then
-		Profiler.End("HUD.Update")
-		return
-	end
-	runtimeState.lastHUDUpdate = now
-	print(
-		string.format(
-			" Runtime stats | Physics %.2f | Network %.2f | UI %d",
-			runtimeState.metrics.physics,
-			runtimeState.metrics.network,
-			runtimeState.metrics.ui
-		)
-	)
-	Profiler.End("HUD.Update")
-end
-
-callbacks.Register("CreateMove", SCRIPT_TAG .. "_move", function(cmd)
-	Profiler.Begin("CreateMove")
-	processTasks()
-	runtimeState.frameCount = runtimeState.frameCount + 1
-	if runtimeState.frameCount % 180 == 0 then
-		local spike = runManualSpike()
-		print(string.format(" Manual spike sample: %.2f", spike))
-	end
-	Profiler.End("CreateMove")
+callbacks.Register("CreateMove", TAG, function(cmd)
+	Profiler.BeginTick()
+	Profiler.Begin("TickTotal")
+	burn("HeavyMath", 40000)
+	burn("MoreMath", 8000)
+	Profiler.End("TickTotal")
+	Profiler.EndTick()
 end)
 
-callbacks.Register("Draw", SCRIPT_TAG .. "_draw", function()
-	Profiler.Begin("DrawLoop")
-	processTasks()
-	drawHud()
-	Profiler.Draw()
-	Profiler.End("DrawLoop")
+callbacks.Register("Draw", TAG, function()
+	Profiler.BeginFrame()
+	Profiler.Begin("FrameTotal")
+	burn("FrameMath", 10000)
+	Profiler.End("FrameTotal")
+	Profiler.EndFrame()
 end)
 
-callbacks.Register("Unload", SCRIPT_TAG .. "_unload", function()
-	print("[Simple Test] Unloading microprofiler simple test")
-	Profiler.SetVisible(false)
-	Profiler.Shutdown()
-	_G.SIMPLE_PROFILER_TEST_LOADED = false
+callbacks.Register("Unload", TAG, function()
+	print("[simple_test] EndSession — see flame_graphs folder")
+	Profiler.EndSession()
+	cleanup()
+	_G.PROFILER_SIMPLE_TEST = false
 end)
 
-print(" Microprofiler simple runtime test loaded!")
+print("[simple_test] Loaded. Session=" .. tostring(Profiler.GetSessionID()))
+print("[simple_test] Output: timing_collector\\flame_graphs\\<session_id>\\")

@@ -1,52 +1,27 @@
-local TIMING_SERVER = "http://127.0.0.1:9876"
+--[[
+    Verify timing_collector is running (Draw callback hits /now once).
+]]
 
-local function GetNow()
-	local response = http.Get(TIMING_SERVER .. "/now")
-	return tonumber(response) or -1
-end
+local TAG = "profiler_proof"
+local tested = false
 
-local function MyFunctionToProfile()
-	local result = 0
-	local dummyValue = 123.456
-	result = math.sqrt(dummyValue * 1.1)
-end
+callbacks.Unregister("Draw", TAG)
 
-local function ProfileExecution()
-	local iterations = 10000
-
-	local startNanos = GetNow()
-	if startNanos < 0 then
-		print("Timing server not responding - run timing_server.exe first!")
+callbacks.Register("Draw", TAG, function()
+	if tested then
 		return
 	end
+	tested = true
 
-	for i = 1, iterations do
-		MyFunctionToProfile()
+	local ok, response = pcall(function()
+		return http.Get("http://127.0.0.1:9876/now")
+	end)
+	if ok and response and tonumber(response) then
+		print("[proof] Collector OK — /now = " .. response .. " ns")
+		print("[proof] Now run: lua_load test_flamegraphs")
+	else
+		print("[proof] FAILED — start timing_collector.exe first")
 	end
+end)
 
-	local endNanos = GetNow()
-	if endNanos < 0 then
-		print("Timing server error!")
-		return
-	end
-
-	local totalNanos = endNanos - startNanos
-	local totalMicros = totalNanos / 1000
-	local nanosPerCall = totalNanos / iterations
-	local microsPerCall = totalMicros / iterations
-
-	print(
-		"Total: "
-			.. totalNanos
-			.. " ns ("
-			.. totalMicros
-			.. " µs) | Per call: "
-			.. nanosPerCall
-			.. " ns ("
-			.. microsPerCall
-			.. " µs)"
-	)
-end
-
-callbacks.Unregister("Draw", "ULTIMATE_PROFILER")
-callbacks.Register("Draw", "ULTIMATE_PROFILER", ProfileExecution)
+print("[proof] Waiting for one Draw to probe collector...")

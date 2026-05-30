@@ -1,40 +1,93 @@
-import { bundle } from 'luabundle'
-import * as fs from 'fs';
-import path from 'path';
+import { bundle } from "luabundle";
+import * as fs from "fs";
+import * as path from "path";
 
-const bundledLua = bundle('./Profiler/Main.lua', {
-    metadata: false,
-    expressionHandler: (module, expression) => {
-        const start = expression.loc.start
-        console.warn(`WARNING: Non-literal require found in '${module.name}' at ${start.line}:${start.column}`)
-    }
-});
+const bundleCiOnly = process.env.BUNDLE_CI === "1";
+const bundleOutputPath = process.env.BUNDLE_OUTPUT_PATH;
 
-const projectOutputPath = path.resolve('Profiler.lua');
+const localAppData = process.env.LOCALAPPDATA || "";
+const targetDir = bundleOutputPath
+	? path.dirname(path.resolve(bundleOutputPath))
+	: path.join(localAppData, "lua");
+const targetPath = bundleOutputPath
+	? path.resolve(bundleOutputPath)
+	: path.join(targetDir, "Profiler.lua");
+const projectOutputPath = path.resolve("Profiler.lua");
 
-try {
-    fs.writeFileSync(projectOutputPath, bundledLua);
-    console.log(`✅ Profiler library bundle created successfully -> ${projectOutputPath}`);
-} catch (err) {
-    console.error('Error creating Profiler.lua in project root:', err);
-    process.exit(1);
+function fileInfo(filePath) {
+	const stat = fs.statSync(filePath);
+	return `${filePath} (size=${stat.size}, mtime=${stat.mtime.toISOString()})`;
 }
 
-const localAppData = process.env.LOCALAPPDATA;
-
-if (!localAppData) {
-    console.warn('⚠️  LOCALAPPDATA is not set; skipping deploy copy to %LOCALAPPDATA%/lua.');
-    process.exit(0);
+function bundleLua(entryPath) {
+	return bundle(entryPath, {
+		metadata: false,
+		expressionHandler: (module, expression) => {
+			const loc = expression.loc && expression.loc.start;
+			console.warn(
+				`WARNING: Non-literal require in '${module.name}' at ${loc ? `${loc.line}:${loc.column}` : "unknown"}`
+			);
+		},
+	});
 }
 
-const luaDir = path.join(localAppData, 'lua');
-const deployOutputPath = path.join(luaDir, 'Profiler.lua');
-
-try {
-    fs.mkdirSync(luaDir, { recursive: true });
-    fs.writeFileSync(deployOutputPath, bundledLua);
-    console.log(`✅ Profiler library copied to ${deployOutputPath}`);
-} catch (err) {
-    console.error(`Error copying Profiler.lua to '${deployOutputPath}':`, err);
-    process.exit(1);
+function writeTarget(filePath, content, label) {
+	fs.mkdirSync(path.dirname(filePath), { recursive: true });
+	fs.writeFileSync(filePath, content, "utf8");
+	console.log(`[BundleAndDeploy] DEPLOYED ${label}: ${fileInfo(filePath)}`);
 }
+
+function deployExamples() {
+	if (bundleCiOnly || !localAppData) {
+		console.log("[BundleAndDeploy] SKIP examples: CI mode or LOCALAPPDATA unset");
+		return;
+	}
+
+	const examplesDir = path.join(process.cwd(), "examples");
+	if (!fs.existsSync(examplesDir)) {
+		console.log("[BundleAndDeploy] SKIP examples: examples/ not found");
+		return;
+	}
+
+	const files = fs.readdirSync(examplesDir).filter((f) => f.endsWith(".lua"));
+	for (const file of files) {
+		const src = path.join(examplesDir, file);
+		const dest = path.join(targetDir, file);
+		fs.copyFileSync(src, dest);
+		console.log(`[BundleAndDeploy] DEPLOYED example: ${file}`);
+	}
+}
+
+function main() {
+	try {
+		const bundledLua = bundleLua("./Profiler/Main.lua");
+
+		fs.writeFileSync(projectOutputPath, bundledLua, "utf8");
+		console.log(`[BundleAndDeploy] BUNDLED: ${fileInfo(projectOutputPath)}`);
+
+		if (bundleCiOnly) {
+			writeTarget(targetPath, bundledLua, "Profiler.lua (CI)");
+		} else if (!localAppData) {
+			console.warn("[BundleAndDeploy] LOCALAPPDATA unset — skipped deploy to %localappdata%/lua");
+		} else {
+			writeTarget(targetPath, bundledLua, "Profiler.lua");
+			deployExamples();
+			console.log(`[BundleAndDeploy] LOAD IN LMAOBOX: ${targetPath}`);
+			console.log(
+				"[BundleAndDeploy] Run timing_collector\\run_collector.bat then lua_load test_flamegraphs"
+			);
+		}
+
+		process.exitCode = 0;
+	} catch (err) {
+		console.error(
+			`[BundleAndDeploy] NOT DEPLOYED: ${err instanceof Error ? err.message : String(err)}`
+		);
+		if (err instanceof Error && err.stack) {
+			console.error(err.stack);
+		}
+		process.exitCode = 1;
+	}
+}
+
+main();

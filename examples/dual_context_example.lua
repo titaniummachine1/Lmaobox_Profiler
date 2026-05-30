@@ -1,51 +1,48 @@
 --[[
-    Tick vs frame — separate flame_graphs for tick.* and frame.* files.
+    Tick + frame in one shot (frame block still runs at load; real games use Draw callback).
+
+    1. run_collector.bat
+    2. lua_load dual_context_example
 ]]
 
-local TAG = "profiler_dual_context"
+local SCRIPT_NAME = "dual_context_example"
+local FLAME_GRAPHS_ROOT = "C:\\gitProjects\\profiler\\timing_collector\\flame_graphs"
+local LOAD_KEY = "profiler.dual_context.v1"
 
-local function cleanup()
-	callbacks.Unregister("CreateMove", TAG)
-	callbacks.Unregister("Draw", TAG)
-	callbacks.Unregister("Unload", TAG)
-end
-
-if _G.PROFILER_DUAL_LOADED then
-	cleanup()
-	_G.PROFILER_DUAL_LOADED = false
+if package.loaded[LOAD_KEY] then
+	return
 end
 
 package.loaded["Profiler"] = nil
 local Profiler = require("Profiler")
-Profiler.BindScript("dual_context_example")
+Profiler.BindScript(SCRIPT_NAME)
 Profiler.SetEnabled(true)
-_G.PROFILER_DUAL_LOADED = true
 
-callbacks.Register("CreateMove", TAG, function(cmd)
-	Profiler.BeginTick()
-	Profiler.Begin("Physics")
-	for i = 1, 12000 do
-		local _ = math.tan(i * 0.01)
+if not Profiler.BeginSession() then
+	print("[dual_context] run_collector.bat first")
+	return
+end
+
+local sid = Profiler.GetSessionID()
+
+local function task(name, n)
+	Profiler.Begin(name)
+	for i = 1, n do
+		local _ = i
 	end
-	Profiler.End("Physics")
-	Profiler.EndTick()
-end)
+	Profiler.End(name)
+end
 
-callbacks.Register("Draw", TAG, function()
-	Profiler.BeginFrame()
-	Profiler.Begin("Render")
-	for i = 1, 6000 do
-		local _ = math.cos(i * 0.02)
-	end
-	Profiler.End("Render")
-	Profiler.EndFrame()
-end)
+Profiler.BeginTick()
+task("setupBones", 50)
+Profiler.EndTick()
 
-callbacks.Register("Unload", TAG, function()
-	Profiler.EndSession()
-	cleanup()
-	_G.PROFILER_DUAL_LOADED = false
-	print("[dual_context] Exported tick.* and frame.* under flame_graphs/")
-end)
+Profiler.BeginFrame()
+task("drawEsp", 30)
+Profiler.EndFrame()
 
-print("[dual_context] session=" .. tostring(Profiler.GetSessionID()))
+Profiler.EndSession()
+package.loaded[LOAD_KEY] = true
+
+print("[dual_context] tick.* + frame.* in:")
+print("  " .. FLAME_GRAPHS_ROOT .. "\\" .. tostring(sid))

@@ -25,12 +25,16 @@ type fgRect struct {
 	ms   float64
 }
 
-func buildFlameTree(spans []completedSpan, rootLabel string) *fgNode {
+func buildFlameTree(spans []completedSpan, rootLabel string, alreadySummedLeaves bool) *fgNode {
 	if rootLabel == "" {
 		rootLabel = "all"
 	}
+	input := spans
+	if !alreadySummedLeaves {
+		input = spansForFlamegraph(spans)
+	}
 	root := &fgNode{name: "all", children: map[string]*fgNode{}}
-	for _, s := range spansForFlamegraph(spans) {
+	for _, s := range input {
 		stack := s.stack
 		if len(stack) == 0 {
 			stack = []string{s.name}
@@ -53,8 +57,8 @@ func buildFlameTree(spans []completedSpan, rootLabel string) *fgNode {
 	return root
 }
 
-func renderFlamegraphSVG(spans []completedSpan, title string, rootLabel string) (string, error) {
-	root := buildFlameTree(spans, rootLabel)
+func renderFlamegraphSVG(spans []completedSpan, title string, rootLabel string, alreadySummedLeaves bool) (string, error) {
+	root := buildFlameTree(spans, rootLabel, alreadySummedLeaves)
 	if root.value <= 0 {
 		return "", fmt.Errorf("%s: no duration for SVG flame graph", title)
 	}
@@ -114,11 +118,11 @@ func renderFlamegraphSVG(spans []completedSpan, title string, rootLabel string) 
 	return b.String(), nil
 }
 
-func writeFlamegraphSVG(dir, ctx string, spans []completedSpan, rootLabel string) error {
+func writeFlamegraphSVG(dir, ctx string, spans []completedSpan, rootLabel string, alreadySummedLeaves bool) error {
 	if rootLabel == "" {
 		rootLabel = ctx
 	}
-	svg, err := renderFlamegraphSVG(spans, ctx, rootLabel)
+	svg, err := renderFlamegraphSVG(spans, ctx, rootLabel, alreadySummedLeaves)
 	if err != nil {
 		return err
 	}

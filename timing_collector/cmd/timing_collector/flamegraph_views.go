@@ -61,14 +61,41 @@ func spanFromStackKey(key string, dur int64) completedSpan {
 	}
 }
 
-// mergedSpansFromTicks concatenates leaf-only spans from every completed tick.
-// foldedLinesFromSpans sums durations per stack path (total time across the session).
-func mergedSpansFromTicks(batches [][]completedSpan) []completedSpan {
-	var out []completedSpan
+// sumLeafDurationsByKey adds self-time per stack path across ticks (each batch is leaf-only).
+func sumLeafDurationsByKey(batches [][]completedSpan) map[string]int64 {
+	byKey := map[string]int64{}
 	for _, batch := range batches {
-		out = append(out, batch...)
+		for _, s := range batch {
+			key := stackKey(s.stack, s.name)
+			d := spanDurationNs(s)
+			if d <= 0 {
+				continue
+			}
+			byKey[key] += d
+		}
+	}
+	return byKey
+}
+
+func spansFromDurationMap(byKey map[string]int64) []completedSpan {
+	if len(byKey) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(byKey))
+	for k := range byKey {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	out := make([]completedSpan, 0, len(keys))
+	for _, key := range keys {
+		out = append(out, spanFromStackKey(key, byKey[key]))
 	}
 	return out
+}
+
+// mergedSpansFromTicks totals self-time per stack across all tick batches (session flame graph).
+func mergedSpansFromTicks(batches [][]completedSpan) []completedSpan {
+	return spansFromDurationMap(sumLeafDurationsByKey(batches))
 }
 
 func averageSpansFromTicks(batches [][]completedSpan) []completedSpan {
@@ -145,11 +172,14 @@ func currentTickSpansLocked(now int64) []completedSpan {
 }
 
 func mergedSpansForLiveLocked(now int64) []completedSpan {
-	out := mergedSpansFromTicks(state.tickSpanBatches)
+	batches := append([][]completedSpan(nil), state.tickSpanBatches...)
 	if state.tickOpen {
-		out = append(out, currentTickSpansLocked(now)...)
+		cur := currentTickSpansLocked(now)
+		if len(cur) > 0 {
+			batches = append(batches, cur)
+		}
 	}
-	return out
+	return mergedSpansFromTicks(batches)
 }
 
 func tickCountForFlameTitles() int {
@@ -201,13 +231,14 @@ func writeFlamegraphViews(dir string, batches [][]completedSpan, scriptName stri
 	n := len(batches)
 	titles := flameViewTitles(scriptName, n)
 	views := []struct {
-		file  string
-		spans []completedSpan
-		title string
+		file              string
+		spans             []completedSpan
+		title             string
+		summedAcrossTicks bool
 	}{
-		{flameViewFiles[0], mergedSpansFromTicks(batches), titles[0]},
-		{flameViewFiles[1], averageSpansFromTicks(batches), titles[1]},
-		{flameViewFiles[2], lastTickSpansFromBatches(batches), titles[2]},
+		{flameViewFiles[0], mergedSpansFromTicks(batches), titles[0], true},
+		{flameViewFiles[1], averageSpansFromTicks(batches), titles[1], false},
+		{flameViewFiles[2], lastTickSpansFromBatches(batches), titles[2], false},
 	}
 	var wrote bool
 	for _, v := range views {
@@ -215,7 +246,7 @@ func writeFlamegraphViews(dir string, batches [][]completedSpan, scriptName stri
 			continue
 		}
 		ctx := strings.TrimSuffix(v.file, ".svg")
-		if err := writeFlamegraphWithTitle(dir, ctx, v.spans, scriptName, v.title); err != nil {
+		if err := writeFlamegraphWithTitle(dir, ctx, v.spans, scriptName, v.title, v.summedAcrossTicks); err != nil {
 			return err
 		}
 		wrote = true

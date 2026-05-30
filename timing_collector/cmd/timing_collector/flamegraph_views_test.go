@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-func foldedTotalNs(spans []completedSpan, root string) int64 {
-	lines, err := foldedLinesFromSpans(spans, root)
+func foldedTotalNs(spans []completedSpan, root string, summed bool) int64 {
+	lines, err := foldedLinesFromSpans(spans, root, summed)
 	if err != nil {
 		return -1
 	}
@@ -31,12 +31,35 @@ func TestMergedSpansFromTicksSumsAllBatches(t *testing.T) {
 		{{name: "leaf", stack: []string{"root", "leaf"}, startNs: 0, endNs: 300, ctx: "tick"}},
 	}
 	merged := mergedSpansFromTicks(batches)
-	if len(merged) != 2 {
-		t.Fatalf("merged len=%d want 2 leaf spans", len(merged))
+	if len(merged) != 1 {
+		t.Fatalf("merged stacks=%d want 1 summed key", len(merged))
 	}
-	total := foldedTotalNs(merged, "script")
+	total := foldedTotalNs(merged, "script", true)
 	if total != 400 {
 		t.Fatalf("folded total=%d want 400", total)
+	}
+}
+
+func TestMergedSpansKeepsShallowTicksWhenDeepTicksExist(t *testing.T) {
+	// Tick with detectors: deep leaf. Tick with early exit: parent-only leaf.
+	batches := [][]completedSpan{
+		{{name: "child", stack: []string{"root", "parent", "child"}, startNs: 0, endNs: 100, ctx: "tick"}},
+		{{name: "parent", stack: []string{"root", "parent"}, startNs: 0, endNs: 50, ctx: "tick"}},
+	}
+	merged := mergedSpansFromTicks(batches)
+	byKey := map[string]int64{}
+	for _, s := range merged {
+		byKey[stackKey(s.stack, s.name)] = spanDurationNs(s)
+	}
+	if byKey["root;parent;child"] != 100 {
+		t.Fatalf("child=%d want 100", byKey["root;parent;child"])
+	}
+	if byKey["root;parent"] != 50 {
+		t.Fatalf("parent=%d want 50 (was dropped when concat+leaf-filter ran)", byKey["root;parent"])
+	}
+	total := foldedTotalNs(merged, "script", true)
+	if total != 150 {
+		t.Fatalf("folded total=%d want 150", total)
 	}
 }
 

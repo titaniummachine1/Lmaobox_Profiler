@@ -139,6 +139,7 @@ func main() {
 
 	printStartupBanner(outDir)
 
+	stopPriorCollectorInstances()
 	freeListenAddr(listenAddr)
 	ln, err := net.Listen("tcp", listenAddr)
 	if err != nil {

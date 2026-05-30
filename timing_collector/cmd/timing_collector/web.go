@@ -213,7 +213,8 @@ func handleAPILiveFlameSVG(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	svg, err := renderFlamegraphBytes(spans, rootLabel, rootLabel)
+	summed := view == flameViewMerged
+	svg, err := renderFlamegraphBytes(spans, rootLabel, rootLabel, summed)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

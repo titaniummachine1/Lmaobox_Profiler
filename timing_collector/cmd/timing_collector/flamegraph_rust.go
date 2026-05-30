@@ -33,9 +33,13 @@ func runFlamegraphGen(foldedPath, svgPath, title string) error {
 	return nil
 }
 
-func foldedLinesFromSpans(spans []completedSpan, rootPrefix string) ([]string, error) {
+func foldedLinesFromSpans(spans []completedSpan, rootPrefix string, alreadySummedLeaves bool) ([]string, error) {
+	input := spans
+	if !alreadySummedLeaves {
+		input = spansForFlamegraph(spans)
+	}
 	agg := map[string]int64{}
-	for _, s := range spansForFlamegraph(spans) {
+	for _, s := range input {
 		key := strings.Join(s.stack, ";")
 		if key == "" {
 			key = s.name
@@ -60,8 +64,8 @@ func foldedLinesFromSpans(spans []completedSpan, rootPrefix string) ([]string, e
 	return lines, nil
 }
 
-func writeFoldedFile(path string, spans []completedSpan, rootPrefix string) error {
-	lines, err := foldedLinesFromSpans(spans, rootPrefix)
+func writeFoldedFile(path string, spans []completedSpan, rootPrefix string, alreadySummedLeaves bool) error {
+	lines, err := foldedLinesFromSpans(spans, rootPrefix, alreadySummedLeaves)
 	if err != nil {
 		return err
 	}
@@ -69,10 +73,10 @@ func writeFoldedFile(path string, spans []completedSpan, rootPrefix string) erro
 }
 
 func writeFlamegraph(dir, ctx string, spans []completedSpan, rootLabel string) error {
-	return writeFlamegraphWithTitle(dir, ctx, spans, rootLabel, "")
+	return writeFlamegraphWithTitle(dir, ctx, spans, rootLabel, "", false)
 }
 
-func writeFlamegraphWithTitle(dir, ctx string, spans []completedSpan, rootLabel, displayTitle string) error {
+func writeFlamegraphWithTitle(dir, ctx string, spans []completedSpan, rootLabel, displayTitle string, alreadySummedLeaves bool) error {
 	if rootLabel == "" {
 		rootLabel = ctx
 	}
@@ -88,24 +92,24 @@ func writeFlamegraphWithTitle(dir, ctx string, spans []completedSpan, rootLabel,
 		}
 	}
 
-	if err := writeFoldedFile(foldedPath, spans, rootLabel); err != nil {
+	if err := writeFoldedFile(foldedPath, spans, rootLabel, alreadySummedLeaves); err != nil {
 		return err
 	}
 
 	if err := runFlamegraphGen(foldedPath, svgPath, title); err != nil {
 		log.Printf("[Profiler] inferno SVG failed (%v), using built-in renderer", err)
-		return writeFlamegraphSVG(dir, ctx, spans, rootLabel)
+		return writeFlamegraphSVG(dir, ctx, spans, rootLabel, alreadySummedLeaves)
 	}
 	return nil
 }
 
-func renderFlamegraphBytes(spans []completedSpan, title, rootLabel string) ([]byte, error) {
+func renderFlamegraphBytes(spans []completedSpan, title, rootLabel string, alreadySummedLeaves bool) ([]byte, error) {
 	if rootLabel == "" {
 		rootLabel = "tick"
 	}
 	gen := flamegraphGenExe()
 	if gen == "" {
-		svg, err := renderFlamegraphSVG(spans, title, rootLabel)
+		svg, err := renderFlamegraphSVG(spans, title, rootLabel, alreadySummedLeaves)
 		return []byte(svg), err
 	}
 
@@ -117,12 +121,12 @@ func renderFlamegraphBytes(spans []completedSpan, title, rootLabel string) ([]by
 
 	foldedPath := filepath.Join(tmp, "stacks.folded")
 	svgPath := filepath.Join(tmp, "out.svg")
-	if err := writeFoldedFile(foldedPath, spans, rootLabel); err != nil {
+	if err := writeFoldedFile(foldedPath, spans, rootLabel, alreadySummedLeaves); err != nil {
 		return nil, err
 	}
 	if err := runFlamegraphGen(foldedPath, svgPath, title); err != nil {
 		log.Printf("[Profiler] live inferno SVG failed (%v), using built-in renderer", err)
-		svg, err2 := renderFlamegraphSVG(spans, title, rootLabel)
+		svg, err2 := renderFlamegraphSVG(spans, title, rootLabel, alreadySummedLeaves)
 		return []byte(svg), err2
 	}
 	return os.ReadFile(svgPath)

@@ -17,6 +17,7 @@ end
 
 package.loaded["Profiler"] = nil
 local Profiler = require("Profiler")
+Profiler.BindScript("dual_context_example")
 Profiler.SetEnabled(true)
 _G.PROFILER_DUAL_LOADED = true
 

@@ -17,6 +17,7 @@ end
 
 package.loaded["Profiler"] = nil
 local Profiler = require("Profiler")
+Profiler.BindScript("fast_players_profile")
 Profiler.SetEnabled(true)
 
 local FastPlayers = nil

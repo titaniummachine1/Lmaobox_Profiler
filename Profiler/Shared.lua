@@ -4,10 +4,11 @@
 
 local Shared = {
 	ActiveScriptName = nil,
+	BoundScriptName = nil,
 	SessionID = nil,
 	CollectorAvailable = nil,
 	Enabled = true,
-	UnloadCallbackTag = "lmaobox_profiler_unload",
+	SessionEnding = false,
 }
 
 return Shared

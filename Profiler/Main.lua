@@ -1,28 +1,7 @@
 --[[
     Profiler — thin Lua client for Go timing_collector.
-    API version 2.0 — if require returns a table without SetEnabled, clear package.loaded["Profiler"] and require again.
-
-    Usage:
-        local Profiler = require("Profiler")
-
-        callbacks.Register("CreateMove", "my_tick", function(cmd)
-            Profiler.BeginTick()
-            Profiler.Begin("Work")
-            -- ...
-            Profiler.End("Work")
-            Profiler.EndTick()
-        end)
-
-        callbacks.Register("Draw", "my_frame", function()
-            Profiler.BeginFrame()
-            -- ...
-            Profiler.EndFrame()
-        end)
-
-    Run timing_collector.exe before profiling. Output: flame_graphs/<session_id>/
 ]]
 
--- Drop stale library cached before deploy (old in-game UI profiler had no SetEnabled).
 do
 	local stale = package.loaded["Profiler"]
 	if type(stale) == "table" and type(stale.SetEnabled) ~= "function" then
@@ -42,22 +21,32 @@ end
 local Shared = require("Profiler.Shared")
 local Collector = require("Profiler.collector")
 
-local PACKAGES_TO_CLEAR = {
-	"Profiler",
-	"Profiler.collector",
-	"Profiler.timing",
-	"Profiler.Shared",
-	"Profiler.config",
-	"Profiler.Main",
-}
+local INVALID_SCRIPT_PATTERN = "%[C%]"
 
-local function clearPackageCache()
-	for _, pkg in ipairs(PACKAGES_TO_CLEAR) do
-		package.loaded[pkg] = nil
+local function isValidScriptName(name)
+	if not name or name == "" then
+		return false
 	end
+	if name == "Profiler" or name == "unknown" then
+		return false
+	end
+	if name:sub(1, 1) == "=" then
+		return false
+	end
+	if name:find(INVALID_SCRIPT_PATTERN) then
+		return false
+	end
+	if name:find("%[string%]") then
+		return false
+	end
+	return true
 end
 
 local function resolveCallerScriptName()
+	if Shared.BoundScriptName and isValidScriptName(Shared.BoundScriptName) then
+		return Shared.BoundScriptName
+	end
+
 	if GetScriptName then
 		local fullPath = GetScriptName()
 		if fullPath and fullPath ~= "" then
@@ -65,14 +54,14 @@ local function resolveCallerScriptName()
 			if name:match("%.lua$") then
 				name = name:gsub("%.lua$", "")
 			end
-			if name ~= "" and name ~= "Profiler" then
+			if isValidScriptName(name) then
 				return name
 			end
 		end
 	end
 
-	for level = 2, 12 do
-		local info = debug.getinfo(level, "S")
+	for level = 2, 16 do
+		local info = debug.getinfo(level, "Sln")
 		if not info then
 			break
 		end
@@ -84,7 +73,7 @@ local function resolveCallerScriptName()
 		if fileName:match("%.lua$") then
 			fileName = fileName:gsub("%.lua$", "")
 		end
-		if fileName ~= "" and fileName ~= "Profiler" and fileName ~= "[C]" then
+		if isValidScriptName(fileName) then
 			return fileName
 		end
 	end
@@ -92,50 +81,43 @@ local function resolveCallerScriptName()
 	return "unknown"
 end
 
-local function onScriptUnload()
-	Collector.EndSession()
-	if callbacks and callbacks.Unregister then
-		callbacks.Unregister("Unload", Shared.UnloadCallbackTag)
-	end
-end
-
 local function ensureSessionForScript(scriptName)
+	if not isValidScriptName(scriptName) then
+		return false
+	end
 	if Shared.ActiveScriptName == scriptName and Shared.SessionID then
-		return
+		return true
 	end
 
 	if Shared.SessionID then
 		Collector.EndSession()
 	end
 
-	Collector.BeginSession(scriptName)
+	return Collector.BeginSession(scriptName)
 end
 
 local function ensureScriptSession()
 	local scriptName = resolveCallerScriptName()
-	if Shared.ActiveScriptName ~= scriptName or not Shared.SessionID then
-		ensureSessionForScript(scriptName)
+	if not isValidScriptName(scriptName) then
+		return false
 	end
-end
-
-local callerScript = resolveCallerScriptName()
-ensureSessionForScript(callerScript)
-
-if not Shared.SessionID then
-	print(
-	"[Profiler] timing_collector not running — start timing_collector.exe (see README). Spans are no-ops until connected."
-	)
-end
-
-if callbacks and callbacks.Register then
-	callbacks.Unregister("Unload", Shared.UnloadCallbackTag)
-	callbacks.Register("Unload", Shared.UnloadCallbackTag, onScriptUnload)
+	if Shared.ActiveScriptName ~= scriptName or not Shared.SessionID then
+		return ensureSessionForScript(scriptName)
+	end
+	return true
 end
 
 local Profiler = {}
 
+--- Call from your script after require so session id is not "=[C]_..." from require-time stack.
+function Profiler.BindScript(scriptName)
+	if isValidScriptName(scriptName) then
+		Shared.BoundScriptName = scriptName
+	end
+end
+
 function Profiler.BeginSession()
-	return Collector.BeginSession(resolveCallerScriptName())
+	return ensureSessionForScript(resolveCallerScriptName())
 end
 
 function Profiler.EndSession()
@@ -144,7 +126,9 @@ function Profiler.EndSession()
 end
 
 function Profiler.BeginTick()
-	ensureScriptSession()
+	if not ensureScriptSession() then
+		return
+	end
 	Collector.BeginTick()
 end
 
@@ -153,7 +137,9 @@ function Profiler.EndTick()
 end
 
 function Profiler.BeginFrame()
-	ensureScriptSession()
+	if not ensureScriptSession() then
+		return
+	end
 	Collector.BeginFrame()
 end
 
@@ -162,7 +148,9 @@ function Profiler.EndFrame()
 end
 
 function Profiler.Begin(name)
-	ensureScriptSession()
+	if not ensureScriptSession() then
+		return
+	end
 	Collector.Begin(name)
 end
 
@@ -190,22 +178,31 @@ function Profiler.GetActiveScript()
 	return Shared.ActiveScriptName
 end
 
+function Profiler.GetFlameGraphsFolder()
+	local sid = Shared.SessionID
+	if not sid then
+		return nil
+	end
+	return "timing_collector\\flame_graphs\\" .. sid
+end
+
 function Profiler.PrintFlameGraphHelp()
 	local sid = Shared.SessionID
 	print("============================================================")
-	print("[Profiler] Flame graphs are written by timing_collector.exe")
-	print("[Profiler] Folder (next to the .exe):")
-	print("  timing_collector\\flame_graphs\\<session_id>\\")
+	print("[Profiler] Flame graphs (next to timing_collector.exe):")
+	print("  C:\\gitProjects\\profiler\\timing_collector\\flame_graphs\\<session_id>\\")
 	if sid then
-		print("[Profiler] Your session id: " .. sid)
+		print("[Profiler] Your session:")
+		print("  ...\\flame_graphs\\" .. sid)
 	end
 	print("[Profiler] Open tick.speedscope.json at https://www.speedscope.app")
 	print("============================================================")
 end
 
 function Profiler.Unload()
-	onScriptUnload()
-	clearPackageCache()
+	Collector.EndSession()
+	Shared.BoundScriptName = nil
+	Shared.ActiveScriptName = nil
 end
 
 Profiler.VERSION = "2.0.0"

@@ -39,6 +39,7 @@ end
 
 package.loaded["Profiler"] = nil
 local Profiler = require("Profiler")
+Profiler.BindScript("test_flamegraphs")
 Profiler.SetEnabled(true)
 _G.TEST_FLAMEGRAPHS_PROFILER = Profiler
 _G.TEST_FLAMEGRAPHS_LOADED = true

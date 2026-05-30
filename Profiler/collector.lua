@@ -1,6 +1,8 @@
 --[[
     HTTP client for Go timing_collector.
-    Spans are recorded locally; HTTP runs at EndTick/EndFrame (avoids game freezes).
+    Spans recorded locally; HTTP flushed at EndTick/EndFrame only.
+    Lmaobox: pcall only on http.Get (IO). No pcall around engine/draw/callbacks.
+    Prefer http.GetAsync when available to avoid blocking the game.
 ]]
 
 local Shared = require("Profiler.Shared")
@@ -26,13 +28,12 @@ local function urlEncode(str)
 	end))
 end
 
+--- IO boundary: pcall(http.Get, url) per Lmaobox pcall policy (not pcall(function() http.Get() end)).
 local function httpGet(endpoint)
 	if not http or not http.Get then
 		return nil
 	end
-	local ok, result = pcall(function()
-		return http.Get(BASE_URL .. endpoint)
-	end)
+	local ok, result = pcall(http.Get, BASE_URL .. endpoint)
 	if ok and result and result ~= "" then
 		collectorReachable = true
 		return result
@@ -100,6 +101,16 @@ local function flushLocalSpans(ctx)
 	localSpans = kept
 end
 
+local function closeOpenLocalSpans()
+	for i = 1, #localSpans do
+		local s = localSpans[i]
+		if s and not s.closed then
+			s.endClock = os.clock()
+			s.closed = true
+		end
+	end
+end
+
 function Collector.SetEnabled(value)
 	enabled = value ~= false
 	Shared.Enabled = enabled
@@ -155,19 +166,31 @@ function Collector.BeginSession(scriptName)
 end
 
 function Collector.EndSession()
+	if Shared.SessionEnding then
+		return
+	end
 	if not Shared.SessionID then
 		Collector.ResetLocalStack()
 		return
 	end
-	if inApi then
-		return
-	end
 
-	inApi = true
+	Shared.SessionEnding = true
+
+	closeOpenLocalSpans()
+	flushLocalSpans("tick")
+	flushLocalSpans("frame")
+
+	if activeCtx == "tick" then
+		httpGet("/tick/end")
+	elseif activeCtx == "frame" then
+		httpGet("/frame/end")
+	end
 	httpGet("/session/end")
-	inApi = false
 
 	Shared.SessionID = nil
+	Shared.ActiveScriptName = nil
+	activeCtx = nil
+	Shared.SessionEnding = false
 	Collector.ResetLocalStack()
 end
 

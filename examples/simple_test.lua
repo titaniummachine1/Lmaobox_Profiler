@@ -1,103 +1,64 @@
 --[[
-    Quick profiler test (lightweight — will not freeze the game).
+    One-shot profiler test (runs once on lua_load — no callbacks).
 
-    1. Run:  C:\gitProjects\profiler\timing_collector\run_collector.bat
-    2. In Lmaobox console:  lua_load simple_test
-    3. Join a match / move around for a few seconds
-    4. Unload script OR stand still 3+ seconds
+    Lmaobox rules (see MCP pcall policy):
+    - No BeginFrame outside Draw callback (tick-only on load).
+    - No pcall around Profiler/engine calls.
+    - http.Get only inside Profiler (pcall on IO boundary).
 
-    FLAME GRAPHS LOCATION (open in File Explorer):
-      C:\gitProjects\profiler\timing_collector\flame_graphs\<session_id>\
-    Files:
-      tick.speedscope.json  -> drag into https://www.speedscope.app
-      tick.folded.txt
-      frame.speedscope.json
-      frame.folded.txt
-      session.meta.json     -> shows output_dir and end_reason
+    1. timing_collector\run_collector.bat
+    2. lua_load simple_test
+    3. Open folder printed below -> tick.speedscope.json at speedscope.app
 ]]
 
-local TAG = "profiler_simple_test"
+local SCRIPT_NAME = "simple_test"
 local FLAME_GRAPHS_ROOT = "C:\\gitProjects\\profiler\\timing_collector\\flame_graphs"
+local LOAD_KEY = "profiler.simple_test.loaded"
 
-local function cleanup()
-	callbacks.Unregister("CreateMove", TAG)
-	callbacks.Unregister("Draw", TAG)
-	callbacks.Unregister("Unload", TAG)
+if package.loaded[LOAD_KEY] then
+	print("[simple_test] Already ran — reload ignored.")
+	return
 end
-
-if _G.PROFILER_SIMPLE_TEST then
-	cleanup()
-	_G.PROFILER_SIMPLE_TEST = false
-end
+package.loaded[LOAD_KEY] = true
 
 package.loaded["Profiler"] = nil
+
 local Profiler = require("Profiler")
+if type(Profiler.BindScript) ~= "function" then
+	print("[simple_test] Old Profiler.lua — run: npm run bundle-deploy")
+	return
+end
+
+Profiler.BindScript(SCRIPT_NAME)
 Profiler.SetEnabled(true)
-_G.PROFILER_SIMPLE_TEST = true
 
-local function burn(name, count)
-	Profiler.Begin(name)
-	for i = 1, count do
-		local _ = math.sqrt(i) * math.sin(i * 0.01)
-	end
-	Profiler.End(name)
+local sessionId = nil
+
+if not Profiler.BeginSession() then
+	print("[simple_test] FAILED: timing_collector offline. Run run_collector.bat first.")
+	return
 end
 
-local function safeTick(cmd)
-	local ok, err = pcall(function()
-		Profiler.BeginTick()
-		Profiler.Begin("TickTotal")
-		burn("Math", 2000)
-		Profiler.End("TickTotal")
-		Profiler.EndTick()
-	end)
-	if not ok then
-		print("[simple_test] CreateMove error: " .. tostring(err))
-	end
-end
+sessionId = Profiler.GetSessionID()
 
-local function safeDraw()
-	local ok, err = pcall(function()
-		Profiler.BeginFrame()
-		Profiler.Begin("FrameTotal")
-		burn("FrameMath", 800)
-		Profiler.End("FrameTotal")
-		Profiler.EndFrame()
-	end)
-	if not ok then
-		print("[simple_test] Draw error: " .. tostring(err))
-	end
+-- Tick-only on load (frame profiling belongs in Draw callback).
+Profiler.BeginTick()
+Profiler.Begin("LoadTest")
+for i = 1, 1500 do
+	local _ = math.sqrt(i) * math.sin(i * 0.01)
 end
+Profiler.End("LoadTest")
+Profiler.EndTick()
 
-callbacks.Register("CreateMove", TAG, safeTick)
-callbacks.Register("Draw", TAG, safeDraw)
-callbacks.Register("Unload", TAG, function()
-	local sid = Profiler.GetSessionID()
-	Profiler.EndSession()
-	cleanup()
-	_G.PROFILER_SIMPLE_TEST = false
-	print("============================================================")
-	print("[simple_test] Session ended.")
-	if sid then
-		print("[simple_test] Open this folder in Explorer:")
-		print("  " .. FLAME_GRAPHS_ROOT .. "\\" .. sid)
-		print("[simple_test] Open tick.speedscope.json at https://www.speedscope.app")
-	else
-		print("[simple_test] No session (was timing_collector.exe running?)")
-		print("[simple_test] Start: timing_collector\\run_collector.bat")
-	end
-	print("============================================================")
-end)
+Profiler.EndSession()
 
 print("============================================================")
-print("[simple_test] Loaded")
-if Profiler.IsCollectorAvailable() then
-	print("[simple_test] Collector: OK")
-	print("[simple_test] Session:  " .. tostring(Profiler.GetSessionID()))
+print("[simple_test] Done.")
+if sessionId then
+	print("[simple_test] EXPLORER:")
+	print("  " .. FLAME_GRAPHS_ROOT .. "\\" .. tostring(sessionId))
+	print("[simple_test] Open: tick.speedscope.json at https://www.speedscope.app")
 else
-	print("[simple_test] Collector: OFFLINE — run timing_collector\\run_collector.bat first")
+	print("[simple_test] Check: " .. FLAME_GRAPHS_ROOT)
 end
-print("[simple_test] Flame graphs root:")
-print("  " .. FLAME_GRAPHS_ROOT)
-print("[simple_test] Play in-game, then unload or wait 3s idle")
 print("============================================================")

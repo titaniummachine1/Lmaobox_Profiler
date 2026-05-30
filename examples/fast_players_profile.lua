@@ -15,6 +15,7 @@ if _G.FAST_PLAYERS_PROFILE_LOADED then
 	_G.FAST_PLAYERS_PROFILE_LOADED = false
 end
 
+package.loaded["Profiler"] = nil
 local Profiler = require("Profiler")
 Profiler.SetEnabled(true)
 

@@ -110,6 +110,7 @@ func main() {
 	mux.HandleFunc("/frame/end", handleFrameEnd)
 	mux.HandleFunc("/span/start", handleSpanStart)
 	mux.HandleFunc("/span/end", handleSpanEnd)
+	mux.HandleFunc("/span/report", handleSpanReport)
 
 	startIdleWatcher()
 
@@ -374,6 +375,69 @@ func handleSpanEnd(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fmt.Fprintf(w, "%d", endNs-rec.startNs)
+}
+
+// handleSpanReport ingests a completed span from Lua (buffered flush — no per-Begin HTTP).
+// GET /span/report?name=&ctx=tick|frame&dur_ns=&stack=parent;child
+func handleSpanReport(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	defer mu.Unlock()
+	markProfilingActivity()
+
+	if state.sessionID == "" {
+		fmt.Fprint(w, "-1")
+		return
+	}
+
+	name := queryUnescape(r, "name")
+	ctx := queryUnescape(r, "ctx")
+	if name == "" || (ctx != "tick" && ctx != "frame") {
+		fmt.Fprint(w, "-1")
+		return
+	}
+
+	durNs, err := strconv.ParseInt(r.URL.Query().Get("dur_ns"), 10, 64)
+	if err != nil || durNs < 0 {
+		fmt.Fprint(w, "-1")
+		return
+	}
+
+	stackStr := queryUnescape(r, "stack")
+	var stack []string
+	if stackStr != "" {
+		for _, part := range strings.Split(stackStr, ";") {
+			if part != "" {
+				stack = append(stack, part)
+			}
+		}
+	}
+	if len(stack) == 0 {
+		stack = []string{name}
+	}
+
+	endNs := time.Since(serverStart).Nanoseconds()
+	startNs := endNs - durNs
+	if startNs < 0 {
+		startNs = 0
+	}
+
+	appendOpenEventLocked(ctx, name, startNs)
+	appendCloseEventLocked(ctx, name, endNs)
+
+	completed := completedSpan{
+		name:    name,
+		ctx:     ctx,
+		startNs: startNs,
+		endNs:   endNs,
+		stack:   stack,
+	}
+	if ctx == "tick" {
+		state.tickSpans = append(state.tickSpans, completed)
+	} else {
+		state.frameSpans = append(state.frameSpans, completed)
+	}
+
+	fmt.Fprint(w, "0")
 }
 
 func closeOpenSpansLocked(ctx string) {

@@ -19,6 +19,7 @@ if _G.PROFILER_EXAMPLE_LOADED then
 	_G.PROFILER_EXAMPLE_LOADED = false
 end
 
+package.loaded["Profiler"] = nil
 local Profiler = require("Profiler")
 Profiler.SetEnabled(true)
 _G.PROFILER_EXAMPLE_LOADED = true

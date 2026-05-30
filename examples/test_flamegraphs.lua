@@ -21,6 +21,7 @@
 ]]
 
 local TAG = "test_flamegraphs"
+local FLAME_GRAPHS_ROOT = "C:\\gitProjects\\profiler\\timing_collector\\flame_graphs"
 
 local function cleanupCallbacks()
 	callbacks.Unregister("CreateMove", TAG)
@@ -36,6 +37,7 @@ if _G.TEST_FLAMEGRAPHS_LOADED then
 	_G.TEST_FLAMEGRAPHS_LOADED = false
 end
 
+package.loaded["Profiler"] = nil
 local Profiler = require("Profiler")
 Profiler.SetEnabled(true)
 _G.TEST_FLAMEGRAPHS_PROFILER = Profiler
@@ -83,10 +85,10 @@ end
 local function onCreateMove(cmd)
 	Profiler.BeginTick()
 	Profiler.Begin("TickRoot")
-	burn("HeavyMath", 60000)
-	burn("ExtraMath", 15000)
+	burn("HeavyMath", 4000)
+	burn("ExtraMath", 1500)
 	Profiler.Begin("NestedWork")
-	burn("InnerLoop", 8000)
+	burn("InnerLoop", 800)
 	Profiler.End("NestedWork")
 	Profiler.End("TickRoot")
 	Profiler.EndTick()
@@ -101,7 +103,7 @@ end
 local function onDraw()
 	Profiler.BeginFrame()
 	Profiler.Begin("FrameRoot")
-	burn("FrameMath", 12000)
+	burn("FrameMath", 1500)
 	Profiler.End("FrameRoot")
 	Profiler.EndFrame()
 

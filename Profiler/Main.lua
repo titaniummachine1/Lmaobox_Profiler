@@ -1,5 +1,6 @@
 --[[
     Profiler — thin Lua client for Go timing_collector.
+    API version 2.0 — if require returns a table without SetEnabled, clear package.loaded["Profiler"] and require again.
 
     Usage:
         local Profiler = require("Profiler")
@@ -20,6 +21,23 @@
 
     Run timing_collector.exe before profiling. Output: flame_graphs/<session_id>/
 ]]
+
+-- Drop stale library cached before deploy (old in-game UI profiler had no SetEnabled).
+do
+	local stale = package.loaded["Profiler"]
+	if type(stale) == "table" and type(stale.SetEnabled) ~= "function" then
+		for _, pkg in ipairs({
+			"Profiler",
+			"Profiler.collector",
+			"Profiler.timing",
+			"Profiler.Shared",
+			"Profiler.config",
+			"Profiler.Main",
+		}) do
+			package.loaded[pkg] = nil
+		end
+	end
+end
 
 local Shared = require("Profiler.Shared")
 local Collector = require("Profiler.collector")
@@ -172,6 +190,19 @@ function Profiler.GetActiveScript()
 	return Shared.ActiveScriptName
 end
 
+function Profiler.PrintFlameGraphHelp()
+	local sid = Shared.SessionID
+	print("============================================================")
+	print("[Profiler] Flame graphs are written by timing_collector.exe")
+	print("[Profiler] Folder (next to the .exe):")
+	print("  timing_collector\\flame_graphs\\<session_id>\\")
+	if sid then
+		print("[Profiler] Your session id: " .. sid)
+	end
+	print("[Profiler] Open tick.speedscope.json at https://www.speedscope.app")
+	print("============================================================")
+end
+
 function Profiler.Unload()
 	onScriptUnload()
 	clearPackageCache()
@@ -179,5 +210,7 @@ end
 
 Profiler.VERSION = "2.0.0"
 Profiler.AUTHOR = "titaniummachine1"
+
+package.loaded["Profiler"] = Profiler
 
 return Profiler

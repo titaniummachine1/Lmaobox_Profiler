@@ -15,6 +15,7 @@ if _G.PROFILER_DUAL_LOADED then
 	_G.PROFILER_DUAL_LOADED = false
 end
 
+package.loaded["Profiler"] = nil
 local Profiler = require("Profiler")
 Profiler.SetEnabled(true)
 _G.PROFILER_DUAL_LOADED = true

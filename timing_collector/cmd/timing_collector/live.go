@@ -114,29 +114,6 @@ func liveSpeedscopeMetaLocked() ([]string, int) {
 	return names, active
 }
 
-func waitingSpeedscopeJSON() []byte {
-	file, err := buildSpeedscopeFile(
-		map[string]int{"waiting": 0},
-		[]speedscopeEventedProfile{{
-			Type:       "evented",
-			Name:       "Waiting for ticks…",
-			Unit:       "nanoseconds",
-			StartValue: 0,
-			EndValue:   1,
-			Events: []speedscopeEvent{
-				{Type: "O", At: 0, Frame: 0},
-				{Type: "C", At: 1, Frame: 0},
-			},
-		}},
-		0,
-	)
-	if err != nil {
-		return []byte(`{"$schema":"https://www.speedscope.app/file-format-schema.json","shared":{"frames":[{"name":"waiting"}]},"profiles":[{"type":"evented","name":"waiting","unit":"nanoseconds","startValue":0,"endValue":1,"events":[{"type":"O","at":0,"frame":0},{"type":"C","at":1,"frame":0}]}],"activeProfileIndex":0}`)
-	}
-	b, _ := json.Marshal(file)
-	return b
-}
-
 func buildLiveSpeedscopeLocked() ([]byte, []string, int, error) {
 	events := state.tickEvents
 	frameMap := frameNameToIndex["tick"]

@@ -763,26 +763,11 @@ func writeSpeedscopeTick(dir string, allEvents []speedscopeEvent, frameMap map[s
 		return fmt.Errorf("tick: no frame names")
 	}
 
-	merged := compressEventTimeline(append([]speedscopeEvent(nil), allEvents...))
-	startVal := merged[0].At
-	endVal := merged[len(merged)-1].At
-	if endVal <= startVal {
-		return fmt.Errorf("tick: profile has zero duration")
+	profiles, err := buildSpeedscopeProfiles(perTick, allEvents)
+	if err != nil {
+		return fmt.Errorf("tick: %w", err)
 	}
-
-	profiles := []speedscopeEventedProfile{{
-		Type:       "evented",
-		Name:       "ALL ticks (merged)",
-		Unit:       "nanoseconds",
-		StartValue: startVal,
-		EndValue:   endVal,
-		Events:     merged,
-	}}
-	profiles = append(profiles, perTick...)
 	active := 0
-	if len(perTick) > 0 {
-		active = 1 // default to first single tick so navigation is obvious
-	}
 
 	file, err := buildSpeedscopeFile(frameMap, profiles, active)
 	if err != nil {

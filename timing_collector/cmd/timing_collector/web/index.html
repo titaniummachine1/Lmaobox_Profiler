@@ -630,7 +630,6 @@
         setLiveView("scope");
       document.getElementById("liveProfilePick").onchange = (e) => {
         liveProfileIndex = parseInt(e.target.value, 10) || 0;
-        lastScopeURL = "";
         refreshLiveScope(lastGraphRev, true);
       };
       document.getElementById("btnFlame").onclick = () => {

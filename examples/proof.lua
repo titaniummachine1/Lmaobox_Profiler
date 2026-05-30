@@ -4,19 +4,13 @@
 ]]
 
 local TAG = "profiler_proof"
-local LOAD_KEY = "profiler.proof.v1"
+local done = false
 
-if package.loaded[LOAD_KEY] then
-	print("[proof] Already loaded.")
-	return
-end
-package.loaded[LOAD_KEY] = true
-
-callbacks.Register("Draw", TAG, function()
-	if package.loaded[LOAD_KEY .. ".done"] then
+local function onDraw()
+	if done then
 		return
 	end
-	package.loaded[LOAD_KEY .. ".done"] = true
+	done = true
 
 	local ok, response = pcall(http.Get, "http://127.0.0.1:9876/now")
 	if ok and response and tonumber(response) then
@@ -24,6 +18,9 @@ callbacks.Register("Draw", TAG, function()
 	else
 		print("[proof] FAILED — double-click timing_collector\\run\\timing_collector.exe")
 	end
-end)
+end
+
+callbacks.Unregister("Draw", TAG)
+callbacks.Register("Draw", TAG, onDraw)
 
 print("[proof] Waiting for one Draw...")

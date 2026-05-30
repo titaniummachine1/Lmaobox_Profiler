@@ -1,5 +1,10 @@
 @echo off
 cd /d "%~dp0"
-echo Bundling Profiler.lua to %%LOCALAPPDATA%%\lua ...
-node bundle-and-deploy.js
+if /i "%~1"=="--no-collector" (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\rapid-dev.ps1" -LuaOnly
+) else if /i "%~1"=="--full" (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\rapid-dev.ps1" -Full
+) else (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\rapid-dev.ps1"
+)
 exit /b %ERRORLEVEL%

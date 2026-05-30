@@ -9,6 +9,10 @@
 		"bundle": "node bundle.js",
 		"bundle-deploy": "node bundle-and-deploy.js",
 		"bundle-and-deploy": "node bundle-and-deploy.js",
+		"rapid-dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/rapid-dev.ps1",
+		"rapid-dev:lua": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/rapid-dev.ps1 -LuaOnly",
+		"rapid-dev:full": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/rapid-dev.ps1 -Full",
+		"restart-collector": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/restart-collector.ps1",
 		"watch": "node watch.js",
 		"build:collector": "cd timing_collector && go build -o run/timing_collector.exe ./cmd/timing_collector"
 	},

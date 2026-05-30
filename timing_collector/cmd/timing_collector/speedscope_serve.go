@@ -10,6 +10,10 @@ func speedscopeJSONForView(data []byte, profileIdx int) []byte {
 	if len(file.Profiles) == 0 {
 		return data
 	}
+	sanitized, err := sanitizeSpeedscopeProfiles(file.Profiles)
+	if err == nil && len(sanitized) > 0 {
+		file.Profiles = sanitized
+	}
 	if profileIdx < 0 || profileIdx >= len(file.Profiles) {
 		profileIdx = 0
 	}

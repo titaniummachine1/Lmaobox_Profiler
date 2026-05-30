@@ -2,13 +2,18 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
-			"label": "Bundle and deploy (full)",
+			"label": "Rapid dev (build + deploy + restart collector)",
 			"type": "shell",
 			"command": "${workspaceFolder}/BundleAndDeploy.bat",
-			"problemMatcher": [],
+			"problemMatcher": ["$go"],
 			"group": {
 				"kind": "build",
 				"isDefault": true
+			},
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared",
+				"clear": true
 			}
 		},
 		{
@@ -16,44 +21,62 @@
 			"type": "shell",
 			"command": "${workspaceFolder}/BundleAndDeploy.bat",
 			"args": ["--no-collector"],
-			"problemMatcher": []
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			}
 		},
 		{
-			"label": "Bundle and deploy (npm)",
+			"label": "Full build (Rust + Go + deploy + restart)",
 			"type": "shell",
-			"command": "npm run bundle-deploy",
-			"options": {
-				"cwd": "${workspaceFolder}"
-			},
-			"problemMatcher": []
+			"command": "${workspaceFolder}/BundleAndDeploy.bat",
+			"args": ["--full"],
+			"problemMatcher": ["$go"],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared",
+				"clear": true
+			}
 		},
 		{
-			"label": "Build Go timing_collector",
+			"label": "Restart timing_collector only",
 			"type": "shell",
-			"command": "npm run build:collector",
-			"options": {
-				"cwd": "${workspaceFolder}"
-			},
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/scripts/restart-collector.ps1"
+			],
 			"problemMatcher": []
 		},
 		{
-			"label": "Watch and auto-deploy",
+			"label": "Watch (auto on save)",
 			"type": "shell",
 			"command": "npm run watch",
 			"options": {
 				"cwd": "${workspaceFolder}"
 			},
 			"isBackground": true,
-			"problemMatcher": []
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "dedicated"
+			}
 		},
 		{
 			"label": "Bundle on folder open",
 			"type": "shell",
 			"command": "${workspaceFolder}/BundleAndDeploy.bat",
-			"args": ["--no-collector"],
-			"problemMatcher": [],
+			"problemMatcher": ["$go"],
 			"runOptions": {
 				"runOn": "folderOpen"
+			},
+			"presentation": {
+				"reveal": "silent",
+				"showReuseMessage": false
 			}
 		}
 	]

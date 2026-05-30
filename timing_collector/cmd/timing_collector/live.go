@@ -79,6 +79,10 @@ func buildLiveSpeedscopeLocked() ([]byte, []string, int, error) {
 	if err != nil {
 		return nil, nil, 0, err
 	}
+	profiles, err = sanitizeSpeedscopeProfiles(profiles)
+	if err != nil {
+		return nil, nil, 0, err
+	}
 	active := 0
 
 	file, err := buildSpeedscopeFile(frameMap, profiles, active)

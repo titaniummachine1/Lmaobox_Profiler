@@ -61,6 +61,7 @@ func mergeTickProfiles(perTick []speedscopeEventedProfile) ([]speedscopeEvent, i
 	if len(merged) < 2 || ticksAdded == 0 {
 		return nil, 0, 0, fmt.Errorf("not enough events for merged timeline")
 	}
+	merged = enforceMonotonicEventTimes(merged)
 	return merged, merged[0].At, merged[len(merged)-1].At, nil
 }
 

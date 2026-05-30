@@ -1,11 +1,11 @@
 {
-    "version": "0.2.0",
-    "configurations": [
-        {
-            "name": "Run BundleAndDeploy.bat",
-            "type": "node-terminal",
-            "request": "launch",
-            "preLaunchTask": "Run BundleAndDeploy.bat",
-        }
-    ]
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"name": "Rapid dev (build + deploy + restart)",
+			"type": "node-terminal",
+			"request": "launch",
+			"preLaunchTask": "Rapid dev (build + deploy + restart collector)"
+		}
+	]
 }

@@ -56,4 +56,4 @@ if "%FAILED%"=="1" (
     echo Done. Double-click:  run\timing_collector.exe
     echo   ^(flamegraph_gen.exe sits in run\ — used automatically, ignore it^)
 )
-pause
+if not "%NOPAUSE%"=="1" pause

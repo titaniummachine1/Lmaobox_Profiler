@@ -321,7 +321,7 @@ func captureTickProfileLocked() {
 		return
 	}
 	chunk := append([]speedscopeEvent(nil), state.tickEvents[start:end]...)
-	chunk = rebaseEvents(chunk)
+	chunk = enforceMonotonicEventTimes(rebaseEvents(chunk))
 	if len(chunk) < 2 {
 		return
 	}
@@ -709,7 +709,8 @@ func exportSessionLocked(endReason string) error {
 			return err
 		}
 		if err := writeFlamegraphViews(dir, state.tickSpanBatches, state.scriptName); err != nil {
-			return err
+			log.Printf("WARN session %s: flame graph export: %v", exportID, err)
+			_ = os.WriteFile(filepath.Join(dir, "flamegraph.error.txt"), []byte(err.Error()+"\n"), 0o644)
 		}
 		wrote = true
 	}
@@ -789,6 +790,10 @@ func writeSpeedscopeTick(dir string, allEvents []speedscopeEvent, frameMap map[s
 	if err != nil {
 		return fmt.Errorf("tick: %w", err)
 	}
+	profiles, err = sanitizeSpeedscopeProfiles(profiles)
+	if err != nil {
+		return fmt.Errorf("tick: %w", err)
+	}
 	active := 0
 
 	file, err := buildSpeedscopeFile(frameMap, profiles, active)
@@ -833,8 +838,13 @@ func writeSpeedscope(dir, ctx string, events []speedscopeEvent, frameMap map[str
 		Unit:       "nanoseconds",
 		StartValue: startVal,
 		EndValue:   endVal,
-		Events:     events,
+		Events:     enforceMonotonicEventTimes(events),
 	}}
+	var err error
+	profiles, err = sanitizeSpeedscopeProfiles(profiles)
+	if err != nil {
+		return err
+	}
 	file, err := buildSpeedscopeFile(frameMap, profiles, 0)
 	if err != nil {
 		return err

@@ -2,53 +2,72 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-const DEBOUNCE_MS = 400;
+const DEBOUNCE_MS = 500;
 const WATCH_DIRS = ["Profiler", "examples"];
+const WATCH_GO = path.join("timing_collector", "cmd");
 
 let timer = null;
 let running = false;
+let pending = false;
 
-function runBundleDeploy() {
+function runRapidDev(luaOnly = false) {
 	if (running) {
+		pending = true;
 		return;
 	}
 	running = true;
-	console.log("\n[watch] Running bundle-and-deploy...\n");
-	const child = spawn(process.execPath, ["bundle-and-deploy.js"], {
+	pending = false;
+	const args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/rapid-dev.ps1"];
+	if (luaOnly) {
+		args.push("-LuaOnly");
+	}
+	console.log(`\n[watch] rapid-dev${luaOnly ? " (lua only)" : ""}...\n`);
+	const child = spawn("powershell", args, {
 		cwd: process.cwd(),
 		stdio: "inherit",
 		shell: false,
 	});
 	child.on("close", (code) => {
 		running = false;
-		console.log(`[watch] Done (exit ${code ?? "?"}). Watching for changes...\n`);
+		console.log(`[watch] Done (exit ${code ?? "?"}).\n`);
+		if (pending) {
+			schedule(luaOnly);
+		}
 	});
 }
 
-function schedule() {
+function schedule(luaOnly = false) {
 	if (timer) {
 		clearTimeout(timer);
 	}
-	timer = setTimeout(runBundleDeploy, DEBOUNCE_MS);
+	timer = setTimeout(() => runRapidDev(luaOnly), DEBOUNCE_MS);
 }
 
-function watchDir(dir) {
+function watchDir(dir, luaOnly) {
 	const abs = path.resolve(dir);
 	if (!fs.existsSync(abs)) {
 		return;
 	}
 	fs.watch(abs, { recursive: true }, (_event, filename) => {
-		if (!filename || !String(filename).endsWith(".lua")) {
+		if (!filename) {
 			return;
 		}
-		console.log(`[watch] ${path.join(dir, filename)}`);
-		schedule();
+		const name = String(filename);
+		if (dir === "Profiler" || dir === "examples") {
+			if (!name.endsWith(".lua")) {
+				return;
+			}
+		} else if (!name.endsWith(".go")) {
+			return;
+		}
+		console.log(`[watch] ${path.join(dir, name)}`);
+		schedule(luaOnly);
 	});
 	console.log(`[watch] Watching ${abs}`);
 }
 
-console.log("[watch] Profiler auto bundle+deploy — save any .lua under Profiler/ or examples/");
-for (const dir of WATCH_DIRS) {
-	watchDir(dir);
-}
-runBundleDeploy();
+console.log("[watch] Auto build + deploy + restart collector on save");
+watchDir("Profiler", false);
+watchDir("examples", true);
+watchDir(WATCH_GO, false);
+runRapidDev(false);

@@ -18,9 +18,9 @@
 		"onSave": true,
 		"commands": [
 			{
-				"match": ".*\\.lua$",
+				"match": ".*\\.(lua|go)$",
 				"isAsync": false,
-				"cmd": "\"${workspaceFolder}\\BundleAndDeploy.bat\" --no-collector",
+				"cmd": "\"${workspaceFolder}\\BundleAndDeploy.bat\"",
 				"autoShowOutputPanel": "always"
 			}
 		]
@@ -29,9 +29,9 @@
 		"autoSave": true,
 		"commands": [
 			{
-				"match": ".*\\.lua$",
+				"match": ".*\\.(lua|go)$",
 				"isAsync": false,
-				"cmd": "\"${workspaceFolder}\\BundleAndDeploy.bat\" --no-collector",
+				"cmd": "\"${workspaceFolder}\\BundleAndDeploy.bat\"",
 				"autoShowOutputPanel": "always"
 			}
 		]
